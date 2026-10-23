@@ -9,9 +9,11 @@ import { Player } from '@/types/Player';
  */
 const BuffIcons: React.FC<{ player: Player; which?: 'prayers' | 'potions' | 'both' }> = observer(({ player, which = 'both' }) => {
   const icons = [
-    ...(which !== 'potions' ? player.prayers.map((p) => ({ key: `prayer-${p}`, ...PrayerMap[p] })) : []),
-    ...(which !== 'prayers' ? player.buffs.potions.map((p) => ({ key: `potion-${p}`, ...PotionMap[p] })) : []),
-  ];
+    ...(which !== 'potions' ? player.prayers.map((p) => ({ key: `prayer-${p}`, data: PrayerMap[p] })) : []),
+    ...(which !== 'prayers' ? player.buffs.potions.map((p) => ({ key: `potion-${p}`, data: PotionMap[p] })) : []),
+  ]
+    // skip prayers and potions this version doesn't know (e.g. saved by a newer build)
+    .flatMap(({ key, data }) => (data ? [{ key, ...data }] : []));
   return (
     <span className="inline-flex items-center gap-0.5">
       {icons.map((i) => (

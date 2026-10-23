@@ -62,7 +62,7 @@ const SetupList: React.FC = observer(() => {
     return () => window.removeEventListener('focus', refreshFromCalc);
   }, [refreshFromCalc, setupIds, store.activeId]);
 
-  const importFromCalculator = async (which: 'all' | 'selected') => {
+  const importFromCalculator = async () => {
     const state = await readCalculatorState();
     if (!state || !state.loadouts?.length) {
       toast.error('Open the calculator first so there is something to import');
@@ -70,7 +70,7 @@ const SetupList: React.FC = observer(() => {
     }
     let imported: BulkSetup[];
     try {
-      ({ setups: imported } = fromCalculatorState(state, which === 'all' ? 'all' : state.selectedLoadout || 0));
+      ({ setups: imported } = fromCalculatorState(state, 'all'));
     } catch (e) {
       toast.error(`Could not import from the calculator: ${e instanceof Error ? e.message : String(e)}`);
       return;
@@ -114,8 +114,7 @@ const SetupList: React.FC = observer(() => {
               New setup
             </span>
           </button>
-          <button type="button" className={buttonClass} onClick={() => importFromCalculator('all')}>Add all calculator loadouts</button>
-          <button type="button" className={buttonClass} onClick={() => importFromCalculator('selected')}>Add selected loadout</button>
+          <button type="button" className={buttonClass} onClick={importFromCalculator}>Add all calculator loadouts</button>
           <button type="button" className={buttonClass} onClick={() => notifyAdded(store.addDefaultSetups())}>Add max setups</button>
         </>
       )}
