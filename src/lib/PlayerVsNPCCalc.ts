@@ -765,7 +765,8 @@ export default class PlayerVsNPCCalc extends BaseCalc {
     if (this.wearing('Tonalztics of Ralos')) {
       // rolls 75% of max hit, but can hit twice
       // double hit is implemented in hit distribution
-      maxHit = this.trackFactor(DetailKey.MAX_HIT_TONALZTICS, maxHit, [3, 4]);
+      const maxReduction = Math.trunc(maxHit * 1 / 4);
+      maxHit = this.trackAdd(DetailKey.MAX_HIT_TONALZTICS, maxHit, -maxReduction);
     }
 
     if (this.opts.usingSpecialAttack) {
@@ -1430,8 +1431,13 @@ export default class PlayerVsNPCCalc extends BaseCalc {
     }
 
     if (this.wearing('Sunspear') && this.opts.usingSpecialAttack) {
-      const effectDmg = this.trackFactor(DetailKey.MAX_HIT_SPEC, max, [7, 10]);
-      return new AttackDistribution([
+      let effectDmg = this.trackFactor(DetailKey.MAX_HIT_SPEC, max, [7, 10]);
+      // In-game testing shows that the spec hits are consistent with adding 1 after the 70% factor
+      effectDmg = this.trackAdd(DetailKey.MAX_HIT_SPEC, effectDmg, 1);
+
+      // In-game testing also shows that vampyrebane bonuses are applied on top of this, so we don't
+      // want to return the dist early
+      dist = new AttackDistribution([
         HitDistribution.single(acc, [new Hitsplat(effectDmg)]),
       ]);
     }
@@ -1900,6 +1906,13 @@ export default class PlayerVsNPCCalc extends BaseCalc {
       if (YAMA_VOID_FLARE_IDS.includes(this.monster.id) && this.player.buffs.markOfDarknessSpell && this.player.spell?.name.includes('Demonbane')) {
         const demonbaneFactor = this.wearing('Purging staff') ? 50 : 25;
         return new AttackDistribution([HitDistribution.single(1.0, [new Hitsplat(max + Math.trunc(Math.trunc(max * demonbaneFactor / 100) * this.demonbaneVulnerability() / 100))])]);
+      }
+
+      if (this.wearing(['Sanguinesti staff', 'Holy sanguinesti staff'])) {
+        return new AttackDistribution([new HitDistribution([
+          new WeightedHit(0.8, [new Hitsplat(dist.getMax() - 8)]),
+          new WeightedHit(0.2, [new Hitsplat(dist.getMax())]),
+        ])]);
       }
 
       return new AttackDistribution([HitDistribution.single(1.0, [new Hitsplat(dist.getMax())])]);
@@ -2523,7 +2536,7 @@ export default class PlayerVsNPCCalc extends BaseCalc {
     const [, max] = this.getMinAndMax();
     return this.wearing('Sunspear')
       && this.opts.usingSpecialAttack
-      && this.monster.inputs.monsterCurrentHp <= Math.trunc(max * 7 / 10);
+      && this.monster.inputs.monsterCurrentHp <= (Math.trunc(max * 7 / 10) + 1);
   }
 
   private getGlyphicAttenuationFactor(): Factor {
