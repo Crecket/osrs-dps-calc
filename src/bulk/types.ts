@@ -26,6 +26,22 @@ export interface BulkPreset {
   setups: BulkSetup[];
   // the one monster every setup is compared against; null until one is picked
   monster: BulkMonster | null;
+  // missing on presets saved before filters existed
+  filters?: BulkFilters;
+}
+
+export type StyleGroup = 'melee' | 'ranged' | 'magic';
+
+/**
+ * How results are calculated and shown, without changing the setups themselves.
+ */
+export interface BulkFilters {
+  // an item id per slot, swapped into every setup before calculating; null empties the slot
+  overrides: Partial<Record<keyof PlayerEquipment, number | null>>;
+  hiddenStyles: StyleGroup[];
+  minDps: number | null;
+  // show filtered-out results greyed out instead of hiding them
+  showFiltered: boolean;
 }
 
 /**

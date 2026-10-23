@@ -11,14 +11,16 @@ import { BulkStore, BulkStoreContext } from '@/bulk/state/BulkStore';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import createBulkWorker from '@/bulk/worker/createBulkWorker';
 import {
-  defaultSort, Mode, runKey, selectRows, SortState,
+  defaultSort, mergeRows, Mode, runKey, selectRows, SortState,
 } from '@/bulk/lib/table';
+import { applyOverrides, filterReason, overrideDuplicates } from '@/bulk/lib/filters';
 import { monsterLabel, rowsToCsv } from '@/bulk/lib/format';
 import { BulkRow } from '@/bulk/types';
 import PresetBar, { downloadText } from '@/bulk/components/PresetBar';
 import SetupList from '@/bulk/components/SetupList';
 import TargetMonster from '@/bulk/components/TargetMonster';
 import BulkTable from '@/bulk/components/BulkTable';
+import FilterBar from '@/bulk/components/FilterBar';
 import Panel, { buttonClass } from '@/bulk/components/Panel';
 
 const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ store, pool }) => {
@@ -50,12 +52,17 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
       }
 
       setRunning(true);
-      setRows([]);
+      // keep the previous results on screen while the new ones come in, so the table (and the scroll position) doesn't
+      // collapse on every edit
+      const ids = new Set(active.setups.map((s) => s.id));
+      setRows((prev) => prev.filter((r) => ids.has(r.setupId)));
       setProgress({ done: 0, total: active.setups.length });
+      const overrides = toJS(active.filters?.overrides ?? {});
       try {
-        const result = await pool.run(toJS(active.setups), [toJS(active.monster)], (p) => {
+        const setupsToRun = active.setups.map((s) => applyOverrides(toJS(s), overrides));
+        const result = await pool.run(setupsToRun, [toJS(active.monster)], (p) => {
           if (token !== runToken.current) return;
-          setRows(p.rows);
+          setRows((prev) => mergeRows(prev, p.rows));
           setProgress({ done: p.done, total: p.total });
         });
         if (token === runToken.current) setRows(result);
@@ -72,6 +79,21 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
 
   const visible = useMemo(() => selectRows(rows, { mode, sort }), [rows, mode, sort]);
 
+  // the setups as they are calculated, with the slot overrides swapped in
+  const { filters } = store;
+  const shownSetups = setups.map((s) => applyOverrides(s, filters.overrides));
+  const shownById = new Map(shownSetups.map((s) => [s.id, s]));
+  const duplicates = overrideDuplicates(setups, filters.overrides);
+  const reasons = new Map<string, string>();
+  for (const r of visible) {
+    const setup = shownById.get(r.setupId);
+    const duplicateOf = duplicates.get(r.setupId);
+    const reason = duplicateOf ? `Same as ${duplicateOf} with the overrides` : setup && filterReason(r, setup, filters, mode);
+    if (reason) reasons.set(r.setupId, reason);
+  }
+  const tableRows = filters.showFiltered ? visible : visible.filter((r) => !reasons.has(r.setupId));
+  const kept = visible.filter((r) => !reasons.has(r.setupId));
+
   return (
     <Panel
       title={monster ? `Results vs ${monsterLabel(monster)}` : 'Results'}
@@ -82,7 +104,7 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
               <span className="flex items-center gap-1">
                 <IconPlayerStop size={16} />
                 {' '}
-                Cancel
+                {progress ? `Cancel (${progress.done} / ${progress.total})` : 'Cancel'}
               </span>
             </button>
           )}
@@ -104,10 +126,10 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
           <button
             type="button"
             className={buttonClass}
-            disabled={visible.length === 0}
+            disabled={kept.length === 0}
             onClick={() => downloadText(
               `${preset?.name || 'bulk'}${monster ? ` vs ${monsterLabel(monster)}` : ''}-results.csv`,
-              rowsToCsv(visible, setups),
+              rowsToCsv(kept, shownSetups),
               'text/csv',
             )}
           >
@@ -120,22 +142,30 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
         </>
       )}
     >
+      {/* always the same height, so a run starting or finishing doesn't move the table */}
+      <div className="h-1 bg-body-200 dark:bg-dark-500">
+        {running && progress && (
+          <div className="h-full bg-orange-400 dark:bg-orange-600 transition-all" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
+        )}
+      </div>
+      <FilterBar filteredCount={reasons.size} />
       {!running && progress && progress.done < progress.total && (
         <p className="px-4 py-2 text-sm text-gray-500 dark:text-gray-300">
           {`Stopped after ${progress.done} of ${progress.total} results.`}
         </p>
       )}
-      {running && progress && (
-        <div className="px-4 py-2 text-sm flex items-center gap-2">
-          <div className="grow h-2 rounded bg-body-200 dark:bg-dark-500 overflow-hidden">
-            <div className="h-full bg-orange-400 dark:bg-orange-600 transition-all" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
-          </div>
-          <span className="tabular-nums">{`${progress.done} / ${progress.total}`}</span>
-        </div>
-      )}
       {store.canRun.ok ? (
         <div className="overflow-x-auto max-w-[100vw]">
-          <BulkTable rows={visible} setups={setups} mode={mode} sort={sort} onSort={setSort} hasRun={!!progress && !running} />
+          <BulkTable
+            rows={tableRows}
+            setups={shownSetups}
+            overrides={filters.overrides}
+            filtered={reasons}
+            mode={mode}
+            sort={sort}
+            onSort={setSort}
+            hasRun={!!progress && !running}
+          />
         </div>
       ) : (
         <p className="px-4 py-6 text-center text-gray-500 dark:text-gray-300">{store.canRun.reason}</p>

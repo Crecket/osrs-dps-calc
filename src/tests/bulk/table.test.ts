@@ -1,12 +1,13 @@
 import { describe, expect, test } from '@jest/globals';
 import {
-  defaultSort, firstClickDir, runKey, selectRows, SortState,
+  defaultSort, firstClickDir, mergeRows, runKey, selectRows, SortState,
 } from '@/bulk/lib/table';
 import { BulkPreset, BulkRow } from '@/bulk/types';
 import { generateEmptyPlayer } from '@/state';
 import { monsterFromSearch } from '@/bulk/lib/presetIO';
 import { getMonsters } from '@/lib/Monsters';
 import { Prayer } from '@/enums/Prayer';
+import { DEFAULT_FILTERS } from '@/bulk/lib/filters';
 
 const row = (setupId: string, monsterId: string, over: Partial<BulkRow> = {}): BulkRow => ({
   setupId,
@@ -119,5 +120,24 @@ describe('runKey', () => {
     const scaled = real();
     scaled.monster!.monster.inputs.partySize = 3;
     expect(runKey(scaled)).not.toBe(base);
+  });
+
+  test('changes with slot overrides, not with the other filters', () => {
+    const base = runKey(preset(['a'], 'm'));
+
+    const overridden = preset(['a'], 'm');
+    overridden.filters = { ...DEFAULT_FILTERS, overrides: { ring: 25975 } };
+    expect(runKey(overridden)).not.toBe(base);
+
+    const filtered = preset(['a'], 'm');
+    filtered.filters = { ...DEFAULT_FILTERS, minDps: 5, hiddenStyles: ['magic'] };
+    expect(runKey(filtered)).toBe(base);
+  });
+});
+
+describe('mergeRows', () => {
+  test('new rows replace old ones by setup, old rows stay until replaced', () => {
+    const merged = mergeRows([row('a', 'm', { dps: 1 }), row('b', 'm', { dps: 2 })], [row('b', 'm', { dps: 9 })]);
+    expect(merged.map((r) => [r.setupId, r.dps])).toEqual([['b', 9], ['a', 1]]);
   });
 });

@@ -4,6 +4,7 @@ import { computeRow } from '@/bulk/lib/compute';
 import { monsterFromSearch } from '@/bulk/lib/presetIO';
 import { getMonsters } from '@/lib/Monsters';
 import { Prayer } from '@/enums/Prayer';
+import { setupKey } from '@/bulk/lib/dedupe';
 
 const byName = (name: string) => defaultSetups().setups.find((s) => s.name === name)!.player;
 
@@ -53,6 +54,66 @@ describe('defaultSetups', () => {
       expect(harm.spell?.name).toBe(`${element} Surge`);
       expect(harm.style.type).toBe('magic');
     }
+  });
+
+  test('armour variants and weapon buffs', () => {
+    expect(byName('Max scythe oathplate').equipment.body?.id).toBe(30753);
+    const mixed = byName('Max scythe torva/oathplate');
+    expect([mixed.equipment.head?.id, mixed.equipment.body?.id, mixed.equipment.legs?.id]).toEqual([26382, 30753, 30756]);
+
+    const reaper = byName('Max soulreaper inquisitor');
+    expect(reaper.equipment.shield).toBeNull();
+    expect(reaper.style.name).toBe('Smash');
+    expect(reaper.style.type).toBe('crush');
+    expect(reaper.buffs.soulreaperStacks).toBe(5);
+
+    const mace = byName("Max inquisitor's mace");
+    expect(mace.equipment.shield?.id).toBe(22322);
+    expect(mace.equipment.head?.id).toBe(24419);
+    expect(mace.style.name).toBe('Pummel');
+
+    const bellator = byName('Max scythe oathplate bellator');
+    expect(bellator.equipment.ring?.id).toBe(28316);
+    expect(bellator.equipment.body?.id).toBe(30753);
+    expect(byName('Max lance swipe oathplate bellator').equipment.ring?.id).toBe(28316);
+    const names = defaultSetups().setups.map((s) => s.name);
+    expect(names).not.toContain('Max scythe inquisitor bellator');
+    expect(names).not.toContain('Max fang bellator');
+    for (const weapon of ['scythe', 'soulreaper', 'lance swipe', 'blade of saeldor', 'noxious halberd', 'tentacle', 'voidwaker', 'emberlight']) {
+      for (const armour of ['', ' oathplate', ' torva/oathplate']) {
+        expect(names).toContain(`Max ${weapon}${armour}`);
+        expect(names).toContain(`Max ${weapon}${armour} bellator`);
+      }
+    }
+
+    const bloodMoon = byName('Max macuahuitl blood moon');
+    expect([bloodMoon.equipment.head?.name, bloodMoon.equipment.body?.name, bloodMoon.equipment.legs?.name])
+      .toEqual(['Blood moon helm', 'Blood moon chestplate', 'Blood moon tassets']);
+
+    expect(byName('Max scythe bellator blood fury').equipment.neck?.id).toBe(24780);
+    expect(byName('Max scythe bellator blood fury').equipment.ring?.id).toBe(28316);
+    expect(byName('Max fang salve(ei)').equipment.neck?.id).toBe(12018);
+    expect(byName('Max range salve(ei)').equipment.neck?.id).toBe(12018);
+    expect(byName('Max harm fire surge salve(ei)').equipment.neck?.id).toBe(12018);
+    expect(names).not.toContain('Max range blood fury');
+
+    const lance = byName('Max lance swipe oathplate');
+    expect(lance.style.type).toBe('slash');
+    expect(lance.equipment.head?.id).toBe(30750);
+
+    const masoriBowfa = byName('Max bowfa');
+    expect(masoriBowfa.equipment.body?.id).toBe(27238);
+    expect(masoriBowfa.equipment.ammo).toBeNull();
+
+    const bowfa = byName('Max bowfa crystal');
+    expect(bowfa.equipment.body?.id).toBe(23975);
+    expect(bowfa.equipment.ammo).toBeNull();
+    expect(byName('Max zcb ruby').equipment.ammo?.id).toBe(21944);
+  });
+
+  test('no two default setups are the same', () => {
+    const { setups } = defaultSetups();
+    expect(new Set(setups.map((s) => setupKey(s.player))).size).toBe(setups.length);
   });
 
   test('every default setup damages a standard monster', () => {

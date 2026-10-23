@@ -1,4 +1,6 @@
-import { describe, expect, test } from '@jest/globals';
+import {
+  describe, expect, jest, test,
+} from '@jest/globals';
 import v8 from 'node:v8';
 import { BulkStore, PresetStorage, STORAGE_KEY } from '@/bulk/state/BulkStore';
 import { monsterFromSearch, newId } from '@/bulk/lib/presetIO';
@@ -29,6 +31,9 @@ const clearSetups = (store: BulkStore) => {
   for (const s of [...store.active!.setups]) store.removeSetup(s.id);
 };
 const abyssal = () => monsterFromSearch(getMonsters().find((m) => m.id === 415)!);
+
+// new presets build all the default setups, which takes a moment
+jest.setTimeout(30000);
 
 describe('BulkStore', () => {
   test('load creates a default preset', async () => {
@@ -228,5 +233,23 @@ describe('BulkStore', () => {
     expect(copy.player.equipment.weapon?.id).toBe(original.player.equipment.weapon?.id);
     copy.player.prayers = [];
     expect(store.active!.setups[0].player.prayers).not.toEqual([]);
+  });
+
+  test('filters default, update, save and reload', async () => {
+    const storage = new MemoryStorage();
+    const store = new BulkStore(storage);
+    await store.load();
+    expect(store.filters.overrides).toEqual({});
+
+    store.setFilters({ overrides: { ring: 25975 }, minDps: 5 });
+    store.setFilters({ hiddenStyles: ['magic'] });
+    expect(store.filters).toMatchObject({
+      overrides: { ring: 25975 }, minDps: 5, hiddenStyles: ['magic'], showFiltered: false,
+    });
+    expect(saved(storage).presets[0].filters?.overrides).toEqual({ ring: 25975 });
+
+    const reloaded = new BulkStore(storage);
+    await reloaded.load();
+    expect(reloaded.filters).toMatchObject({ overrides: { ring: 25975 }, minDps: 5, hiddenStyles: ['magic'] });
   });
 });

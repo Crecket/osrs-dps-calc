@@ -165,6 +165,16 @@ describe('json', () => {
     expect(back.monster?.monster).toEqual(preset.monster?.monster);
   });
 
+  test('filters survive export and import', () => {
+    const { preset } = loadPreset(fixturePreset());
+    preset.filters = {
+      overrides: { ring: 25975 }, hiddenStyles: ['ranged'], minDps: 4, showFiltered: false,
+    };
+    const back = loadPreset(presetFromJson(presetToJson(preset))).preset;
+
+    expect(back.filters).toEqual(preset.filters);
+  });
+
   test('round trip writes version 2 with monster', () => {
     const { preset } = loadPreset(fixturePreset());
     const file = JSON.parse(presetToJson(preset));

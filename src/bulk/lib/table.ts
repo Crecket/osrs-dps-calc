@@ -77,8 +77,8 @@ export const selectRows = (
 };
 
 /**
- * Identifies what a run would compute: changes when the target, the list of setups, or anything about them that the
- * calculation reads changes (not a rename), and is null when there is nothing to run.
+ * Identifies what a run would compute: changes when the target, the list of setups, anything about them that the
+ * calculation reads (not a rename), or the slot overrides change, and is null when there is nothing to run.
  */
 export const runKey = (preset: BulkPreset | null): string | null => {
   if (!preset?.monster || preset.setups.length === 0) return null;
@@ -87,5 +87,14 @@ export const runKey = (preset: BulkPreset | null): string | null => {
     preset.monster.id,
     preset.monster.monster,
     preset.setups.map((s) => [s.id, setupKey(s.player)]),
+    preset.filters?.overrides ?? {},
   ]);
+};
+
+/**
+ * Results while a run is in progress: the new rows so far, plus the previous rows for setups that haven't come in yet.
+ */
+export const mergeRows = (previous: BulkRow[], fresh: BulkRow[]): BulkRow[] => {
+  const freshIds = new Set(fresh.map((r) => r.setupId));
+  return [...fresh, ...previous.filter((r) => !freshIds.has(r.setupId))];
 };

@@ -109,12 +109,17 @@ describe('spellIcon', () => {
 describe('sortSetups', () => {
   test('melee, then ranged, then magic, each by weapon then name', () => {
     const shuffled = [...defaultSetups().setups].reverse();
+    const sorted = sortSetups(shuffled);
+    // melee (0), ranged (1), magic (2); within each, by weapon then setup name
+    const key = (s: (typeof sorted)[number]) => {
+      const group = ['ranged', 'magic'].indexOf(s.player.style.type || '') + 1;
+      return `${group} ${s.player.equipment.weapon?.name} ${s.name}`;
+    };
+    const keys = sorted.map(key);
 
-    expect(sortSetups(shuffled).map((x) => x.name)).toEqual([
-      'Max scythe', 'Max scythe inquisitor',
-      'Max range blowpipe', 'Max range void blowpipe', 'Max range', 'Max range void',
-      'Max ayak', 'Max harm earth surge', 'Max harm fire surge', 'Max harm water surge', 'Max harm wind surge', 'Max shadow',
-    ]);
+    expect(keys).toEqual([...keys].sort((a, b) => a.localeCompare(b)));
+    expect(sorted.slice(0, 2).map((x) => x.name)).toEqual(['Max tentacle', 'Max tentacle bellator']);
+    expect(sorted.at(-1)?.name).toBe('Max shadow salve(ei)');
   });
 
   test('does not change the original order', () => {

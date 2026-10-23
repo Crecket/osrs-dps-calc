@@ -8,7 +8,8 @@ import BuffIcons from '@/bulk/components/BuffIcons';
 import {
   firstClickDir, Mode, NORMAL_COLUMNS, SortKey, SortState, SPEC_COLUMNS,
 } from '@/bulk/lib/table';
-import { BulkRow, BulkSetup } from '@/bulk/types';
+import { BulkFilters, BulkRow, BulkSetup } from '@/bulk/types';
+import { overriddenSlots } from '@/bulk/lib/filters';
 import StyleLabel from '@/bulk/components/StyleLabel';
 
 const formatValue = (r: BulkRow, key: SortKey): string => {
@@ -35,15 +36,20 @@ interface BulkTableProps {
   onSort: (s: SortState) => void;
   // whether a run has finished, so empty results can be explained correctly
   hasRun: boolean;
+  // slot overrides, marked in the gear of every row
+  overrides?: BulkFilters['overrides'];
+  // why each filtered-out row is filtered; those rows are greyed out and not ranked
+  filtered?: Map<string, string>;
 }
 
 // observer, so renaming a setup re-renders rows without the parent having to
 const BulkTable: React.FC<BulkTableProps> = observer(({
-  rows, setups, mode, sort, onSort, hasRun,
+  rows, setups, mode, sort, onSort, hasRun, overrides = {}, filtered = new Map(),
 }) => {
   // not memoized: preset arrays are mutated in place, so their identity can't be used as a dependency
   const setupsById = new Map(setups.map((s) => [s.id, s]));
   const columns = mode === 'spec' ? SPEC_COLUMNS : NORMAL_COLUMNS;
+  let rank = 0;
 
   const clickHeader = (key: SortKey) => {
     if (sort.key === key) {
@@ -56,9 +62,10 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
   if (rows.length === 0) {
     return (
       <p className="px-4 py-6 text-sm text-center text-gray-500 dark:text-gray-300">
-        {hasRun && mode === 'spec'
+        {filtered.size > 0 && 'All results are filtered out.'}
+        {filtered.size === 0 && (hasRun && mode === 'spec'
           ? 'No setups in this preset have a supported special attack.'
-          : 'No results yet.'}
+          : 'No results yet.')}
       </p>
     );
   }
@@ -83,21 +90,27 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => {
+        {rows.map((r) => {
           const setup = setupsById.get(r.setupId);
           if (!setup) return null;
+          const reason = filtered.get(r.setupId);
+          if (!reason) rank += 1;
 
           const warnings = [...r.issues];
           if (r.spec?.partial) warnings.push('Spec only partially supported');
 
           return (
-            <tr key={r.setupId} className="border-b border-body-200 dark:border-dark-400 odd:bg-body-100/40 dark:odd:bg-dark-400/40">
-              <td className="px-2 py-1 text-center text-gray-500 dark:text-gray-300">{i + 1}</td>
+            <tr
+              key={r.setupId}
+              className={`border-b border-body-200 dark:border-dark-400 odd:bg-body-100/40 dark:odd:bg-dark-400/40 ${reason ? 'opacity-40' : ''}`}
+            >
+              <td className="px-2 py-1 text-center text-gray-500 dark:text-gray-300">{reason ? '—' : rank}</td>
               <td className="px-2 py-1 whitespace-nowrap">
                 <span className="font-semibold">{setup.name}</span>
                 <StyleLabel player={setup.player} className="ml-1 align-middle" />
+                {reason && <span className="ml-2 text-xs italic">{reason}</span>}
               </td>
-              <td className="px-2 py-1" aria-label="Gear"><GearCells player={setup.player} /></td>
+              <td className="px-2 py-1" aria-label="Gear"><GearCells player={setup.player} marked={overriddenSlots(setup.player, overrides)} /></td>
               <td className="px-2 py-1 whitespace-nowrap" aria-label="Prayers and potions"><BuffIcons player={setup.player} /></td>
               {r.error ? (
                 <td colSpan={columns.length} className="px-2 py-1 text-right text-red-400">

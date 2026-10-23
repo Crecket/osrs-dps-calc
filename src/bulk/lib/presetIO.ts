@@ -12,6 +12,7 @@ import { IMPORT_VERSION, ImportableData } from '@/types/State';
 import { Monster } from '@/types/Monster';
 import { Player, PlayerEquipment } from '@/types/Player';
 import { prepareMonster } from '@/bulk/lib/compute';
+import { readFilters } from '@/bulk/lib/filters';
 import {
   BulkMonster, BulkPreset, BulkSetup, LegacyBulkPreset,
 } from '@/bulk/types';
@@ -133,6 +134,7 @@ export const loadPreset = (raw: BulkPreset | LegacyBulkPreset): { preset: BulkPr
       serializationVersion: IMPORT_VERSION,
       setups,
       monster,
+      filters: readFilters(raw.filters),
     },
     warnings,
   };

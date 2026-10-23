@@ -143,7 +143,8 @@ const SetupList: React.FC = observer(() => {
           {loadingLink ? 'Loading...' : 'Add from link'}
         </button>
       </div>
-      <ul>
+      {/* the results below stay full height; only the setups scroll */}
+      <ul className="max-h-[800px] overflow-y-auto">
         {setups.length === 0 && (
           <li className="px-4 py-4 text-sm text-gray-500 dark:text-gray-300">
             No setups yet. Click New setup, or add loadouts from the calculator.

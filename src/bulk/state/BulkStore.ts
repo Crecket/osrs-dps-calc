@@ -8,8 +8,9 @@ import { loadPreset, newId } from '@/bulk/lib/presetIO';
 import { uniqueNewSetups } from '@/bulk/lib/dedupe';
 import { defaultSetups } from '@/bulk/lib/defaultSetups';
 import { hasGear } from '@/bulk/lib/calculatorLoadouts';
+import { DEFAULT_FILTERS } from '@/bulk/lib/filters';
 import {
-  BulkMonster, BulkPreset, BulkSetup, LegacyBulkPreset,
+  BulkFilters, BulkMonster, BulkPreset, BulkSetup, LegacyBulkPreset,
 } from '@/bulk/types';
 
 export const STORAGE_KEY = 'dps-bulk-presets';
@@ -218,6 +219,16 @@ export class BulkStore {
     const s = this.active?.setups.find((x) => x.id === id);
     if (!s || !this.active) return;
     s.name = name;
+    this.touch(this.active);
+  }
+
+  get filters(): BulkFilters {
+    return this.active?.filters ?? DEFAULT_FILTERS;
+  }
+
+  setFilters(patch: Partial<BulkFilters>) {
+    if (!this.active) return;
+    this.active.filters = { ...toJS(this.filters), ...patch };
     this.touch(this.active);
   }
 
