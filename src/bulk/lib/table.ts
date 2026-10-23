@@ -78,7 +78,7 @@ export const selectRows = (
 
 /**
  * Identifies what a run would compute: changes when the target, the list of setups, anything about them that the
- * calculation reads (not a rename), or the slot overrides change, and is null when there is nothing to run.
+ * calculation reads (not a rename), or the slot or potion overrides change, and is null when there is nothing to run.
  */
 export const runKey = (preset: BulkPreset | null): string | null => {
   if (!preset?.monster || preset.setups.length === 0) return null;
@@ -88,6 +88,7 @@ export const runKey = (preset: BulkPreset | null): string | null => {
     preset.monster.monster,
     preset.setups.map((s) => [s.id, setupKey(s.player)]),
     preset.filters?.overrides ?? {},
+    preset.filters?.potions ?? null,
   ]);
 };
 

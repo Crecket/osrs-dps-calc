@@ -168,7 +168,7 @@ describe('json', () => {
   test('filters survive export and import', () => {
     const { preset } = loadPreset(fixturePreset());
     preset.filters = {
-      overrides: { ring: 25975 }, hiddenStyles: ['ranged'], minDps: 4, showFiltered: false,
+      overrides: { ring: 25975 }, hiddenStyles: ['ranged'], minDps: 4, showFiltered: false, potions: [7],
     };
     const back = loadPreset(presetFromJson(presetToJson(preset))).preset;
 

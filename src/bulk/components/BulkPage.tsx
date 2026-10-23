@@ -63,8 +63,9 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
       setStale(new Set(pending));
       setProgress({ done: 0, total: active.setups.length });
       const overrides = toJS(active.filters?.overrides ?? {});
+      const potions = toJS(active.filters?.potions ?? null);
       try {
-        const setupsToRun = active.setups.map((s) => applyOverrides(toJS(s), overrides));
+        const setupsToRun = active.setups.map((s) => applyOverrides(toJS(s), overrides, potions));
         const result = await pool.run(setupsToRun, [toJS(active.monster)], (p) => {
           if (token !== runToken.current) return;
           setRows((prev) => mergeRows(prev, p.rows));
@@ -99,9 +100,9 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
 
   // the setups as they are calculated, with the slot overrides swapped in
   const { filters } = store;
-  const shownSetups = setups.map((s) => applyOverrides(s, filters.overrides));
+  const shownSetups = setups.map((s) => applyOverrides(s, filters.overrides, filters.potions));
   const shownById = new Map(shownSetups.map((s) => [s.id, s]));
-  const duplicates = overrideDuplicates(setups, filters.overrides);
+  const duplicates = overrideDuplicates(setups, filters.overrides, filters.potions);
   const reasons = new Map<string, string>();
   for (const r of visible) {
     const setup = shownById.get(r.setupId);

@@ -7,6 +7,7 @@ import { computeRow } from '@/bulk/lib/compute';
 import { monsterFromSearch } from '@/bulk/lib/presetIO';
 import { getMonsters } from '@/lib/Monsters';
 import { BulkFilters, BulkRow } from '@/bulk/types';
+import Potion from '@/enums/Potion';
 
 const LIGHTBEARER = 25975;
 const ELIDINIS_WARD = 27251;
@@ -68,6 +69,46 @@ describe('applyOverrides', () => {
   });
 });
 
+describe('potion override', () => {
+  test('replaces every setup\'s potions and recalculates the boosts', () => {
+    const range = setup('Max range');
+    const result = applyOverrides(range, {}, [Potion.OVERLOAD_PLUS]);
+
+    expect(result.player.buffs.potions).toEqual([Potion.OVERLOAD_PLUS]);
+    expect(result.player.boosts.ranged).toBeGreaterThan(range.player.boosts.ranged);
+    expect(result.player.boosts.atk).toBeGreaterThan(0);
+    expect(range.player.buffs.potions).toEqual([Potion.RANGING]);
+  });
+
+  test('the highest boost per skill wins, like the calculator', () => {
+    const scythe = setup('Max scythe');
+    const both = applyOverrides(scythe, {}, [Potion.SUPER_COMBAT, Potion.SMELLING_SALTS]);
+    const salts = applyOverrides(scythe, {}, [Potion.SMELLING_SALTS]);
+    expect(both.player.boosts.str).toBe(salts.player.boosts.str);
+  });
+
+  test('an empty list means no potions, null means no override', () => {
+    const scythe = setup('Max scythe');
+    const none = applyOverrides(scythe, {}, []);
+    expect(none.player.buffs.potions).toEqual([]);
+    expect(none.player.boosts.str).toBe(0);
+    expect(applyOverrides(scythe, {}, null)).toBe(scythe);
+  });
+
+  test('overloads are what gets calculated', () => {
+    const range = setup('Max range');
+    const abyssal = monsterFromSearch(getMonsters().find((m) => m.id === 415)!);
+    expect(computeRow(applyOverrides(range, {}, [Potion.OVERLOAD_PLUS]), abyssal).dps).toBeGreaterThan(computeRow(range, abyssal).dps);
+  });
+
+  test('setups that differ only in potions become duplicates', () => {
+    const scythe = setup('Max scythe');
+    const other = applyOverrides({ ...scythe, id: 'x', name: 'X' }, {}, [Potion.ATTACK]);
+    expect(overrideDuplicates([scythe, other], {}).size).toBe(0);
+    expect([...overrideDuplicates([scythe, other], {}, [Potion.SMELLING_SALTS])]).toEqual([['x', 'Max scythe']]);
+  });
+});
+
 describe('filterReason', () => {
   test('style groups', () => {
     expect(styleGroup(setup('Max scythe').player)).toBe('melee');
@@ -101,10 +142,12 @@ describe('readFilters', () => {
   test('fills in defaults and drops bad values', () => {
     expect(readFilters(undefined)).toEqual(DEFAULT_FILTERS);
     expect(readFilters({
-      overrides: { ring: LIGHTBEARER, neck: 'x', bogus: 1 }, hiddenStyles: ['magic', 'nope'], minDps: 'a', showFiltered: true,
+      overrides: { ring: LIGHTBEARER, neck: 'x', bogus: 1 }, hiddenStyles: ['magic', 'nope'], minDps: 'a', showFiltered: true, potions: [Potion.OVERLOAD, 9999, 'x'],
     })).toEqual({
-      overrides: { ring: LIGHTBEARER }, hiddenStyles: ['magic'], minDps: null, showFiltered: true,
+      overrides: { ring: LIGHTBEARER }, hiddenStyles: ['magic'], minDps: null, showFiltered: true, potions: [Potion.OVERLOAD],
     });
+    expect(readFilters({ potions: [] }).potions).toEqual([]);
+    expect(readFilters({ potions: 'x' }).potions).toBeNull();
   });
 });
 

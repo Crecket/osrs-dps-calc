@@ -129,6 +129,10 @@ describe('runKey', () => {
     overridden.filters = { ...DEFAULT_FILTERS, overrides: { ring: 25975 } };
     expect(runKey(overridden)).not.toBe(base);
 
+    const potions = preset(['a'], 'm');
+    potions.filters = { ...DEFAULT_FILTERS, potions: [] };
+    expect(runKey(potions)).not.toBe(base);
+
     const filtered = preset(['a'], 'm');
     filtered.filters = { ...DEFAULT_FILTERS, minDps: 5, hiddenStyles: ['magic'] };
     expect(runKey(filtered)).toBe(base);

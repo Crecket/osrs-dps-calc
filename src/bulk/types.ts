@@ -1,5 +1,6 @@
 import { Player, PlayerEquipment } from '@/types/Player';
 import { Monster } from '@/types/Monster';
+import Potion from '@/enums/Potion';
 
 export interface BulkSetup {
   id: string;
@@ -38,6 +39,8 @@ export type StyleGroup = 'melee' | 'ranged' | 'magic';
 export interface BulkFilters {
   // an item id per slot, swapped into every setup before calculating; null empties the slot
   overrides: Partial<Record<keyof PlayerEquipment, number | null>>;
+  // potions used by every setup instead of its own, with boosts recalculated; null leaves each setup's potions alone
+  potions: Potion[] | null;
   hiddenStyles: StyleGroup[];
   minDps: number | null;
   // show filtered-out results greyed out instead of hiding them

@@ -3,7 +3,9 @@
  * results are shown. Neither changes the saved setups.
  */
 import { availableEquipment } from '@/lib/Equipment';
-import { Player, PlayerEquipment } from '@/types/Player';
+import { Player, PlayerEquipment, PlayerSkills } from '@/types/Player';
+import Potion from '@/enums/Potion';
+import { PotionMap } from '@/utils';
 import {
   BulkFilters, BulkRow, BulkSetup, GEAR_SLOT_ORDER, StyleGroup,
 } from '@/bulk/types';
@@ -18,6 +20,7 @@ export const styleLabel = (g: StyleGroup) => STYLE_LABELS[g];
 
 export const DEFAULT_FILTERS: BulkFilters = {
   overrides: {},
+  potions: null,
   hiddenStyles: [],
   minDps: null,
   showFiltered: false,
@@ -36,8 +39,12 @@ export const readFilters = (raw: unknown): BulkFilters => {
       }
     }
   }
+  const potions = Array.isArray(f.potions)
+    ? (f.potions as unknown[]).filter((p): p is Potion => typeof p === 'number' && p in PotionMap)
+    : null;
   return {
     overrides,
+    potions,
     hiddenStyles: Array.isArray(f.hiddenStyles) ? STYLE_GROUPS.filter((g) => (f.hiddenStyles as unknown[]).includes(g)) : [],
     minDps: typeof f.minDps === 'number' && Number.isFinite(f.minDps) ? f.minDps : null,
     showFiltered: typeof f.showFiltered === 'boolean' ? f.showFiltered : DEFAULT_FILTERS.showFiltered,
@@ -58,18 +65,40 @@ export const overriddenSlots = (player: Player, overrides: BulkFilters['override
 );
 
 /**
- * The setup as it is calculated: a copy with the overridden slots swapped in, or the setup itself when nothing changes.
+ * Boosts for a set of potions, the way the calculator computes them: each skill gets the highest boost of any potion.
  */
-export const applyOverrides = (setup: BulkSetup, overrides: BulkFilters['overrides']): BulkSetup => {
+export const potionBoosts = (potions: Potion[], skills: PlayerSkills): Player['boosts'] => {
+  const boosts: Partial<PlayerSkills> = {
+    atk: 0, def: 0, magic: 0, prayer: 0, ranged: 0, str: 0, mining: 0, herblore: 0,
+  };
+  for (const p of potions) {
+    for (const [k, v] of Object.entries(PotionMap[p].calculateFn(skills))) {
+      const skill = k as keyof PlayerSkills;
+      if ((v as number) > (boosts[skill] ?? 0)) boosts[skill] = v as number;
+    }
+  }
+  return boosts as Player['boosts'];
+};
+
+/**
+ * The setup as it is calculated: a copy with the overridden slots and potions swapped in, or the setup itself when
+ * nothing changes.
+ */
+export const applyOverrides = (setup: BulkSetup, overrides: BulkFilters['overrides'], potions: Potion[] | null = null): BulkSetup => {
   const slots = overriddenSlots(setup.player, overrides);
-  if (slots.length === 0) return setup;
+  if (slots.length === 0 && potions === null) return setup;
 
   const equipment = { ...setup.player.equipment };
   for (const slot of slots) {
     const id = overrides[slot];
     equipment[slot] = id === null ? null : availableEquipment.find((e) => e.id === id)!;
   }
-  return { ...setup, player: { ...setup.player, equipment } };
+  const player = { ...setup.player, equipment };
+  if (potions !== null) {
+    player.buffs = { ...player.buffs, potions: [...potions] };
+    player.boosts = { ...player.boosts, ...potionBoosts(potions, player.skills) };
+  }
+  return { ...setup, player };
 };
 
 export const styleGroup = (player: Player): StyleGroup => {
@@ -97,11 +126,15 @@ export const filterReason = (row: BulkRow, setup: BulkSetup, filters: BulkFilter
  * Setups that are the same as an earlier setup once the overrides are applied (e.g. the Ultor and Bellator versions of a
  * setup when the ring is overridden), mapped to the name of the earlier setup.
  */
-export const overrideDuplicates = (setups: BulkSetup[], overrides: BulkFilters['overrides']): Map<string, string> => {
+export const overrideDuplicates = (
+  setups: BulkSetup[],
+  overrides: BulkFilters['overrides'],
+  potions: Potion[] | null = null,
+): Map<string, string> => {
   const duplicates = new Map<string, string>();
   const first = new Map<string, BulkSetup>();
   for (const s of setups) {
-    const key = setupKey(applyOverrides(s, overrides).player);
+    const key = setupKey(applyOverrides(s, overrides, potions).player);
     const earlier = first.get(key);
     if (earlier) duplicates.set(s.id, earlier.name);
     else first.set(key, s);
