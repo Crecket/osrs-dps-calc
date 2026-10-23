@@ -3,7 +3,11 @@ import localforage from 'localforage';
 import { makeAutoObservable, toJS } from 'mobx';
 import { IMPORT_VERSION } from '@/types/State';
 import { loadPreset, newId } from '@/bulk/lib/presetIO';
-import { BulkMonster, BulkPreset, BulkSetup } from '@/bulk/types';
+import { uniqueNewSetups } from '@/bulk/lib/dedupe';
+import { defaultSetups } from '@/bulk/lib/defaultSetups';
+import {
+  BulkMonster, BulkPreset, BulkSetup, LegacyBulkPreset,
+} from '@/bulk/types';
 
 export const STORAGE_KEY = 'dps-bulk-presets';
 
@@ -13,7 +17,7 @@ export interface PresetStorage {
 }
 
 interface SavedPresets {
-  presets: BulkPreset[];
+  presets: (BulkPreset | LegacyBulkPreset)[];
   activeId: string | null;
 }
 
@@ -42,7 +46,7 @@ export class BulkStore {
 
   get canRun(): { ok: boolean; reason?: string } {
     if (!this.active || this.active.setups.length === 0) return { ok: false, reason: 'Add at least one setup' };
-    if (this.active.monsters.length === 0) return { ok: false, reason: 'Add at least one monster' };
+    if (!this.active.monster) return { ok: false, reason: 'Pick a monster' };
     return { ok: true };
   }
 
@@ -67,7 +71,7 @@ export class BulkStore {
         const name = raw?.name || 'Unnamed preset';
         warnings.push(`${name}: could not be loaded (${e instanceof Error ? e.message : String(e)})`);
         return {
-          ...raw, name, setups: raw?.setups || [], monsters: raw?.monsters || [],
+          ...raw, name, setups: raw?.setups || [], monster: (raw as BulkPreset)?.monster ?? null,
         } as BulkPreset;
       }
     });
@@ -92,15 +96,18 @@ export class BulkStore {
       updatedAt: now,
       serializationVersion: IMPORT_VERSION,
       setups: [],
-      monsters: [],
+      monster: null,
     };
+    const defaults = defaultSetups();
+    preset.setups = defaults.setups;
+    if (defaults.warnings.length > 0) this.warnings = [...new Set([...this.warnings, ...defaults.warnings])];
     this.presets.push(preset);
     this.activeId = preset.id;
     this.save();
     return preset;
   }
 
-  importPreset(raw: BulkPreset) {
+  importPreset(raw: BulkPreset | LegacyBulkPreset) {
     const { preset, warnings } = loadPreset(raw);
     this.presets.push(preset);
     this.activeId = preset.id;
@@ -134,10 +141,21 @@ export class BulkStore {
     this.warnings = [];
   }
 
-  addSetups(setups: BulkSetup[]) {
-    if (!this.active) return;
-    this.active.setups.push(...setups);
-    this.touch(this.active);
+  /**
+   * Adds the setups that aren't already in the active preset.
+   */
+  addSetups(setups: BulkSetup[]): { added: number; skipped: number } {
+    if (!this.active) return { added: 0, skipped: setups.length };
+    const fresh = uniqueNewSetups(setups, this.active.setups);
+    if (fresh.length > 0) {
+      this.active.setups.push(...fresh);
+      this.touch(this.active);
+    }
+    return { added: fresh.length, skipped: setups.length - fresh.length };
+  }
+
+  addDefaultSetups(): { added: number; skipped: number } {
+    return this.addSetups(defaultSetups().setups);
   }
 
   removeSetup(id: string) {
@@ -153,15 +171,9 @@ export class BulkStore {
     this.touch(this.active);
   }
 
-  addMonster(m: BulkMonster) {
+  setMonster(m: BulkMonster | null) {
     if (!this.active) return;
-    this.active.monsters.push(m);
-    this.touch(this.active);
-  }
-
-  removeMonster(id: string) {
-    if (!this.active) return;
-    this.active.monsters = this.active.monsters.filter((m) => m.id !== id);
+    this.active.monster = m;
     this.touch(this.active);
   }
 

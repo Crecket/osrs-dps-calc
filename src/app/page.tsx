@@ -1,5 +1,6 @@
-import Home from './home';
+import BulkRoot from '@/bulk/components/BulkRoot';
 
-const Page = () => <Home />;
+// bulk fork: the bulk tool is the homepage; the calculator lives at /calc
+const Page = () => <BulkRoot />;
 
 export default Page;

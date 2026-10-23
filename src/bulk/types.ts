@@ -24,8 +24,14 @@ export interface BulkPreset {
   // upstream IMPORT_VERSION at save time, so that upstream's migrations can be applied on load
   serializationVersion: number;
   setups: BulkSetup[];
-  monsters: BulkMonster[];
+  // the one monster every setup is compared against; null until one is picked
+  monster: BulkMonster | null;
 }
+
+/**
+ * Presets saved or exported before one-monster presets had a list of monsters.
+ */
+export type LegacyBulkPreset = Omit<BulkPreset, 'monster'> & { monsters: BulkMonster[] };
 
 export interface BulkSpecResult {
   maxHit: number;

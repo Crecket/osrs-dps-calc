@@ -36,20 +36,17 @@ const csvCell = (v: string | number | null | undefined): string => {
   return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 };
 
-export const rowsToCsv = (rows: BulkRow[], setups: BulkSetup[], monsters: BulkMonster[]): string => {
+export const rowsToCsv = (rows: BulkRow[], setups: BulkSetup[]): string => {
   const setupsById = new Map(setups.map((s) => [s.id, s]));
-  const monstersById = new Map(monsters.map((m) => [m.id, m]));
 
   const header = [
-    'Setup', 'Monster', ...GEAR_SLOT_ORDER,
+    'Setup', ...GEAR_SLOT_ORDER,
     'Max hit', 'Accuracy', 'DPS', 'TTK', 'Spec max', 'Spec acc', 'Spec dmg', 'Spec DPS', 'Error',
   ];
   const lines = rows.map((r) => {
     const setup = setupsById.get(r.setupId);
-    const monster = monstersById.get(r.monsterId);
     return [
       setup?.name,
-      monster ? monsterLabel(monster) : '',
       ...GEAR_SLOT_ORDER.map((slot) => setup?.player.equipment[slot]?.name),
       r.maxHit, r.accuracy, r.dps, r.ttk,
       r.spec?.maxHit, r.spec?.accuracy, r.spec?.expected, r.spec?.dps,
@@ -58,4 +55,12 @@ export const rowsToCsv = (rows: BulkRow[], setups: BulkSetup[], monsters: BulkMo
   });
 
   return [header.join(','), ...lines].join('\n');
+};
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+export const addResultMessage = ({ added, skipped }: { added: number; skipped: number }): string => {
+  if (added === 0) return 'Those setups are already in this preset';
+  if (skipped === 0) return `Added ${plural(added, 'setup')}`;
+  return `Added ${plural(added, 'setup')}, ${skipped} ${skipped === 1 ? 'was' : 'were'} already in this preset`;
 };

@@ -1,24 +1,13 @@
 'use client';
 
-import React from 'react';
-import { Tooltip } from 'react-tooltip';
-import { ToastContainer } from 'react-toastify';
-import BulkPage from '@/bulk/components/BulkPage';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
-const Page = () => (
-  <>
-    <BulkPage />
-    <Tooltip id="tooltip" />
-    <Tooltip id="tooltip-warning" />
-    <ToastContainer
-      position="bottom-right"
-      hideProgressBar
-      draggable={false}
-      limit={3}
-      closeButton={false}
-      className="text-sm"
-    />
-  </>
-);
+// the bulk tool moved to the homepage; keep old links working
+const Page = () => {
+  const router = useRouter();
+  useEffect(() => router.replace('/'), [router]);
+  return null;
+};
 
 export default Page;

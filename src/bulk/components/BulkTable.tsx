@@ -7,8 +7,7 @@ import GearCells from '@/bulk/components/GearCells';
 import {
   firstClickDir, Mode, NORMAL_COLUMNS, SortKey, SortState, SPEC_COLUMNS,
 } from '@/bulk/lib/table';
-import { BulkMonster, BulkRow, BulkSetup } from '@/bulk/types';
-import { monsterLabel } from '@/bulk/lib/format';
+import { BulkRow, BulkSetup } from '@/bulk/types';
 
 const formatValue = (r: BulkRow, key: SortKey): string => {
   const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
@@ -28,7 +27,6 @@ const formatValue = (r: BulkRow, key: SortKey): string => {
 interface BulkTableProps {
   rows: BulkRow[];
   setups: BulkSetup[];
-  monsters: BulkMonster[];
   mode: Mode;
   sort: SortState;
   onSort: (s: SortState) => void;
@@ -38,11 +36,10 @@ interface BulkTableProps {
 
 // observer, so renaming a setup re-renders rows without the parent having to
 const BulkTable: React.FC<BulkTableProps> = observer(({
-  rows, setups, monsters, mode, sort, onSort, hasRun,
+  rows, setups, mode, sort, onSort, hasRun,
 }) => {
   // not memoized: preset arrays are mutated in place, so their identity can't be used as a dependency
   const setupsById = new Map(setups.map((s) => [s.id, s]));
-  const monstersById = new Map(monsters.map((m) => [m.id, m]));
   const columns = mode === 'spec' ? SPEC_COLUMNS : NORMAL_COLUMNS;
 
   const clickHeader = (key: SortKey) => {
@@ -58,7 +55,7 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
       <p className="px-4 py-6 text-sm text-center text-gray-500 dark:text-gray-300">
         {hasRun && mode === 'spec'
           ? 'No setups in this preset have a supported special attack.'
-          : 'No results yet. Add setups and monsters, then press Run.'}
+          : 'No results yet.'}
       </p>
     );
   }
@@ -69,7 +66,6 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
         <tr className="bg-btns-400 dark:bg-dark-500 text-white font-serif text-left">
           <th className="px-2 py-1.5 w-10 text-center">#</th>
           <th className="px-2 py-1.5">Setup</th>
-          <th className="px-2 py-1.5">Monster</th>
           <th className="px-2 py-1.5">Gear</th>
           {columns.map((c) => (
             <th key={c.key} className="px-2 py-1.5 text-right whitespace-nowrap">
@@ -85,17 +81,15 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
       <tbody>
         {rows.map((r, i) => {
           const setup = setupsById.get(r.setupId);
-          const monster = monstersById.get(r.monsterId);
-          if (!setup || !monster) return null;
+          if (!setup) return null;
 
           const warnings = [...r.issues];
           if (r.spec?.partial) warnings.push('Spec only partially supported');
 
           return (
-            <tr key={`${r.setupId}|${r.monsterId}`} className="border-b border-body-200 dark:border-dark-400 odd:bg-body-100/40 dark:odd:bg-dark-400/40">
+            <tr key={r.setupId} className="border-b border-body-200 dark:border-dark-400 odd:bg-body-100/40 dark:odd:bg-dark-400/40">
               <td className="px-2 py-1 text-center text-gray-500 dark:text-gray-300">{i + 1}</td>
               <td className="px-2 py-1 font-semibold whitespace-nowrap">{setup.name}</td>
-              <td className="px-2 py-1 whitespace-nowrap">{monsterLabel(monster)}</td>
               <td className="px-2 py-1" aria-label="Gear"><GearCells player={setup.player} /></td>
               {r.error ? (
                 <td colSpan={columns.length} className="px-2 py-1 text-right text-red-400">

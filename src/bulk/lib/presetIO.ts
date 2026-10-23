@@ -12,10 +12,13 @@ import { IMPORT_VERSION, ImportableData } from '@/types/State';
 import { Monster } from '@/types/Monster';
 import { Player, PlayerEquipment } from '@/types/Player';
 import { prepareMonster } from '@/bulk/lib/compute';
-import { BulkMonster, BulkPreset, BulkSetup } from '@/bulk/types';
+import {
+  BulkMonster, BulkPreset, BulkSetup, LegacyBulkPreset,
+} from '@/bulk/types';
 
 const FILE_KIND = 'dps-bulk-preset';
-const FILE_VERSION = 1;
+// 2: one monster per preset (version 1 files have a list of monsters, and still import)
+const FILE_VERSION = 2;
 
 export const newId = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -67,7 +70,7 @@ export const migrateImportable = (data: ImportableData, names?: string[]): { set
   return { setups, monster: { id: newId(), monster }, warnings };
 };
 
-export const loadPreset = (raw: BulkPreset): { preset: BulkPreset; warnings: string[] } => {
+export const loadPreset = (raw: BulkPreset | LegacyBulkPreset): { preset: BulkPreset; warnings: string[] } => {
   const warnings: string[] = [];
 
   // setups don't depend on the monster, so any monster will do for migrating them
@@ -97,27 +100,39 @@ export const loadPreset = (raw: BulkPreset): { preset: BulkPreset; warnings: str
     });
   }
 
-  const monsters: BulkMonster[] = [];
-  for (const entry of raw.monsters) {
+  // older presets have a list of monsters: keep the first one that still loads
+  const candidates = 'monsters' in raw ? (raw.monsters || []) : [raw.monster].filter((m): m is BulkMonster => !!m);
+  let monster: BulkMonster | null = null;
+  let tried = 0;
+  for (const entry of candidates) {
+    tried += 1;
     try {
-      const { monster } = migrateImportable({
+      const result = migrateImportable({
         serializationVersion: raw.serializationVersion,
         loadouts: [],
         selectedLoadout: 0,
         monster: entry.monster,
       });
-      monsters.push({ ...monster, id: entry.id });
+      monster = { ...result.monster, id: entry.id };
+      break;
     } catch (e) {
-      warnings.push(`${entry.monster.name || `Monster ${entry.monster.id}`} no longer exists and was removed`);
+      warnings.push(`${entry.monster?.name || `Monster ${entry.monster?.id}`} no longer exists and was removed`);
     }
+  }
+  const dropped = candidates.length - tried;
+  if (monster && dropped > 0) {
+    warnings.push(`Only one monster per preset now: kept ${monster.monster.name}, dropped ${dropped}`);
   }
 
   return {
     preset: {
-      ...raw,
+      id: raw.id,
+      name: raw.name,
+      createdAt: raw.createdAt,
+      updatedAt: raw.updatedAt,
       serializationVersion: IMPORT_VERSION,
       setups,
-      monsters,
+      monster,
     },
     warnings,
   };
@@ -165,8 +180,8 @@ export const presetToJson = (p: BulkPreset): string => JSON.stringify(
   2,
 );
 
-export const presetFromJson = (text: string): BulkPreset => {
-  let parsed: { kind?: string; preset?: BulkPreset };
+export const presetFromJson = (text: string): BulkPreset | LegacyBulkPreset => {
+  let parsed: { kind?: string; preset?: BulkPreset | LegacyBulkPreset };
   try {
     parsed = JSON.parse(text, WORKER_JSON_REVIVER);
   } catch (e) {
@@ -174,19 +189,20 @@ export const presetFromJson = (text: string): BulkPreset => {
   }
 
   const p = parsed?.preset;
-  if (parsed?.kind !== FILE_KIND || !p || !Array.isArray(p.setups) || !Array.isArray(p.monsters)) {
+  const monstersOk = p && ('monsters' in p ? Array.isArray(p.monsters) : p.monster === null || typeof p.monster === 'object');
+  if (parsed?.kind !== FILE_KIND || !p || !Array.isArray(p.setups) || !monstersOk) {
     throw new Error('Not a bulk preset file');
   }
 
   const now = Date.now();
-  return {
-    ...p,
+  const common = {
     id: newId(),
     name: p.name || 'Imported preset',
     createdAt: now,
     updatedAt: now,
     serializationVersion: p.serializationVersion || IMPORT_VERSION,
     setups: p.setups.map((s) => ({ ...s, id: newId() })),
-    monsters: p.monsters.map((m) => ({ ...m, id: newId() })),
   };
+  if ('monsters' in p) return { ...p, ...common, monsters: p.monsters.map((m) => ({ ...m, id: newId() })) };
+  return { ...p, ...common, monster: p.monster ? { ...p.monster, id: newId() } : null };
 };

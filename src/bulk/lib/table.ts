@@ -1,4 +1,4 @@
-import { BulkRow } from '@/bulk/types';
+import { BulkPreset, BulkRow } from '@/bulk/types';
 
 export type Mode = 'normal' | 'spec';
 
@@ -46,15 +46,15 @@ export const sortValue = (r: BulkRow, key: SortKey): number | null => {
 
 export const selectRows = (
   rows: BulkRow[],
-  opts: { mode: Mode; monsterId: string | null; sort: SortState },
+  opts: { mode: Mode; sort: SortState },
 ): BulkRow[] => {
-  const { mode, monsterId, sort } = opts;
+  const { mode, sort } = opts;
   const sign = sort.dir === 'asc' ? 1 : -1;
 
   return rows
     .map((r, i) => ({ r, i }))
     // spec mode keeps error rows, so a failed calc is never silently hidden
-    .filter(({ r }) => (mode !== 'spec' || r.spec !== null || !!r.error) && (monsterId === null || r.monsterId === monsterId))
+    .filter(({ r }) => mode !== 'spec' || r.spec !== null || !!r.error)
     .sort((a, b) => {
       // errors, then missing values, always go to the bottom regardless of direction
       const ea = a.r.error ? 1 : 0;
@@ -71,4 +71,13 @@ export const selectRows = (
       return (va - vb) * sign || a.i - b.i;
     })
     .map(({ r }) => r);
+};
+
+/**
+ * Identifies what a run would compute: changes exactly when the target or the list of setups changes, and is null when
+ * there is nothing to run.
+ */
+export const runKey = (preset: BulkPreset | null): string | null => {
+  if (!preset?.monster || preset.setups.length === 0) return null;
+  return [preset.id, preset.monster.id, ...preset.setups.map((s) => s.id)].join('|');
 };

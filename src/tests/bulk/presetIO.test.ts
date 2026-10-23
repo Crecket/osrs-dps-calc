@@ -4,12 +4,18 @@ import {
 import {
   importShortlink, loadPreset, migrateImportable, presetFromJson, presetToJson,
 } from '@/bulk/lib/presetIO';
-import { BulkPreset } from '@/bulk/types';
+import { BulkPreset, LegacyBulkPreset } from '@/bulk/types';
 import { IMPORT_VERSION, ImportableData } from '@/types/State';
 import { CUSTOM_MONSTER_BASE } from '@/lib/Monsters';
 import fixture from './fixtures/preset-v10.json';
 
-const fixturePreset = (): BulkPreset => JSON.parse(JSON.stringify(fixture.preset));
+// the fixture is a version 1 file: monsters[] rather than one monster
+const twoMonsterPreset = (): LegacyBulkPreset => JSON.parse(JSON.stringify(fixture.preset));
+const fixturePreset = (): LegacyBulkPreset => {
+  const raw = twoMonsterPreset();
+  raw.monsters = raw.monsters.slice(0, 1);
+  return raw;
+};
 
 describe('loadPreset', () => {
   test('fixture preset loads', () => {
@@ -22,10 +28,45 @@ describe('loadPreset', () => {
     expect(preset.setups[0].player.equipment.shield?.name).toBe('Dragon defender');
     expect(preset.setups[0].player.skills.atk).toBe(99);
     expect(preset.setups[1].name).toBe('Claws');
-    expect(preset.monsters.map((m) => m.id)).toEqual(['monster-abyssal', 'monster-td']);
-    expect(preset.monsters[1].monster.inputs.phase).toBe('Unshielded');
-    expect(preset.monsters[1].monster.inputs.defenceReductions.dwh).toBe(1);
-    expect(preset.monsters[1].monster.skills.hp).toBeGreaterThan(0);
+    expect(preset.monster?.id).toBe('monster-abyssal');
+    expect('monsters' in preset).toBe(false);
+  });
+
+  test('legacy preset keeps its first monster', () => {
+    const { preset, warnings } = loadPreset(twoMonsterPreset());
+
+    expect(preset.monster?.id).toBe('monster-abyssal');
+    expect(warnings).toEqual(['Only one monster per preset now: kept Abyssal demon, dropped 1']);
+  });
+
+  test('legacy preset with no monsters loads with monster null', () => {
+    const raw = fixturePreset();
+    raw.monsters = [];
+
+    const { preset, warnings } = loadPreset(raw);
+
+    expect(preset.monster).toBeNull();
+    expect(warnings).toEqual([]);
+  });
+
+  test('legacy preset whose first monster is invalid keeps the next valid one', () => {
+    const raw = twoMonsterPreset();
+    raw.monsters[0].monster = null as never;
+
+    const { preset } = loadPreset(raw);
+
+    expect(preset.monster?.id).toBe('monster-td');
+  });
+
+  test('monster inputs survive', () => {
+    const raw = twoMonsterPreset();
+    raw.monsters = [raw.monsters[1]];
+
+    const { preset } = loadPreset(raw);
+
+    expect(preset.monster?.monster.inputs.phase).toBe('Unshielded');
+    expect(preset.monster?.monster.inputs.defenceReductions.dwh).toBe(1);
+    expect(preset.monster?.monster.skills.hp).toBeGreaterThan(0);
   });
 
   test('missing item is dropped with a warning', () => {
@@ -83,9 +124,9 @@ describe('loadPreset', () => {
 
     const { preset } = loadPreset(raw);
 
-    expect(preset.monsters[0].monster.id).toBe(-1);
-    expect(preset.monsters[0].monster.name).toBe('My dummy');
-    expect(preset.monsters[0].monster.defensive.slash).toBe(321);
+    expect(preset.monster?.monster.id).toBe(-1);
+    expect(preset.monster?.monster.name).toBe('My dummy');
+    expect(preset.monster?.monster.defensive.slash).toBe(321);
   });
 
   test('old serialization versions migrate', () => {
@@ -96,7 +137,7 @@ describe('loadPreset', () => {
 
     const { preset } = loadPreset(raw);
 
-    expect(preset.monsters[0].monster.inputs.partySumMiningLevel).toBe(180);
+    expect(preset.monster?.monster.inputs.partySumMiningLevel).toBe(180);
   });
 });
 
@@ -116,12 +157,28 @@ describe('migrateImportable', () => {
 describe('json', () => {
   test('json round-trip', () => {
     const { preset } = loadPreset(fixturePreset());
-    const back = presetFromJson(presetToJson(preset));
+    const back = presetFromJson(presetToJson(preset)) as BulkPreset;
 
     expect(back.id).not.toBe(preset.id);
     expect(back.name).toBe(preset.name);
     expect(back.setups.map((s) => s.player)).toEqual(preset.setups.map((s) => s.player));
-    expect(back.monsters.map((m) => m.monster)).toEqual(preset.monsters.map((m) => m.monster));
+    expect(back.monster?.monster).toEqual(preset.monster?.monster);
+  });
+
+  test('round trip writes version 2 with monster', () => {
+    const { preset } = loadPreset(fixturePreset());
+    const file = JSON.parse(presetToJson(preset));
+
+    expect(file.version).toBe(2);
+    expect(file.preset.monster.id).toBe('monster-abyssal');
+    expect(file.preset.monsters).toBeUndefined();
+  });
+
+  test('version 1 export file imports', () => {
+    const { preset } = loadPreset(presetFromJson(JSON.stringify(fixture)));
+
+    expect(preset.monster?.monster.name).toBe('Abyssal demon');
+    expect(preset.setups).toHaveLength(2);
   });
 
   test('rejects other files', () => {
@@ -138,7 +195,7 @@ describe('importShortlink', () => {
   });
 
   test('accepts a share url and loads its loadouts and monster', async () => {
-    const raw = fixturePreset();
+    const raw = twoMonsterPreset();
     mocked.mockResolvedValue({
       serializationVersion: IMPORT_VERSION,
       loadouts: raw.setups.map((s) => s.player),
