@@ -112,7 +112,7 @@ describe('sortSetups', () => {
 
     expect(sortSetups(shuffled).map((x) => x.name)).toEqual([
       'Max scythe', 'Max scythe inquisitor',
-      'Max range blowpipe', 'Max range', 'Max range void',
+      'Max range blowpipe', 'Max range void blowpipe', 'Max range', 'Max range void',
       'Max ayak', 'Max harm earth surge', 'Max harm fire surge', 'Max harm water surge', 'Max harm wind surge', 'Max shadow',
     ]);
   });

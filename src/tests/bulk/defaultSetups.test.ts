@@ -36,6 +36,11 @@ describe('defaultSetups', () => {
     expect(bp.equipment.weapon?.id).toBe(12926);
     expect(bp.equipment.weapon?.itemVars?.blowpipeDartId).toBe(11230);
 
+    const voidBp = byName('Max range void blowpipe');
+    expect(voidBp.equipment.weapon?.id).toBe(12926);
+    expect(voidBp.equipment.weapon?.itemVars?.blowpipeDartId).toBe(11230);
+    expect(voidBp.equipment.body?.id).toBe(13072);
+
     const ayak = byName('Max ayak');
     expect(ayak.equipment.shield?.id).toBe(27251);
     expect(ayak.prayers).toContain(Prayer.AUGURY);

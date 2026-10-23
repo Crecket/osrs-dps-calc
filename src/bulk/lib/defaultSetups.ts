@@ -76,6 +76,9 @@ const DEFAULTS: DefaultSetup[] = [
     name: 'Max range blowpipe', slots: { ...MAX_RANGED, weapon: 12926 }, style: { name: 'Rapid' }, dartId: 11230, ...RANGED,
   },
   {
+    name: 'Max range void blowpipe', slots: { ...VOID_RANGED, weapon: 12926 }, style: { name: 'Rapid' }, dartId: 11230, ...RANGED,
+  },
+  {
     name: 'Max shadow', slots: { ...MAX_MAGE, weapon: 27275 }, style: { name: 'Accurate' }, ...MAGIC,
   },
   {

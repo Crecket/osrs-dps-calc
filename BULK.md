@@ -4,7 +4,7 @@ This fork of the [OSRS Wiki DPS calculator](https://github.com/weirdgloop/osrs-d
 
 ## Using it
 
-1. Open the site. A new preset starts with max-gear setups (scythe, inquisitor, twisted bow, void, blowpipe, shadow, ayak, and harmonised staff with each Surge).
+1. Open the site. A new preset starts with max-gear setups (scythe, inquisitor, twisted bow, void, blowpipe, void blowpipe, shadow, ayak, and harmonised staff with each Surge).
 2. Pick the target monster from the drop-down. Results run on their own whenever the target or the setups change. For raids, phases or defence reductions, set the monster up in the calculator and use **Use calculator's monster**.
 3. To add your own setup, click **Build a new setup** (or **Build setups in the calculator** in the top bar), build the loadout, then **Back to bulk tool**. A banner offers the calculator loadouts that aren't in the preset yet. **Add all calculator loadouts**, **Add selected loadout** and pasting a share link also work.
 4. Setups are never added twice: a setup with the same gear, stats, prayers, potions, style and spell as one already in the preset is skipped, whatever its name. **Add max setups** brings back any defaults you removed.
