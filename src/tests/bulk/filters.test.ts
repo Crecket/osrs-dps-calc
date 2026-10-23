@@ -115,13 +115,14 @@ describe('overrideDuplicates', () => {
     const fang = setup('Max fang');
 
     expect(overrideDuplicates([ultor, bellator, fang], {}).size).toBe(0);
+    expect(overrideDuplicates([ultor, bellator, fang], { ring: 28307 }).size).toBe(1);
     expect(overrideDuplicates([ultor, bellator, fang], { neck: 19553 }).size).toBe(0);
     expect([...overrideDuplicates([ultor, bellator, fang], { ring: LIGHTBEARER })]).toEqual([[bellator.id, 'Max scythe']]);
   });
 
-  test('setups that were already the same are not counted', () => {
+  test('setups that were already the same count too', () => {
     const scythe = setup('Max scythe');
     const copy = { ...scythe, id: 'copy', name: 'Copy' };
-    expect(overrideDuplicates([scythe, copy], { neck: 19553 }).size).toBe(0);
+    expect([...overrideDuplicates([scythe, copy], {})]).toEqual([['copy', 'Max scythe']]);
   });
 });

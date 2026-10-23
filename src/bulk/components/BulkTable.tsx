@@ -40,11 +40,13 @@ interface BulkTableProps {
   overrides?: BulkFilters['overrides'];
   // why each filtered-out row is filtered; those rows are greyed out and not ranked
   filtered?: Map<string, string>;
+  // rows showing the previous run's numbers while they're recalculated
+  stale?: Set<string>;
 }
 
 // observer, so renaming a setup re-renders rows without the parent having to
 const BulkTable: React.FC<BulkTableProps> = observer(({
-  rows, setups, mode, sort, onSort, hasRun, overrides = {}, filtered = new Map(),
+  rows, setups, mode, sort, onSort, hasRun, overrides = {}, filtered = new Map(), stale = new Set(),
 }) => {
   // not memoized: preset arrays are mutated in place, so their identity can't be used as a dependency
   const setupsById = new Map(setups.map((s) => [s.id, s]));
@@ -94,6 +96,7 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
           const setup = setupsById.get(r.setupId);
           if (!setup) return null;
           const reason = filtered.get(r.setupId);
+          const isStale = stale.has(r.setupId);
           if (!reason) rank += 1;
 
           const warnings = [...r.issues];
@@ -120,7 +123,11 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
                   </span>
                 </td>
               ) : columns.map((c) => (
-                <td key={c.key} className={`px-2 py-1 text-right tabular-nums ${sort.key === c.key ? 'font-bold' : ''}`}>
+                <td
+                  key={c.key}
+                  className={`px-2 py-1 text-right tabular-nums ${sort.key === c.key ? 'font-bold' : ''} ${isStale ? 'text-gray-400 italic' : ''}`}
+                  title={isStale ? 'Recalculating' : undefined}
+                >
                   {formatValue(r, c.key)}
                 </td>
               ))}

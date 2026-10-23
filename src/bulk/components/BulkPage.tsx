@@ -27,6 +27,8 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
   const [rows, setRows] = useState<BulkRow[]>([]);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [running, setRunning] = useState(false);
+  // rows still showing the previous run's numbers, until this run recalculates them
+  const [stale, setStale] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<Mode>('normal');
   const [sort, setSort] = useState<SortState>(defaultSort('normal'));
   const runToken = useRef(0);
@@ -46,6 +48,7 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
       const active = store.active;
       if (key === null || !active?.monster) {
         setRows([]);
+        setStale(new Set());
         setProgress(null);
         setRunning(false);
         return;
@@ -56,6 +59,8 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
       // collapse on every edit
       const ids = new Set(active.setups.map((s) => s.id));
       setRows((prev) => prev.filter((r) => ids.has(r.setupId)));
+      const pending = new Set(ids);
+      setStale(new Set(pending));
       setProgress({ done: 0, total: active.setups.length });
       const overrides = toJS(active.filters?.overrides ?? {});
       try {
@@ -63,15 +68,28 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
         const result = await pool.run(setupsToRun, [toJS(active.monster)], (p) => {
           if (token !== runToken.current) return;
           setRows((prev) => mergeRows(prev, p.rows));
+          for (const r of p.rows) pending.delete(r.setupId);
+          setStale(new Set(pending));
           setProgress({ done: p.done, total: p.total });
         });
-        if (token === runToken.current) setRows(result);
+        if (token === runToken.current) {
+          setRows(result);
+          pending.clear();
+          setStale(new Set());
+        }
       } catch (e) {
         if (!(e instanceof Error && e.message === 'cancelled')) {
           toast.error(e instanceof Error ? e.message : 'Calculation failed');
         }
       } finally {
-        if (token === runToken.current) setRunning(false);
+        if (token === runToken.current) {
+          // a run that stopped early leaves old numbers behind: drop them rather than show them as current
+          if (pending.size > 0) {
+            setRows((prev) => prev.filter((r) => !pending.has(r.setupId)));
+            setStale(new Set());
+          }
+          setRunning(false);
+        }
       }
     },
     { fireImmediately: true, delay: 300 },
@@ -88,7 +106,7 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
   for (const r of visible) {
     const setup = shownById.get(r.setupId);
     const duplicateOf = duplicates.get(r.setupId);
-    const reason = duplicateOf ? `Same as ${duplicateOf} with the overrides` : setup && filterReason(r, setup, filters, mode);
+    const reason = duplicateOf ? `Same as ${duplicateOf}` : setup && filterReason(r, setup, filters, mode);
     if (reason) reasons.set(r.setupId, reason);
   }
   const tableRows = filters.showFiltered ? visible : visible.filter((r) => !reasons.has(r.setupId));
@@ -161,6 +179,7 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
             setups={shownSetups}
             overrides={filters.overrides}
             filtered={reasons}
+            stale={stale}
             mode={mode}
             sort={sort}
             onSort={setSort}

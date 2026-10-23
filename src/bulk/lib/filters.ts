@@ -94,20 +94,17 @@ export const filterReason = (row: BulkRow, setup: BulkSetup, filters: BulkFilter
 };
 
 /**
- * Setups that the overrides turn into a copy of an earlier setup (e.g. the Ultor and Bellator versions of a setup once
- * the ring is overridden), mapped to the name of the setup they now duplicate. Setups that were already identical
- * aren't counted: only the overrides' duplicates are.
+ * Setups that are the same as an earlier setup once the overrides are applied (e.g. the Ultor and Bellator versions of a
+ * setup when the ring is overridden), mapped to the name of the earlier setup.
  */
 export const overrideDuplicates = (setups: BulkSetup[], overrides: BulkFilters['overrides']): Map<string, string> => {
   const duplicates = new Map<string, string>();
-  if (Object.keys(overrides).length === 0) return duplicates;
-
   const first = new Map<string, BulkSetup>();
   for (const s of setups) {
     const key = setupKey(applyOverrides(s, overrides).player);
     const earlier = first.get(key);
-    if (!earlier) first.set(key, s);
-    else if (setupKey(earlier.player) !== setupKey(s.player)) duplicates.set(s.id, earlier.name);
+    if (earlier) duplicates.set(s.id, earlier.name);
+    else first.set(key, s);
   }
   return duplicates;
 };
