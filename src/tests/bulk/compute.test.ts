@@ -83,6 +83,20 @@ describe('computeRow', () => {
     expect(row.spec!.partial).toBe(false);
   });
 
+  test('spec DPS is per attack, like the calculator\'s spec DPS; spec-only DPS accounts for energy regen', () => {
+    const monster = getTestMonster('Abyssal demon', 'Standard');
+    const player = getTestPlayer(monster, {
+      equipment: { weapon: findEquipment('Zaryte crossbow'), ammo: findEquipment('Ruby dragon bolts (e)') },
+    });
+
+    const row = computeRow(setup(player), entry(monster));
+    const specCalc = new PlayerVsNPCCalc(player, monster, { loadoutName: 't' }).getSpecCalc()!;
+
+    expect(row.spec!.dps).toBeCloseTo(specCalc.getDps(), 10);
+    expect(row.spec!.regenDps).toBeCloseTo(specCalc.getSpecDps(), 10);
+    expect(row.spec!.dps).toBeGreaterThan(row.spec!.regenDps * 10);
+  });
+
   test('a setup that cannot damage the monster has no ttk', () => {
     const monster = getTestMonster('Zulrah', 'Serpentine');
     const player = getTestPlayer(monster, { equipment: { weapon: findEquipment('Abyssal whip') } });

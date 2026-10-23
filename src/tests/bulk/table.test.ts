@@ -3,6 +3,10 @@ import {
   defaultSort, firstClickDir, runKey, selectRows, SortState,
 } from '@/bulk/lib/table';
 import { BulkPreset, BulkRow } from '@/bulk/types';
+import { generateEmptyPlayer } from '@/state';
+import { monsterFromSearch } from '@/bulk/lib/presetIO';
+import { getMonsters } from '@/lib/Monsters';
+import { Prayer } from '@/enums/Prayer';
 
 const row = (setupId: string, monsterId: string, over: Partial<BulkRow> = {}): BulkRow => ({
   setupId,
@@ -16,7 +20,7 @@ const row = (setupId: string, monsterId: string, over: Partial<BulkRow> = {}): B
   ...over,
 });
 const spec = (expected: number) => ({
-  maxHit: 50, accuracy: 0.5, expected, dps: 1, partial: false,
+  maxHit: 50, accuracy: 0.5, expected, dps: 1, regenDps: 0.1, partial: false,
 });
 const ids = (rows: BulkRow[]) => rows.map((r) => `${r.setupId}${r.monsterId}`);
 const opts = (sort: SortState, mode: 'normal' | 'spec' = 'normal') => ({ mode, sort });
@@ -79,8 +83,8 @@ describe('runKey', () => {
     createdAt: 0,
     updatedAt: 0,
     serializationVersion: 1,
-    setups: setupIds.map((id) => ({ id, name: id, player: {} as never })),
-    monster: monsterId ? { id: monsterId, monster: {} as never } : null,
+    setups: setupIds.map((id) => ({ id, name: id, player: generateEmptyPlayer(id) })),
+    monster: monsterId ? { id: monsterId, monster: { id: 1 } as never } : null,
   });
 
   test('null when the preset cannot run', () => {
@@ -97,5 +101,23 @@ describe('runKey', () => {
     const renamed = preset(['a', 'b'], 'm');
     renamed.setups[0].name = 'Renamed';
     expect(runKey(renamed)).toBe(base);
+  });
+
+  test('changes when a setup or the target is edited in place', () => {
+    const real = (): BulkPreset => {
+      const p = preset([], null);
+      p.setups = [{ id: 'a', name: 'A', player: generateEmptyPlayer('A') }];
+      p.monster = { ...monsterFromSearch(getMonsters().find((m) => m.name === 'Vasa Nistirio')!), id: 'm' };
+      return p;
+    };
+    const base = runKey(real());
+
+    const prayed = real();
+    prayed.setups[0].player.prayers = [Prayer.PIETY];
+    expect(runKey(prayed)).not.toBe(base);
+
+    const scaled = real();
+    scaled.monster!.monster.inputs.partySize = 3;
+    expect(runKey(scaled)).not.toBe(base);
   });
 });

@@ -189,4 +189,44 @@ describe('BulkStore', () => {
     expect(store.active?.monster?.id).toBe('monster-abyssal');
     expect(store.active?.setups).toHaveLength(2);
   });
+
+  test('createSetup adds a blank setup even when one already exists', async () => {
+    const store = new BulkStore(new MemoryStorage());
+    await store.load();
+    const before = store.active!.setups.length;
+
+    const a = store.createSetup();
+    const b = store.createSetup();
+
+    expect(store.active!.setups).toHaveLength(before + 2);
+    expect(a.id).not.toBe(b.id);
+    expect(a.name).not.toBe(b.name);
+    expect(store.active!.setups[store.active!.setups.length - 1].id).toBe(b.id);
+  });
+
+  test('discardIfBlank removes a setup only while it has no gear', async () => {
+    const store = new BulkStore(new MemoryStorage());
+    await store.load();
+    const blank = store.createSetup();
+    const scythe = store.active!.setups[0];
+
+    expect(store.discardIfBlank(scythe.id)).toBe(false);
+    expect(store.discardIfBlank(blank.id)).toBe(true);
+    expect(store.active!.setups.some((x) => x.id === blank.id)).toBe(false);
+    expect(store.active!.setups.some((x) => x.id === scythe.id)).toBe(true);
+  });
+
+  test('copySetup inserts an independent copy right after the original', async () => {
+    const store = new BulkStore(new MemoryStorage());
+    await store.load();
+    const original = store.active!.setups[0];
+
+    const copy = store.copySetup(original.id)!;
+
+    expect(store.active!.setups[1].id).toBe(copy.id);
+    expect(copy.name).toBe(`${original.name} (copy)`);
+    expect(copy.player.equipment.weapon?.id).toBe(original.player.equipment.weapon?.id);
+    copy.player.prayers = [];
+    expect(store.active!.setups[0].player.prayers).not.toEqual([]);
+  });
 });

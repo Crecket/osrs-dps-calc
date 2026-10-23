@@ -7,8 +7,8 @@ import { BulkSetup, GEAR_SLOT_ORDER } from '@/bulk/types';
  */
 export const setupKey = (player: Player): string => JSON.stringify({
   equipment: GEAR_SLOT_ORDER.map((slot) => player.equipment[slot]?.id ?? null),
-  // the blowpipe's darts live on the weapon
-  itemVars: player.equipment.weapon?.itemVars ?? null,
+  // the blowpipe's darts live on the weapon; the dart name is derived from the id, and its key order varies
+  dart: player.equipment.weapon?.itemVars?.blowpipeDartId ?? null,
   skills: player.skills,
   boosts: player.boosts,
   prayers: [...player.prayers].sort((a, b) => a - b),

@@ -75,7 +75,8 @@ export const computeRow = (setup: BulkSetup, entry: BulkMonster): BulkRow => {
         maxHit: specCalc.getMax(),
         accuracy: specCalc.getDisplayHitChance(),
         expected: specCalc.getExpectedDamage(),
-        dps: specCalc.getSpecDps(),
+        dps: specCalc.getDps(),
+        regenDps: specCalc.getSpecDps(),
         partial: calc.isSpecSupported() === FeatureStatus.PARTIALLY_IMPLEMENTED,
       };
     }

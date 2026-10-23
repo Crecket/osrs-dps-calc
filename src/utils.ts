@@ -155,7 +155,8 @@ export const calculateCombatLevel = (s: PlayerSkills) => {
 
 export const getWikiImage = (filename: string) => `https://oldschool.runescape.wiki/images/${filename.replaceAll(' ', '_')}?11111`;
 
-export const getCdnImage = (filename: string) => `https://tools.runescape.wiki/osrs-dps/cdn/${filename}`;
+// encode each path segment: some file names contain characters like % (e.g. "The Maiden of Sugadinti (70% health).png")
+export const getCdnImage = (filename: string) => `https://tools.runescape.wiki/osrs-dps/cdn/${filename.split('/').map(encodeURIComponent).join('/')}`;
 
 export const isDevServer = () => process.env.NODE_ENV === 'development';
 

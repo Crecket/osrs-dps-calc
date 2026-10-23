@@ -1,8 +1,9 @@
 import { BulkPreset, BulkRow } from '@/bulk/types';
+import { setupKey } from '@/bulk/lib/dedupe';
 
 export type Mode = 'normal' | 'spec';
 
-export type SortKey = 'maxHit' | 'accuracy' | 'dps' | 'ttk' | 'specMaxHit' | 'specAccuracy' | 'specExpected' | 'specDps';
+export type SortKey = 'maxHit' | 'accuracy' | 'dps' | 'ttk' | 'specMaxHit' | 'specAccuracy' | 'specExpected' | 'specDps' | 'specRegenDps';
 
 export interface SortState {
   key: SortKey;
@@ -21,6 +22,7 @@ export const SPEC_COLUMNS: { key: SortKey; label: string }[] = [
   { key: 'specAccuracy', label: 'Spec acc' },
   { key: 'specExpected', label: 'Spec dmg' },
   { key: 'specDps', label: 'Spec DPS' },
+  { key: 'specRegenDps', label: 'Spec-only DPS' },
 ];
 
 export const defaultSort = (mode: Mode): SortState => (mode === 'spec'
@@ -40,6 +42,7 @@ export const sortValue = (r: BulkRow, key: SortKey): number | null => {
     case 'specAccuracy': return r.spec?.accuracy ?? null;
     case 'specExpected': return r.spec?.expected ?? null;
     case 'specDps': return r.spec?.dps ?? null;
+    case 'specRegenDps': return r.spec?.regenDps ?? null;
     default: return null;
   }
 };
@@ -74,10 +77,15 @@ export const selectRows = (
 };
 
 /**
- * Identifies what a run would compute: changes exactly when the target or the list of setups changes, and is null when
- * there is nothing to run.
+ * Identifies what a run would compute: changes when the target, the list of setups, or anything about them that the
+ * calculation reads changes (not a rename), and is null when there is nothing to run.
  */
 export const runKey = (preset: BulkPreset | null): string | null => {
   if (!preset?.monster || preset.setups.length === 0) return null;
-  return [preset.id, preset.monster.id, ...preset.setups.map((s) => s.id)].join('|');
+  return JSON.stringify([
+    preset.id,
+    preset.monster.id,
+    preset.monster.monster,
+    preset.setups.map((s) => [s.id, setupKey(s.player)]),
+  ]);
 };

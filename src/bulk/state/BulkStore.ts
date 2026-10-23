@@ -2,9 +2,12 @@ import { createContext, useContext } from 'react';
 import localforage from 'localforage';
 import { makeAutoObservable, toJS } from 'mobx';
 import { IMPORT_VERSION } from '@/types/State';
+import { Player } from '@/types/Player';
+import { generateEmptyPlayer } from '@/state';
 import { loadPreset, newId } from '@/bulk/lib/presetIO';
 import { uniqueNewSetups } from '@/bulk/lib/dedupe';
 import { defaultSetups } from '@/bulk/lib/defaultSetups';
+import { hasGear } from '@/bulk/lib/calculatorLoadouts';
 import {
   BulkMonster, BulkPreset, BulkSetup, LegacyBulkPreset,
 } from '@/bulk/types';
@@ -161,6 +164,53 @@ export class BulkStore {
   removeSetup(id: string) {
     if (!this.active) return;
     this.active.setups = this.active.setups.filter((s) => s.id !== id);
+    this.touch(this.active);
+  }
+
+  /**
+   * Adds a blank setup to build in the setup editor. Unlike addSetups, this skips the duplicate check: two blank setups
+   * are two setups still being built.
+   */
+  createSetup(): BulkSetup {
+    const names = new Set(this.active?.setups.map((s) => s.name));
+    let name = 'New setup';
+    for (let n = 2; names.has(name); n += 1) name = `New setup ${n}`;
+    const setup: BulkSetup = { id: newId(), name, player: generateEmptyPlayer(name) };
+    if (this.active) {
+      this.active.setups.push(setup);
+      this.touch(this.active);
+    }
+    return setup;
+  }
+
+  /**
+   * Inserts a copy of a setup right after it, to change from there (so the duplicate check doesn't apply).
+   */
+  copySetup(id: string): BulkSetup | null {
+    const setups = this.active?.setups;
+    const ix = setups?.findIndex((x) => x.id === id) ?? -1;
+    if (!setups || ix < 0 || !this.active) return null;
+    const name = `${setups[ix].name} (copy)`;
+    const copy: BulkSetup = { id: newId(), name, player: { ...toJS(setups[ix].player), name } };
+    setups.splice(ix + 1, 0, copy);
+    this.touch(this.active);
+    return setups[ix + 1];
+  }
+
+  /**
+   * Removes a setup if nothing has been equipped on it yet (a new setup that was opened and closed again).
+   */
+  discardIfBlank(id: string): boolean {
+    const s = this.active?.setups.find((x) => x.id === id);
+    if (!s || hasGear(s.player)) return false;
+    this.removeSetup(id);
+    return true;
+  }
+
+  updateSetupPlayer(id: string, player: Player) {
+    const s = this.active?.setups.find((x) => x.id === id);
+    if (!s || !this.active) return;
+    s.player = player;
     this.touch(this.active);
   }
 

@@ -17,7 +17,7 @@ import { monsterLabel, rowsToCsv } from '@/bulk/lib/format';
 import { BulkRow } from '@/bulk/types';
 import PresetBar, { downloadText } from '@/bulk/components/PresetBar';
 import SetupList from '@/bulk/components/SetupList';
-import MonsterPicker from '@/bulk/components/MonsterPicker';
+import TargetMonster from '@/bulk/components/TargetMonster';
 import BulkTable from '@/bulk/components/BulkTable';
 import Panel, { buttonClass } from '@/bulk/components/Panel';
 
@@ -161,7 +161,7 @@ const BulkPage: React.FC = observer(() => {
             <PresetBar />
             <div className="flex gap-3 flex-wrap">
               <SetupList />
-              <MonsterPicker />
+              <TargetMonster />
             </div>
             <BulkResults store={store} pool={pool} />
           </>

@@ -1,15 +1,19 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { toast } from 'react-toastify';
-import { IconCalculator, IconTrash, IconX } from '@tabler/icons-react';
+import {
+  IconCopy, IconPencil, IconPlus, IconTrash, IconX,
+} from '@tabler/icons-react';
 import { useBulkStore } from '@/bulk/state/BulkStore';
 import { fromCalculatorState, importShortlink, readCalculatorState } from '@/bulk/lib/presetIO';
 import { BulkSetup } from '@/bulk/types';
-import { addResultMessage } from '@/bulk/lib/format';
+import { addResultMessage, sortSetups } from '@/bulk/lib/format';
+import StyleLabel from '@/bulk/components/StyleLabel';
 import { hasGear, newCalculatorSetups } from '@/bulk/lib/calculatorLoadouts';
 import { setupKey } from '@/bulk/lib/dedupe';
-import { calculatorHref } from '@/bulk/components/BulkNavLink';
 import GearCells from '@/bulk/components/GearCells';
+import SetupQuickEdit, { QuickEditKind } from '@/bulk/components/SetupQuickEdit';
+import SetupEditor from '@/bulk/components/SetupEditor';
 import Panel, { buttonClass, inputClass } from '@/bulk/components/Panel';
 
 export const notifyAdded = (result: { added: number; skipped: number }) => {
@@ -22,6 +26,23 @@ const SetupList: React.FC = observer(() => {
   const store = useBulkStore();
   const [link, setLink] = useState('');
   const [loadingLink, setLoadingLink] = useState(false);
+  // the setup open in the full editor, if any
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // the setup made by New setup, so pressing it again closes that editor instead of making another
+  const [newSetupId, setNewSetupId] = useState<string | null>(null);
+  const closeEditor = () => {
+    if (editingId !== null && editingId === newSetupId) store.discardIfBlank(editingId);
+    setEditingId(null);
+    setNewSetupId(null);
+  };
+  const openNewSetup = () => {
+    if (editingId !== null && editingId === newSetupId) store.discardIfBlank(editingId);
+    const created = store.createSetup();
+    setNewSetupId(created.id);
+    setEditingId(created.id);
+  };
+  // one quick-edit popover open at a time
+  const [quickEdit, setQuickEdit] = useState<{ id: string; kind: QuickEditKind } | null>(null);
   const setups = store.active?.setups || [];
   const setupIds = setups.map((s) => s.id).join(',');
 
@@ -82,13 +103,17 @@ const SetupList: React.FC = observer(() => {
       title={`Setups (${setups.length})`}
       actions={(
         <>
-          <a href={calculatorHref()} className={`${buttonClass} !bg-orange-400 dark:!bg-orange-700 font-bold no-underline text-white`}>
+          <button
+            type="button"
+            className={`${buttonClass} !bg-orange-400 dark:!bg-orange-700 font-bold`}
+            onClick={() => (editingId !== null && editingId === newSetupId ? closeEditor() : openNewSetup())}
+          >
             <span className="flex items-center gap-1">
-              <IconCalculator size={16} />
+              <IconPlus size={16} />
               {' '}
-              Build a new setup
+              New setup
             </span>
-          </a>
+          </button>
           <button type="button" className={buttonClass} onClick={() => importFromCalculator('all')}>Add all calculator loadouts</button>
           <button type="button" className={buttonClass} onClick={() => importFromCalculator('selected')}>Add selected loadout</button>
           <button type="button" className={buttonClass} onClick={() => notifyAdded(store.addDefaultSetups())}>Add max setups</button>
@@ -118,30 +143,58 @@ const SetupList: React.FC = observer(() => {
           {loadingLink ? 'Loading...' : 'Add from link'}
         </button>
       </div>
-      <ul className="max-h-[360px] overflow-y-auto">
+      <ul>
         {setups.length === 0 && (
           <li className="px-4 py-4 text-sm text-gray-500 dark:text-gray-300">
-            No setups yet. Build one in the calculator, then come back and add it.
+            No setups yet. Click New setup, or add loadouts from the calculator.
           </li>
         )}
-        {setups.map((s) => (
-          <li key={s.id} className="px-4 py-1.5 flex gap-2 items-center border-b border-body-200 dark:border-dark-400 last:border-b-0">
-            <input
-              className={`${inputClass} w-44`}
-              aria-label="Setup name"
-              defaultValue={s.name}
-              onBlur={(e) => e.target.value.trim() && e.target.value !== s.name && store.renameSetup(s.id, e.target.value.trim())}
-            />
-            <GearCells player={s.player} />
-            <button
-              type="button"
-              aria-label={`Remove ${s.name}`}
-              className="ml-auto text-gray-400 hover:text-red-300"
-              onClick={() => store.removeSetup(s.id)}
-            >
-              <IconTrash size={18} />
-            </button>
-          </li>
+        {sortSetups(setups).map((s) => (
+          <React.Fragment key={s.id}>
+            <li className="px-4 py-1.5 flex gap-2 items-center border-b border-body-200 dark:border-dark-400 last:border-b-0">
+              <input
+                className={`${inputClass} w-44`}
+                aria-label="Setup name"
+                defaultValue={s.name}
+                onBlur={(e) => e.target.value.trim() && e.target.value !== s.name && store.renameSetup(s.id, e.target.value.trim())}
+              />
+              <StyleLabel player={s.player} className="w-24 shrink-0" />
+              <GearCells player={s.player} />
+              <SetupQuickEdit setup={s} open={quickEdit?.id === s.id ? quickEdit.kind : null} onOpen={(kind) => setQuickEdit(kind ? { id: s.id, kind } : null)} />
+              <button
+                type="button"
+                aria-label={`Edit ${s.name}`}
+                className={`ml-auto ${editingId === s.id ? 'text-orange-400' : 'text-gray-400'} hover:text-orange-300`}
+                onClick={() => (editingId === s.id ? closeEditor() : setEditingId(s.id))}
+              >
+                <IconPencil size={18} />
+              </button>
+              <button
+                type="button"
+                aria-label={`Copy ${s.name}`}
+                className="text-gray-400 hover:text-orange-300"
+                onClick={() => {
+                  const copy = store.copySetup(s.id);
+                  if (copy) setEditingId(copy.id);
+                }}
+              >
+                <IconCopy size={18} />
+              </button>
+              <button
+                type="button"
+                aria-label={`Remove ${s.name}`}
+                className="text-gray-400 hover:text-red-300"
+                onClick={() => store.removeSetup(s.id)}
+              >
+                <IconTrash size={18} />
+              </button>
+            </li>
+            {editingId === s.id && (
+            <li className="border-b border-body-200 dark:border-dark-400">
+              <SetupEditor setupId={s.id} />
+            </li>
+            )}
+          </React.Fragment>
         ))}
       </ul>
     </Panel>

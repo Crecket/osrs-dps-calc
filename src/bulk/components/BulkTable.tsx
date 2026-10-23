@@ -4,10 +4,12 @@ import {
   IconAlertTriangle, IconChevronDown, IconChevronUp, IconX,
 } from '@tabler/icons-react';
 import GearCells from '@/bulk/components/GearCells';
+import BuffIcons from '@/bulk/components/BuffIcons';
 import {
   firstClickDir, Mode, NORMAL_COLUMNS, SortKey, SortState, SPEC_COLUMNS,
 } from '@/bulk/lib/table';
 import { BulkRow, BulkSetup } from '@/bulk/types';
+import StyleLabel from '@/bulk/components/StyleLabel';
 
 const formatValue = (r: BulkRow, key: SortKey): string => {
   const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
@@ -20,6 +22,7 @@ const formatValue = (r: BulkRow, key: SortKey): string => {
     case 'specAccuracy': return r.spec ? pct(r.spec.accuracy) : '—';
     case 'specExpected': return r.spec ? r.spec.expected.toFixed(2) : '—';
     case 'specDps': return r.spec ? r.spec.dps.toFixed(3) : '—';
+    case 'specRegenDps': return r.spec ? r.spec.regenDps.toFixed(3) : '—';
     default: return '';
   }
 };
@@ -67,6 +70,7 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
           <th className="px-2 py-1.5 w-10 text-center">#</th>
           <th className="px-2 py-1.5">Setup</th>
           <th className="px-2 py-1.5">Gear</th>
+          <th className="px-2 py-1.5">Buffs</th>
           {columns.map((c) => (
             <th key={c.key} className="px-2 py-1.5 text-right whitespace-nowrap">
               <button type="button" className="inline-flex items-center gap-0.5 hover:text-orange-200" onClick={() => clickHeader(c.key)}>
@@ -89,8 +93,12 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
           return (
             <tr key={r.setupId} className="border-b border-body-200 dark:border-dark-400 odd:bg-body-100/40 dark:odd:bg-dark-400/40">
               <td className="px-2 py-1 text-center text-gray-500 dark:text-gray-300">{i + 1}</td>
-              <td className="px-2 py-1 font-semibold whitespace-nowrap">{setup.name}</td>
+              <td className="px-2 py-1 whitespace-nowrap">
+                <span className="font-semibold">{setup.name}</span>
+                <StyleLabel player={setup.player} className="ml-1 align-middle" />
+              </td>
               <td className="px-2 py-1" aria-label="Gear"><GearCells player={setup.player} /></td>
+              <td className="px-2 py-1 whitespace-nowrap" aria-label="Prayers and potions"><BuffIcons player={setup.player} /></td>
               {r.error ? (
                 <td colSpan={columns.length} className="px-2 py-1 text-right text-red-400">
                   <span className="inline-flex items-center gap-1">

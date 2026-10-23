@@ -37,7 +37,10 @@ export interface BulkSpecResult {
   maxHit: number;
   accuracy: number;
   expected: number;
+  // per-second damage with unlimited special attack energy (the calculator's spec "DPS")
   dps: number;
+  // per-second damage of the special attack alone, accounting for energy regeneration (the calculator's "Spec-only DPS")
+  regenDps: number;
   partial: boolean;
 }
 

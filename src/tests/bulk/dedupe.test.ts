@@ -5,6 +5,7 @@ import { generateEmptyPlayer } from '@/state';
 import { availableEquipment } from '@/lib/Equipment';
 import { Prayer } from '@/enums/Prayer';
 import { Player } from '@/types/Player';
+import { defaultSetups } from '@/bulk/lib/defaultSetups';
 
 const whip = availableEquipment.find((e) => e.id === 4151)!;
 const fang = availableEquipment.find((e) => e.id === 26219)!;
@@ -41,6 +42,18 @@ describe('setupKey', () => {
 
   test('derived stats are ignored', () => {
     expect(setupKey(player('A', (p) => { p.attackSpeed = 99; p.bonuses.str = 123; }))).toBe(setupKey(player('A')));
+  });
+});
+
+describe('setupKey with item vars', () => {
+  test('a calculator-built blowpipe matches the default blowpipe setup', () => {
+    const def = defaultSetups().setups.find((x) => x.name === 'Max range blowpipe')!.player;
+    // the calculator writes the dart name before the id
+    const calc: Player = JSON.parse(JSON.stringify(def));
+    calc.name = 'Loadout 2';
+    calc.equipment.weapon = { ...calc.equipment.weapon!, itemVars: { blowpipeDartName: 'Dragon dart', blowpipeDartId: 11230 } };
+
+    expect(setupKey(calc)).toBe(setupKey(def));
   });
 });
 
