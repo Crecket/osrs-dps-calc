@@ -16,7 +16,10 @@
     "analyse": "ANALYSE=true next build",
     "test": "jest",
     "cdn-docker": "yarn build-docker-scraper && docker run --rm -it -v $(pwd)/cdn:/srv/cdn -v $(pwd)/src/lib/EquipmentAliases.ts:/srv/src/lib/EquipmentAliases.ts weirdgloop/osrs-dps-calc:scraper",
-    "cdn-dispatch": "gh workflow run regenerate.yml"
+    "cdn-dispatch": "gh workflow run regenerate.yml",
+    "build-cf": "NEXT_PUBLIC_BASE_URL=https://bulk-dps-calc.olm.pet NEXT_PUBLIC_BASE_PATH= NEXT_PUBLIC_SHORTLINK_URL=https://dps.osrs.wiki next build",
+    "preview-cf": "yarn build-cf && npx wrangler@4 dev",
+    "deploy-cf": "yarn build-cf && npx wrangler@4 deploy"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.18",

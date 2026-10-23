@@ -1,0 +1,60 @@
+{
+  "kind": "dps-bulk-preset",
+  "version": 1,
+  "preset": {
+    "id": "fixture-preset",
+    "name": "Fixture preset",
+    "createdAt": 1792713600000,
+    "updatedAt": 1792713600000,
+    "serializationVersion": 10,
+    "setups": [
+      {
+        "id": "setup-whip",
+        "name": "Whip + defender",
+        "player": {
+          "name": "Whip + defender",
+          "equipment": {
+            "weapon": { "id": 4151 },
+            "shield": { "id": 12954 }
+          }
+        }
+      },
+      {
+        "id": "setup-claws",
+        "name": "Claws",
+        "player": {
+          "name": "Claws",
+          "equipment": {
+            "weapon": { "id": 13652 }
+          }
+        }
+      }
+    ],
+    "monsters": [
+      {
+        "id": "monster-abyssal",
+        "monster": {
+          "id": 415,
+          "name": "Abyssal demon",
+          "version": "Standard",
+          "inputs": {
+            "monsterCurrentHp": 150,
+            "defenceReductions": { "dwh": 0 }
+          }
+        }
+      },
+      {
+        "id": "monster-td",
+        "monster": {
+          "id": 13599,
+          "name": "Tormented Demon",
+          "version": "1",
+          "inputs": {
+            "phase": "Unshielded",
+            "defenceReductions": { "dwh": 1 }
+          }
+        }
+      }
+    ]
+  }
+}

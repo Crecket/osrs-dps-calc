@@ -1,0 +1,13 @@
+{
+  // Static-assets-only Worker serving the Next.js static export (yarn build-cf -> ./out)
+  "name": "bulk-dps-calc",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./out",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "routes": [
+    { "pattern": "bulk-dps-calc.olm.pet", "custom_domain": true }
+  ]
+}

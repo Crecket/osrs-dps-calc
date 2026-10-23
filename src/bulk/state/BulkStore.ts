@@ -1,0 +1,185 @@
+import { createContext, useContext } from 'react';
+import localforage from 'localforage';
+import { makeAutoObservable, toJS } from 'mobx';
+import { IMPORT_VERSION } from '@/types/State';
+import { loadPreset, newId } from '@/bulk/lib/presetIO';
+import { BulkMonster, BulkPreset, BulkSetup } from '@/bulk/types';
+
+export const STORAGE_KEY = 'dps-bulk-presets';
+
+export interface PresetStorage {
+  getItem<T>(key: string): Promise<T | null>;
+  setItem<T>(key: string, value: T): Promise<T>;
+}
+
+interface SavedPresets {
+  presets: BulkPreset[];
+  activeId: string | null;
+}
+
+export class BulkStore {
+  presets: BulkPreset[] = [];
+
+  activeId: string | null = null;
+
+  loaded = false;
+
+  warnings: string[] = [];
+
+  private storage: PresetStorage;
+
+  // set when saved presets couldn't be read, so we never overwrite them with an empty list
+  private readFailed = false;
+
+  constructor(storage: PresetStorage = localforage) {
+    this.storage = storage;
+    makeAutoObservable<BulkStore, 'storage' | 'readFailed'>(this, { storage: false, readFailed: false }, { autoBind: true });
+  }
+
+  get active(): BulkPreset | null {
+    return this.presets.find((p) => p.id === this.activeId) || null;
+  }
+
+  get canRun(): { ok: boolean; reason?: string } {
+    if (!this.active || this.active.setups.length === 0) return { ok: false, reason: 'Add at least one setup' };
+    if (this.active.monsters.length === 0) return { ok: false, reason: 'Add at least one monster' };
+    return { ok: true };
+  }
+
+  async load() {
+    let saved: SavedPresets | null = null;
+    const warnings: string[] = [];
+    try {
+      saved = await this.storage.getItem<SavedPresets>(STORAGE_KEY);
+    } catch (e) {
+      console.warn('[BulkStore] Could not read saved presets', e);
+      this.readFailed = true;
+      warnings.push('Saved presets could not be read, so changes in this tab will not be saved. Try reloading the page.');
+    }
+
+    const presets = (saved?.presets || []).map((raw) => {
+      try {
+        const { preset, warnings: w } = loadPreset(raw);
+        warnings.push(...w.map((msg) => `${preset.name}: ${msg}`));
+        return preset;
+      } catch (e) {
+        // keep the preset as stored rather than losing it; it may load after a fix
+        const name = raw?.name || 'Unnamed preset';
+        warnings.push(`${name}: could not be loaded (${e instanceof Error ? e.message : String(e)})`);
+        return {
+          ...raw, name, setups: raw?.setups || [], monsters: raw?.monsters || [],
+        } as BulkPreset;
+      }
+    });
+
+    this.setLoaded(presets, saved?.activeId || null, warnings);
+  }
+
+  private setLoaded(presets: BulkPreset[], activeId: string | null, warnings: string[]) {
+    this.presets = presets;
+    this.activeId = presets.some((p) => p.id === activeId) ? activeId : presets[0]?.id || null;
+    this.warnings = [...new Set(warnings)];
+    this.loaded = true;
+    if (this.presets.length === 0) this.createPreset('My preset');
+  }
+
+  createPreset(name: string): BulkPreset {
+    const now = Date.now();
+    const preset: BulkPreset = {
+      id: newId(),
+      name,
+      createdAt: now,
+      updatedAt: now,
+      serializationVersion: IMPORT_VERSION,
+      setups: [],
+      monsters: [],
+    };
+    this.presets.push(preset);
+    this.activeId = preset.id;
+    this.save();
+    return preset;
+  }
+
+  importPreset(raw: BulkPreset) {
+    const { preset, warnings } = loadPreset(raw);
+    this.presets.push(preset);
+    this.activeId = preset.id;
+    this.warnings = [...new Set(warnings.map((msg) => `${preset.name}: ${msg}`))];
+    this.save();
+  }
+
+  renamePreset(id: string, name: string) {
+    const p = this.presets.find((x) => x.id === id);
+    if (!p) return;
+    p.name = name;
+    this.touch(p);
+  }
+
+  deletePreset(id: string) {
+    this.presets = this.presets.filter((p) => p.id !== id);
+    if (this.activeId === id) this.activeId = this.presets[0]?.id || null;
+    if (this.presets.length === 0) {
+      this.createPreset('My preset');
+      return;
+    }
+    this.save();
+  }
+
+  setActive(id: string) {
+    this.activeId = id;
+    this.save();
+  }
+
+  dismissWarnings() {
+    this.warnings = [];
+  }
+
+  addSetups(setups: BulkSetup[]) {
+    if (!this.active) return;
+    this.active.setups.push(...setups);
+    this.touch(this.active);
+  }
+
+  removeSetup(id: string) {
+    if (!this.active) return;
+    this.active.setups = this.active.setups.filter((s) => s.id !== id);
+    this.touch(this.active);
+  }
+
+  renameSetup(id: string, name: string) {
+    const s = this.active?.setups.find((x) => x.id === id);
+    if (!s || !this.active) return;
+    s.name = name;
+    this.touch(this.active);
+  }
+
+  addMonster(m: BulkMonster) {
+    if (!this.active) return;
+    this.active.monsters.push(m);
+    this.touch(this.active);
+  }
+
+  removeMonster(id: string) {
+    if (!this.active) return;
+    this.active.monsters = this.active.monsters.filter((m) => m.id !== id);
+    this.touch(this.active);
+  }
+
+  private touch(p: BulkPreset) {
+    p.updatedAt = Date.now();
+    this.save();
+  }
+
+  private save() {
+    if (this.readFailed) return;
+    // toJS only converts observables, so convert the observable fields rather than a plain wrapper object
+    const data: SavedPresets = { presets: toJS(this.presets), activeId: this.activeId };
+    this.storage.setItem(STORAGE_KEY, data).catch((e) => {
+      console.error('[BulkStore] Could not save presets', e);
+    });
+  }
+}
+
+export const BulkStoreContext = createContext<BulkStore>(undefined as unknown as BulkStore);
+
+export const useBulkStore = () => useContext(BulkStoreContext);
