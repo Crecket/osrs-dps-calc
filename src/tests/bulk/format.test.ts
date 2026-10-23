@@ -44,7 +44,7 @@ describe('rowsToCsv', () => {
     const lines = rowsToCsv(rows, setups).split('\n');
 
     expect(lines[0]).toBe('Setup,Style,Prayers,Potions,head,cape,neck,ammo,weapon,shield,body,legs,hands,feet,ring,Max hit,Accuracy,DPS,TTK,Spec max,Spec acc,Spec dmg,Spec DPS,Spec-only DPS,Error');
-    expect(lines[1]).toBe('"Whip, ""fast""",Punch,,,,,,,Abyssal whip,,,,,,,30,0.5,4.25,60,,,,,,');
+    expect(lines[1]).toBe('"Whip, ""fast""",Kick,,,,,,,Abyssal whip,,,,,,,30,0.5,4.25,60,,,,,,');
     expect(lines).toHaveLength(2);
   });
 });
