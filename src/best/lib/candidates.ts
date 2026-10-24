@@ -35,21 +35,29 @@ const EXCLUDED_ITEM_IDS = new Set([
   30694, 30696,
   // minigame-only gear: The Gauntlet's Crystal dagger (perfected), sceptres and tools (names checked against equipment.json)
   30340, 23820, 23861, 23821, 23822, 23823, 23862, 23863, 23864,
-  // Vesta's blighted longsword (Active): bought with LMS points, works only in PvP areas (Bounty Hunter Wilderness, minigames)
-  24617,
 ]);
 // minigame-only gear: The Gauntlet's tiered weapons and armour, which can't leave it
 const GAUNTLET_ONLY = /^(Corrupted|Crystal) (halberd|bow|staff|helm|body|legs) \((basic|attuned|perfected)\)$/;
 
+// not real gear: wrapped gloves are a gift-wrapped copy, Nightmare Zone (nz) items can't leave the Nightmare Zone
+const NOT_REAL = /\((wrapped|nz)\)/;
+
+/**
+ * PvP-only gear: Bounty Hunter copies (bh), which only work on Bounty Hunter worlds, and the Vesta's, Statius's, Morrigan's and Zuriel's gear in every variant (plain, (bh), Corrupted, Deadman, blighted), which comes from LMS, Deadman and Bounty Hunter and works only in PvP areas.
+ */
+export const isPvpOnly = (item: EquipmentPiece): boolean => /\(bh\)/.test(item.name) || /^(Corrupted )?(Vesta|Statius|Morrigan|Zuriel)'s /i.test(item.name);
+
 /**
  * The items the search may use: canonical items, without uncharged, inactive, broken, Deadman, cosmetic, unobtainable,
- * minigame-only or excluded ones.
+ * minigame-only, PvP-only, not real or excluded ones.
  */
 export const bestPool = (items: EquipmentPiece[] = availableEquipment): EquipmentPiece[] => items.filter((e) => getCanonicalItemId(e.id) === e.id
   && !EXCLUDED_VERSIONS.has(e.version)
   && !EXCLUDED_NAME.test(e.name)
   && !EXCLUDED_ITEM_IDS.has(e.id)
   && !GAUNTLET_ONLY.test(e.name)
+  && !NOT_REAL.test(e.name)
+  && !isPvpOnly(e)
   // data artefacts held in the weapon slot: greegrees, Gnomeball (-1), crates and Christmas dinner (0)
   && !(e.slot === 'weapon' && e.speed <= 1));
 

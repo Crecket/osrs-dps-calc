@@ -4,7 +4,7 @@ import { BLOWPIPE_IDS } from '@/lib/constants';
 import { EquipmentPiece } from '@/types/Player';
 import { isEffectItem } from '@/best/lib/effectItems';
 import {
-  bestPool, paretoFront, slotCandidates, styleScore, weaponJobs,
+  bestPool, isPvpOnly, paretoFront, slotCandidates, styleScore, weaponJobs,
 } from '@/best/lib/candidates';
 import { BEST_STYLES } from '@/best/types';
 import { Monster } from '@/types/Monster';
@@ -49,11 +49,35 @@ describe('bestPool', () => {
     expect(pool.filter((e) => gauntlet.test(e.name))).toEqual([]);
     // Crystal dagger (perfected), the sceptres and the Gauntlet's tools
     [30340, 23820, 23861, 23821, 23822, 23823, 23862, 23863, 23864].forEach((id) => expect(ids.has(id)).toBe(false));
-    // Vesta's blighted longsword only works in PvP areas
-    expect(ids.has(findEquipment("Vesta's blighted longsword", 'Active').id)).toBe(false);
     // the Prifddinas crystal armour and bow are real items
     expect(ids.has(findEquipment('Crystal helm', 'Active').id)).toBe(true);
     expect(ids.has(findEquipment('Bow of Faerdhinen', 'Charged').id)).toBe(true);
+  });
+
+  test('drops PvP-only gear: Bounty Hunter (bh) copies and the LMS/PvP world armour and weapons', () => {
+    const ids = new Set(pool.map((e) => e.id));
+    [
+      findEquipment("Morrigan's javelin (bh)", 'Activated'),
+      findEquipment("Statius's warhammer (bh)", 'Activated'),
+      findEquipment("Vesta's blighted longsword", 'Active'),
+      findEquipment("Zuriel's staff (bh)", 'Activated'),
+      findEquipment('Dark bow (bh)'),
+      findEquipment('Abyssal dagger (bh)', 'Unpoisoned'),
+      findEquipment("Corrupted vesta's chainbody (bh)", 'Activated'),
+    ].forEach((e) => expect([e.name, ids.has(e.id)]).toEqual([e.name, false]));
+    expect(pool.filter((e) => isPvpOnly(e))).toEqual([]);
+    expect(pool.filter((e) => /\(bh\)|vesta's|statius's|morrigan's|zuriel's/i.test(e.name))).toEqual([]);
+    // the normal versions stay
+    expect(ids.has(findEquipment('Dark bow', 'Regular').id)).toBe(true);
+    expect(ids.has(findEquipment('Abyssal dagger', 'Unpoisoned').id)).toBe(true);
+  });
+
+  test('drops gear that is not real: wrapped gloves and Nightmare Zone (nz) copies', () => {
+    const ids = new Set(pool.map((e) => e.id));
+    expect(ids.has(findEquipment('Barrows gloves (wrapped)').id)).toBe(false);
+    expect(ids.has(findEquipment('Barrows gloves').id)).toBe(true);
+    expect(pool.filter((e) => /\((wrapped|nz)\)/.test(e.name))).toEqual([]);
+    expect(ids.has(findEquipment('Anti-dragon shield').id)).toBe(true);
   });
 
   test('drops weapons without a real attack speed (greegrees, crates, Gnomeball)', () => {
