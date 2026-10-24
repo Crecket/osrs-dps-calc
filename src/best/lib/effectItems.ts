@@ -420,3 +420,39 @@ export const SETS: readonly GearSet[] = [
   barrowsSet('Karil', "Karil's coif", "Karil's leathertop", "Karil's leatherskirt", true),
   barrowsSet('Ahrim', "Ahrim's hood", "Ahrim's robetop", "Ahrim's robeskirt", true),
 ];
+
+/**
+ * Non-weapon items whose effect needs a particular weapon, spell or ammo (and that SETS doesn't already cover as a
+ * whole). A style-wide activity test run on one reference job can't see these, so the search tests them per job when
+ * the job matches. `weapons` and `spells` match the job's weapon and spell name; `ammo` matches jobs that fire ammo.
+ */
+export interface LinkedEffect {
+  items: string[];
+  weapons?: RegExp;
+  spells?: RegExp;
+  ammo?: boolean;
+}
+
+export const WEAPON_LINKED: readonly LinkedEffect[] = [
+  // +20% damage with a tzhaar weapon
+  { items: ['Berserker necklace', 'Berserker necklace (or)'], weapons: /^(Tzhaar-ket-(em|om)|Toktz-(xil-ak|xil-ek|mej-tal))/ },
+  // each piece adds accuracy and damage with a crystal bow or bowfa
+  { items: ['Crystal helm', 'Crystal body', 'Crystal legs'], weapons: /^Crystal bow|Bow of Faerdhinen/ },
+  // charged quivers add ranged bonuses when the weapon fires its ammo
+  { items: ["Dizana's quiver", "Blessed Dizana's quiver", "Dizana's max cape"], ammo: true },
+  // each Virtus piece adds magic strength to ancient spells
+  { items: ['Virtus mask', 'Virtus robe top', 'Virtus robe bottom'], spells: / (Rush|Burst|Blitz|Barrage)$/ },
+  // tomes boost spells of their element
+  { items: ['Tome of Fire', 'Tome of Water', 'Tome of Earth'], spells: /^(Fire|Water|Earth) / },
+  // elemental amulets boost spells of their element
+  { items: ['Elemental amulet', 'Amulet of air', 'Amulet of water', 'Amulet of earth', 'Amulet of fire'], spells: /^(Wind|Water|Earth|Fire) / },
+  // god capes boost their god spell under Charge
+  {
+    items: [
+      'Saradomin cape', 'Imbued Saradomin cape', 'Saradomin max cape', 'Imbued Saradomin max cape',
+      'Guthix cape', 'Imbued Guthix cape', 'Guthix max cape', 'Imbued Guthix max cape',
+      'Zamorak cape', 'Imbued Zamorak cape', 'Zamorak max cape', 'Imbued Zamorak max cape',
+    ],
+    spells: /^(Saradomin Strike|Claws of Guthix|Flames of Zamorak)$/,
+  },
+];

@@ -24,11 +24,15 @@ export interface WeaponJob {
 
 const EXCLUDED_VERSIONS = new Set(['Uncharged', 'Inactive', 'Deadman Mode', 'Cosmetic', 'Broken']);
 const EXCLUDED_NAME = /\(unobtainable item\)|\(beta\)/i;
+const EXCLUDED_ITEM_IDS = new Set([
+  21433, // Wilderness champion amulet: +100 to every attack from a past event, not obtainable in normal play
+]);
 
-/** The items the search may use: canonical items, without uncharged, inactive, broken, Deadman, cosmetic or unobtainable ones. */
+/** The items the search may use: canonical items, without uncharged, inactive, broken, Deadman, cosmetic, unobtainable or excluded ones. */
 export const bestPool = (items: EquipmentPiece[] = availableEquipment): EquipmentPiece[] => items.filter((e) => getCanonicalItemId(e.id) === e.id
   && !EXCLUDED_VERSIONS.has(e.version)
-  && !EXCLUDED_NAME.test(e.name));
+  && !EXCLUDED_NAME.test(e.name)
+  && !EXCLUDED_ITEM_IDS.has(e.id));
 
 /** The two numbers an item contributes to `style` through its bonuses. */
 export const styleScore = (item: EquipmentPiece, style: BestStyle): [attack: number, strength: number] => {

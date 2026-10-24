@@ -12,7 +12,7 @@ import { preparePlayer } from '@/bulk/lib/compute';
 import {
   GearSlot, paretoFront, slotCandidates, styleScore, WeaponJob,
 } from '@/best/lib/candidates';
-import { SETS } from '@/best/lib/effectItems';
+import { SETS, WEAPON_LINKED } from '@/best/lib/effectItems';
 import { BestStyle } from '@/best/types';
 
 /** Item ids per slot; null = empty. The weapon (and ammo or dart, when the job fixes it) comes from the job. */
@@ -85,7 +85,8 @@ export const buildPlayer = (base: Player, job: WeaponJob, gear: Gear): Player =>
   };
 };
 
-// scaling depends on the monster only, so it is done once per monster instead of once per evaluation
+// scaling depends on the monster only, so it is done once per monster instead of once per evaluation. The cache is keyed
+// by object identity: callers must pass a new monster object when its inputs change, never mutate one in place.
 const scaledMonsters = new WeakMap<Monster, Monster>();
 const scaled = (monster: Monster): Monster => {
   let result = scaledMonsters.get(monster);
@@ -108,21 +109,30 @@ export const evalDps = (base: Player, monster: Monster, job: WeaponJob, gear: Ge
   }
 };
 
-// slotCandidates is slow (canonical lookups), and the same for every job of a style
-const candidateCache = new WeakMap<EquipmentPiece[], Map<BestStyle, Record<GearSlot, ReturnType<typeof slotCandidates>>>>();
-const candidatesFor = (pool: EquipmentPiece[], style: BestStyle) => {
-  let byStyle = candidateCache.get(pool);
-  if (!byStyle) {
-    byStyle = new Map();
-    candidateCache.set(pool, byStyle);
-  }
-  let result = byStyle.get(style);
-  if (!result) {
-    result = Object.fromEntries(GEAR_SLOTS.map((slot) => [slot, slotCandidates(pool, style, slot)])) as Record<GearSlot, ReturnType<typeof slotCandidates>>;
-    byStyle.set(style, result);
-  }
-  return result;
+/** Memoises `make` per (pool array, style); pools are compared by identity. */
+const perPoolStyle = <T>(make: (pool: EquipmentPiece[], style: BestStyle) => T) => {
+  const cache = new WeakMap<EquipmentPiece[], Map<BestStyle, T>>();
+  return (pool: EquipmentPiece[], style: BestStyle): T => {
+    let byStyle = cache.get(pool);
+    if (!byStyle) {
+      byStyle = new Map();
+      cache.set(pool, byStyle);
+    }
+    if (!byStyle.has(style)) byStyle.set(style, make(pool, style));
+    return byStyle.get(style)!;
+  };
 };
+
+// slotCandidates is slow (canonical lookups), and the same for every job of a style
+const candidatesFor = perPoolStyle((pool, style) => Object.fromEntries(GEAR_SLOTS
+  .map((slot) => [slot, slotCandidates(pool, style, slot)])) as Record<GearSlot, ReturnType<typeof slotCandidates>>);
+
+/** Pool items with `name`, lowest id first. */
+const poolByName = perPoolStyle((pool) => {
+  const byName = new Map<string, EquipmentPiece[]>();
+  [...pool].sort((a, b) => a.id - b.id).forEach((e) => byName.set(e.name, [...(byName.get(e.name) ?? []), e]));
+  return byName;
+});
 
 /** Every effect item of the pool per slot, before the activity test. */
 export const effectCandidates = (pool: EquipmentPiece[], style: BestStyle): SlotLists => {
@@ -152,19 +162,43 @@ export const baselineGear = (pool: EquipmentPiece[], job: WeaponJob): Gear => {
 };
 
 /**
- * The activity test: an effect item stays an effect candidate only when it beats its plain twin in `baseline`; the
+ * True when an item's effect changes DPS: `real` with the item, `twin` with its plain twin. An effect that lowers DPS
+ * matters too: as a plain item its bonuses could prune items that beat it in real DPS.
+ */
+export const effectMatters = (real: number, twin: number): boolean => Math.abs(real - twin) > EPSILON;
+
+/**
+ * The activity test: an effect item stays an effect candidate only when its effect changes DPS in `baseline`; the
  * others do nothing here beyond their bonuses.
  */
 export const activeEffects = (base: Player, monster: Monster, job: WeaponJob, baseline: Gear, effect: SlotLists): SlotLists => {
   const slots = searchSlots(job);
-  return Object.fromEntries(slots.map((slot) => [slot, (effect[slot] ?? []).filter((item) => {
-    const real = evalDps(base, monster, job, { ...baseline, [slot]: item.id });
-    const twin = evalDps(base, monster, job, { ...baseline, [slot]: plainTwin(item).id });
-    return real > twin + EPSILON;
-  })]));
+  return Object.fromEntries(slots.map((slot) => [slot, (effect[slot] ?? []).filter((item) => effectMatters(
+    evalDps(base, monster, job, { ...baseline, [slot]: item.id }),
+    evalDps(base, monster, job, { ...baseline, [slot]: plainTwin(item).id }),
+  ))]));
 };
 
-/** The activity test for one job against its own baseline, to share as the effect candidates of a whole style. */
+/** Pool items of the WEAPON_LINKED entries that match the job's weapon, spell or ammo, per slot. */
+const linkedEffects = (pool: EquipmentPiece[], job: WeaponJob): SlotLists => {
+  const weapon = itemById(job.weaponId).name;
+  const byName = poolByName(pool, job.style);
+  const items = WEAPON_LINKED
+    .filter((l) => l.weapons?.test(weapon) || (job.spellName !== null && l.spells?.test(job.spellName)) || (l.ammo && job.ammoId !== null))
+    .flatMap((l) => l.items.flatMap((name) => byName.get(name) ?? []));
+  const lists: SlotLists = {};
+  items.forEach((e) => {
+    if (e.slot !== 'weapon') lists[e.slot] = [...(lists[e.slot] ?? []), e];
+  });
+  return lists;
+};
+
+/**
+ * The activity test for one job against its own baseline, to share as the effect candidates of a whole style. It only
+ * sees what that job can see: effects tied to another weapon, spell or ammo (WEAPON_LINKED), and slots the job doesn't
+ * fill (a two-hander's shield), test as inactive. searchWeapon re-tests WEAPON_LINKED items per job; shield effects
+ * need a one-handed reference job.
+ */
 export const styleEffects = (base: Player, monster: Monster, job: WeaponJob, pool: EquipmentPiece[]): SlotLists => activeEffects(
   base,
   monster,
@@ -174,15 +208,15 @@ export const styleEffects = (base: Player, monster: Monster, job: WeaponJob, poo
 );
 
 /** Each SETS entry with its pieces taken from the pool (the strongest version of each name); sets missing a piece are left out. */
-const resolveSets = (pool: EquipmentPiece[], style: BestStyle): ResolvedSet[] => SETS.flatMap((set) => {
+const resolveSets = perPoolStyle((pool, style): ResolvedSet[] => SETS.flatMap((set) => {
   const pieces: Partial<Record<GearSlot, EquipmentPiece>> = {};
   const complete = (Object.entries(set.pieces) as [GearSlot, string][]).every(([slot, name]) => {
-    const piece = strongestOf(pool.filter((e) => e.slot === slot && e.name === name).sort((a, b) => a.id - b.id), style);
+    const piece = strongestOf((poolByName(pool, style).get(name) ?? []).filter((e) => e.slot === slot), style);
     if (piece) pieces[slot] = piece;
     return piece !== undefined;
   });
   return complete ? [{ name: set.name, pieces }] : [];
-});
+}));
 
 /** Sets whose pieces, worn together in `baseline`, beat the same pieces as plain twins. */
 export const activeSets = (base: Player, monster: Monster, job: WeaponJob, baseline: Gear, pool: EquipmentPiece[]): ResolvedSet[] => {
@@ -203,6 +237,7 @@ class TopResults {
   constructor(private readonly size: number) {}
 
   add(result: SearchResult) {
+    if (this.size <= 0) return;
     if (this.results.some((r) => Math.abs(r.dps - result.dps) <= EPSILON)) return;
     const worst = this.results[this.results.length - 1];
     if (this.results.length >= this.size && result.dps <= worst.dps) return;
@@ -213,8 +248,8 @@ class TopResults {
 }
 
 /**
- * The best setups for one weapon job. Effect items that do nothing here (activity test, or `opts.effects` when given)
- * become plain items and are dominance-pruned; active sets are always tested for the job and enter as units.
+ * The best setups for one weapon job. Effect items that do nothing here (activity test, or `opts.effects` plus a
+ * per-job test of the WEAPON_LINKED items when given) become plain items and are dominance-pruned; active sets are always tested for the job and enter as units.
  * Exhaustive mode enumerates every combination of candidates when there are at most `opts.cap`, else it falls back to
  * coordinate descent and marks the results approximate. Results are the top `opts.topN` with distinct DPS, best first.
  */
@@ -229,7 +264,15 @@ export const searchWeapon = (
   const slots = searchSlots(job);
   const candidates = candidatesFor(pool, style);
   const baseline = baselineGear(pool, job);
-  const active = opts.effects ?? activeEffects(base, monster, job, baseline, effectCandidates(pool, style));
+  let active = opts.effects ?? activeEffects(base, monster, job, baseline, effectCandidates(pool, style));
+  if (opts.effects) {
+    // the shared effects come from another job: re-test what depends on this job's weapon, spell or ammo
+    const linked = activeEffects(base, monster, job, baseline, linkedEffects(pool, job));
+    active = Object.fromEntries(GEAR_SLOTS.map((slot) => [slot, [
+      ...(active[slot] ?? []),
+      ...(linked[slot] ?? []).filter((e) => !active[slot]?.some((a) => a.id === e.id)),
+    ]]));
+  }
   const sets = activeSets(base, monster, job, baseline, pool);
 
   const plain: SlotLists = {};

@@ -3,20 +3,19 @@ import { EquipmentPiece } from '@/types/Player';
 import { Monster } from '@/types/Monster';
 import { computeRow, prepareMonster } from '@/bulk/lib/compute';
 import {
-  bestPool, GearSlot, styleScore, weaponJobs,
+  bestPool, GearSlot, styleScore, WeaponJob, weaponJobs,
 } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
 import {
-  activeEffects, activeSets, baselineGear, buildPlayer, effectCandidates, evalDps, Gear, plainTwin, searchWeapon,
-  styleEffects,
+  activeEffects, activeSets, baselineGear, buildPlayer, effectCandidates, effectMatters, evalDps, Gear, plainTwin,
+  searchWeapon, styleEffects,
 } from '@/best/lib/search';
 import {
   BEST_STYLES, BestInputs, BestStyle, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS,
 } from '@/best/types';
 import { findEquipment, getTestMonster } from '@/tests/utils/TestUtils';
 
-// the Wilderness champion amulet's +100 bonuses beat every other amulet; leave it out so the neck shows the effects
-const pool = bestPool().filter((e) => e.name !== 'Wilderness champion amulet');
+const pool = bestPool();
 
 const skills99 = {
   atk: 99, def: 99, hp: 99, magic: 99, prayer: 99, ranged: 99, str: 99, mining: 99, herblore: 99,
@@ -35,9 +34,9 @@ const monster = (name: string, version = ''): Monster => prepareMonster(getTestM
 const vorkath = monster('Vorkath', 'Post-quest');
 const abyssal = monster('Abyssal demon', 'Standard');
 
-const jobFor = (style: BestStyle, weapon: string, version: string, stance: string) => {
+const jobFor = (style: BestStyle, weapon: string, version: string, stance: string, extra: (j: WeaponJob) => boolean = () => true) => {
   const id = findEquipment(weapon, version).id;
-  const job = weaponJobs(pool, style).find((j) => j.weaponId === id && j.combatStyle.name === stance);
+  const job = weaponJobs(pool, style).find((j) => j.weaponId === id && j.combatStyle.name === stance && extra(j));
   if (!job) throw new Error(`no job for ${weapon} ${stance}`);
   return job;
 };
@@ -75,6 +74,28 @@ describe('buildPlayer and evalDps', () => {
     expect(player.style).toEqual(scytheJob.combatStyle);
   });
 
+  test('spell, blowpipe dart and fixed ammo jobs match computeRow', () => {
+    const kodai = jobFor('magic', 'Kodai wand', '', 'Spell', (j) => j.spellName === 'Ice Barrage');
+    const blowpipe = jobFor('ranged', 'Toxic blowpipe', 'Charged', 'Rapid', (j) => j.dartId !== null
+      && pool.find((e) => e.id === j.dartId)!.name === 'Dragon dart');
+    const acb = jobFor('ranged', 'Armadyl crossbow', '', 'Rapid', (j) => j.ammoId === poolItem('Ruby dragon bolts (e)').id);
+    const cases: [WeaponJob, BestStyle, (p: ReturnType<typeof buildPlayer>) => void][] = [
+      [kodai, 'magic', (p) => expect(p.spell?.name).toBe('Ice Barrage')],
+      [blowpipe, 'ranged', (p) => expect(p.equipment.weapon?.itemVars).toEqual({ blowpipeDartId: blowpipe.dartId, blowpipeDartName: 'Dragon dart' })],
+      [acb, 'ranged', (p) => expect(p.equipment.ammo?.id).toBe(acb.ammoId)],
+    ];
+    const blessing = poolItem("Rada's blessing 4").id;
+    cases.forEach(([job, style, check]) => {
+      const base = basePlayer(inputs, style);
+      // the job's ammo wins over gear.ammo
+      const player = buildPlayer(base, job, { ammo: blessing });
+      check(player);
+      const row = computeRow({ id: 's', name: 's', player }, { id: 'm', monster: vorkath });
+      expect(row.dps).toBeGreaterThan(0);
+      expect(evalDps(base, vorkath, job, { ammo: blessing })).toBeCloseTo(row.dps, 10);
+    });
+  });
+
   test('evalDps returns 0 instead of throwing', () => {
     const base = basePlayer(inputs, 'slash');
     expect(evalDps(base, { ...vorkath, skills: undefined } as unknown as Monster, scytheJob, {})).toBe(0);
@@ -97,6 +118,13 @@ describe('plainTwin', () => {
 });
 
 describe('activity test', () => {
+  test('an effect matters when it raises or lowers DPS beyond float noise', () => {
+    expect(effectMatters(10, 9)).toBe(true);
+    // an effect that lowers DPS stays an effect candidate: as a plain item it could prune items that beat it
+    expect(effectMatters(9, 10)).toBe(true);
+    expect(effectMatters(10, 10 + 1e-12)).toBe(false);
+  });
+
   test('salve is only active against undead', () => {
     const base = basePlayer(inputs, 'slash');
     const baseline = baselineGear(pool, scytheJob);
@@ -160,6 +188,32 @@ describe('searchWeapon', () => {
       mode: 'descent', topN: 1, cap: 20000, effects,
     });
     expect(meleeSalves).toContain(best.gear.neck);
+  });
+
+  test('weapon-linked effects are tested per job even with style-wide effects', () => {
+    const base = basePlayer(inputs, 'crush');
+    const target = monster('General Graardor');
+    const reference = jobFor('crush', "Inquisitor's mace", '', 'Pound');
+    const effects = styleEffects(base, target, reference, pool);
+    const berserker = poolItem('Berserker necklace');
+    expect(ids(effects.neck)).not.toContain(berserker.id);
+
+    const job = jobFor('crush', 'Tzhaar-ket-om', '', 'Pound');
+    const [best] = searchWeapon(base, target, job, pool, {
+      mode: 'descent', topN: 1, cap: 20000, effects,
+    });
+    expect(best.gear.neck).toBe(berserker.id);
+    const [noBerserker] = searchWeapon(base, target, job, pool.filter((e) => !e.name.startsWith('Berserker necklace')), {
+      mode: 'descent', topN: 1, cap: 20000, effects,
+    });
+    expect(best.dps).toBeGreaterThan(noBerserker.dps);
+  });
+
+  test('topN 0 returns nothing', () => {
+    const base = basePlayer(inputs, 'slash');
+    expect(searchWeapon(base, vorkath, scytheJob, pool, {
+      mode: 'descent', topN: 0, cap: 1, effects: {},
+    })).toEqual([]);
   });
 
   test('descent with no effects still tests the Blood Moon set with the Dual macuahuitl', () => {

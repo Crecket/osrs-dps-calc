@@ -2,7 +2,9 @@ import { describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import path from 'node:path';
 import { availableEquipment } from '@/lib/Equipment';
-import { hasNamedEffect, isEffectItem } from '@/best/lib/effectItems';
+import {
+  hasNamedEffect, isEffectItem, SETS, WEAPON_LINKED,
+} from '@/best/lib/effectItems';
 import { findEquipment } from '@/tests/utils/TestUtils';
 
 const LIB_DIR = path.join(__dirname, '../../lib');
@@ -71,5 +73,19 @@ describe('effectItems', () => {
       findEquipment('Amulet of avarice'),
     ];
     expect(items.filter((e) => !isEffectItem(e)).map((e) => e.name)).toEqual([]);
+  });
+});
+
+describe('SETS and WEAPON_LINKED', () => {
+  test('every piece names an existing effect item', () => {
+    const names = [
+      ...SETS.flatMap((s) => Object.values(s.pieces) as string[]),
+      ...WEAPON_LINKED.flatMap((l) => l.items),
+    ];
+    const missing = names.filter((name) => {
+      const item = availableEquipment.find((e) => e.name === name);
+      return !item || !hasNamedEffect(item);
+    });
+    expect(missing).toEqual([]);
   });
 });

@@ -27,6 +27,7 @@ describe('bestPool', () => {
     expect(pool.filter((e) => versions.includes(e.version))).toEqual([]);
     expect(pool.filter((e) => /\(unobtainable item\)|\(beta\)/i.test(e.name))).toEqual([]);
     expect(pool.map((e) => e.id)).toContain(findEquipment('Scythe of Vitur', 'Charged').id);
+    expect(pool.map((e) => e.id)).not.toContain(findEquipment('Wilderness champion amulet').id);
   });
 });
 
