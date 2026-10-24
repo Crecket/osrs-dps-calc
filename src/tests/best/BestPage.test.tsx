@@ -134,7 +134,7 @@ describe('BestPage', () => {
     const active = saved.presets.find((p) => p.id === saved.activeId)!;
     expect(active.setups.map((s) => s.name)).toContain('Whip');
     expect(active.setups.find((s) => s.name === 'Whip')!.id).not.toBe('best-slash-0');
-    expect(mockToast.success).toHaveBeenCalledWith(`Added to ${active.name}. Reload any open bulk tool tab to see it.`);
+    expect(mockToast.success).toHaveBeenCalledWith(`Added to ${active.name}`);
     // open bulk tool tabs reload their presets
     expect(posted).toEqual([[PRESETS_CHANNEL, 'changed']]);
 

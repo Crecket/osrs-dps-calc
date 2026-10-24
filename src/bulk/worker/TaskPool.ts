@@ -102,6 +102,10 @@ export class TaskPool<P, R> {
     if (this.current) {
       const { reject } = this.current;
       this.current = null;
+      // a busy worker would finish its stale chunk before taking new work; ensureWorkers spawns replacements on the next run
+      const busy = this.workers.filter((w) => w.runId !== null);
+      busy.forEach((w) => w.worker.terminate());
+      this.workers = this.workers.filter((w) => w.runId === null);
       reject(new Error('cancelled'));
     }
   }

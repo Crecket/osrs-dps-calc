@@ -50,7 +50,7 @@ const addToBulkPreset = async (setup: BulkSetup) => {
     return;
   }
   notifyPresetsChanged();
-  toast.success(`Added to ${preset.name}. Reload any open bulk tool tab to see it.`);
+  toast.success(`Added to ${preset.name}`);
 };
 
 interface Pools {

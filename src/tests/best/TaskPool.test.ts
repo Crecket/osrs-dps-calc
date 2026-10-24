@@ -77,6 +77,34 @@ describe('TaskPool', () => {
     expect(reported).toBe(0);
   });
 
+  test('cancel() terminates busy workers, and the next run spawns new ones', async () => {
+    const workers: FakeWorker[] = [];
+    const pool = new TaskPool<number[], number>({
+      size: 2,
+      createWorker: () => {
+        const w = new FakeWorker({ delay: () => 5 });
+        workers.push(w);
+        return w;
+      },
+    });
+
+    // one chunk: one worker busy, one idle
+    const first = pool.run([[1]], () => {});
+    const second = pool.run([[2], [3]], () => {});
+    await expect(first).rejects.toThrow('cancelled');
+    // the run that cancelled the first one replaced its busy worker
+    expect(workers[0].terminated).toBe(true);
+    await expect(second).resolves.toEqual([4, 9]);
+    expect(workers.filter((w) => !w.terminated).length).toBe(2);
+
+    const third = pool.run([[4]], () => {});
+    const busy = workers.filter((w) => !w.terminated);
+    pool.cancel();
+    await expect(third).rejects.toThrow('cancelled');
+    // only the worker computing a chunk is terminated
+    expect(busy.filter((w) => w.terminated).length).toBe(1);
+  });
+
   test('a worker crash during a run rejects it', async () => {
     const pool = new TaskPool<number[], number>({ size: 1, createWorker: () => new FakeWorker({ crashOnRun: 1 }) });
 
