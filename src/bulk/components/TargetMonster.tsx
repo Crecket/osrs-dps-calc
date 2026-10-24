@@ -4,23 +4,24 @@ import { toast } from 'react-toastify';
 import { GlobalState, StoreProvider } from '@/state';
 import MonsterContainer from '@/app/components/monster/MonsterContainer';
 import { useBulkStore } from '@/bulk/state/BulkStore';
-import TargetSync from '@/bulk/state/TargetSync';
-import { fromCalculatorState, readCalculatorState } from '@/bulk/lib/presetIO';
+import TargetSync, { TargetHolder } from '@/bulk/state/TargetSync';
+import { fromCalculatorState, newId, readCalculatorState } from '@/bulk/lib/presetIO';
 import { buttonClass } from '@/bulk/components/Panel';
 
 /**
  * The target monster, edited with upstream's own monster panel (bound to a private calculator store), so every option
  * the calculator has for a monster is available here too.
  */
-const TargetMonster: React.FC = observer(() => {
+const TargetMonster: React.FC<{ holder?: TargetHolder }> = observer(({ holder: given }) => {
   const bulk = useBulkStore();
+  const holder = given ?? bulk;
   const [calc] = useState(() => new GlobalState());
 
   useEffect(() => {
-    const sync = new TargetSync(bulk, calc);
+    const sync = new TargetSync(holder, calc);
     sync.start();
     return () => sync.dispose();
-  }, [bulk, calc]);
+  }, [holder, calc]);
 
   const importCalculatorMonster = async () => {
     const state = await readCalculatorState();
@@ -29,7 +30,7 @@ const TargetMonster: React.FC = observer(() => {
       return;
     }
     try {
-      bulk.setMonster(fromCalculatorState({ ...state, loadouts: [] }, 'all').monster);
+      holder.setTarget({ id: newId(), monster: fromCalculatorState({ ...state, loadouts: [] }, 'all').monster.monster });
     } catch (e) {
       toast.error(`Could not import from the calculator: ${e instanceof Error ? e.message : String(e)}`);
     }

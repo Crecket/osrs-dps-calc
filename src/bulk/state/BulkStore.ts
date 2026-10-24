@@ -8,6 +8,7 @@ import { loadPreset, newId } from '@/bulk/lib/presetIO';
 import { uniqueNewSetups } from '@/bulk/lib/dedupe';
 import { defaultSetups } from '@/bulk/lib/defaultSetups';
 import { hasGear } from '@/bulk/lib/calculatorLoadouts';
+import type { TargetHolder } from '@/bulk/state/TargetSync';
 import { DEFAULT_FILTERS } from '@/bulk/lib/filters';
 import {
   BulkFilters, BulkMonster, BulkPreset, BulkSetup, LegacyBulkPreset,
@@ -25,7 +26,7 @@ interface SavedPresets {
   activeId: string | null;
 }
 
-export class BulkStore {
+export class BulkStore implements TargetHolder {
   presets: BulkPreset[] = [];
 
   activeId: string | null = null;
@@ -46,6 +47,23 @@ export class BulkStore {
 
   get active(): BulkPreset | null {
     return this.presets.find((p) => p.id === this.activeId) || null;
+  }
+
+  // TargetHolder: the active preset's monster is the target
+  get targetScope(): string | null {
+    return this.activeId;
+  }
+
+  get target(): BulkMonster | null {
+    return this.active?.monster ?? null;
+  }
+
+  get canSave(): boolean {
+    return !!this.active;
+  }
+
+  setTarget(m: BulkMonster) {
+    this.setMonster(m);
   }
 
   get canRun(): { ok: boolean; reason?: string } {
