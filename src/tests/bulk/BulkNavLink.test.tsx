@@ -22,23 +22,34 @@ const render = (path: string) => {
   const container = document.createElement('div');
   const root = createRoot(container);
   act(() => root.render(<BulkNavLink />));
-  const link = container.querySelector('a')!;
+  const links = [...container.querySelectorAll('a')];
   act(() => root.unmount());
-  return link;
+  return links;
 };
+
+const byText = (links: HTMLAnchorElement[], text: string) => links.find((a) => a.textContent?.includes(text));
 
 describe('BulkNavLink', () => {
   // both directions are full page loads, so the browser's back button never remounts the calculator client-side
   test('links to the calculator from the bulk tool', () => {
-    const link = render('/');
-    expect(link.getAttribute('href')).toBe('/osrs-dps/calc');
-    expect(link.textContent).toContain('Build setups in the calculator');
+    const link = byText(render('/'), 'Build setups in the calculator');
+    expect(link?.getAttribute('href')).toBe('/osrs-dps/calc');
   });
 
   test('links back to the bulk tool with a full page load', () => {
-    const link = render('/calc');
-    expect(link.textContent).toContain('Back to bulk tool');
+    const link = byText(render('/calc'), 'Back to bulk tool');
     // a plain anchor carries the base path itself (next/link would add it from the router instead)
-    expect(link.getAttribute('href')).toBe('/osrs-dps/');
+    expect(link?.getAttribute('href')).toBe('/osrs-dps/');
+  });
+
+  test.each(['/', '/calc'])('links to the best setup page from %s', (path) => {
+    const link = byText(render(path), 'Best setup');
+    expect(link?.getAttribute('href')).toBe('/osrs-dps/best');
+  });
+
+  test('links back to the bulk tool from the best setup page, and not to itself', () => {
+    const links = render('/best');
+    expect(byText(links, 'Back to bulk tool')?.getAttribute('href')).toBe('/osrs-dps/');
+    expect(byText(links, 'Best setup')).toBeUndefined();
   });
 });

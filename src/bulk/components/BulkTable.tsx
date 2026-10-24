@@ -42,11 +42,13 @@ interface BulkTableProps {
   filtered?: Map<string, string>;
   // rows showing the previous run's numbers while they're recalculated
   stale?: Set<string>;
+  // an extra last cell per row, e.g. a button acting on that setup
+  rowAction?: (setupId: string) => React.ReactNode;
 }
 
 // observer, so renaming a setup re-renders rows without the parent having to
 const BulkTable: React.FC<BulkTableProps> = observer(({
-  rows, setups, mode, sort, onSort, hasRun, overrides = {}, filtered = new Map(), stale = new Set(),
+  rows, setups, mode, sort, onSort, hasRun, overrides = {}, filtered = new Map(), stale = new Set(), rowAction,
 }) => {
   // not memoized: preset arrays are mutated in place, so their identity can't be used as a dependency
   const setupsById = new Map(setups.map((s) => [s.id, s]));
@@ -89,6 +91,7 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
             </th>
           ))}
           <th className="px-2 py-1.5 w-8" aria-label="Warnings" />
+          {rowAction && <th className="px-2 py-1.5" aria-label="Actions" />}
         </tr>
       </thead>
       <tbody>
@@ -138,6 +141,7 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
                   </span>
                 )}
               </td>
+              {rowAction && <td className="px-2 py-1 text-right whitespace-nowrap">{rowAction(r.setupId)}</td>}
             </tr>
           );
         })}

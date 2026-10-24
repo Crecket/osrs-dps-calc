@@ -62,6 +62,11 @@ export class BulkStore implements TargetHolder {
     return !!this.active;
   }
 
+  /** False when saved presets couldn't be read, so changes are kept in memory only */
+  get persists(): boolean {
+    return !this.readFailed;
+  }
+
   setTarget(m: BulkMonster) {
     this.setMonster(m);
   }

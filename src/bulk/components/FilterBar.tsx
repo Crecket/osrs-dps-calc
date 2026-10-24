@@ -162,12 +162,32 @@ const OverridePicker: React.FC<{
   );
 };
 
+interface PotionPickerProps {
+  // null = no choice made (e.g. no override); [] = no potions
+  potions: Potion[] | null;
+  onChange: (p: Potion[] | null) => void;
+  // shown on the button while potions is null
+  unsetLabel?: React.ReactNode;
+  // explains the choice, in the chip's tooltip and above the list
+  hint?: string;
+  clearLabel?: string;
+}
+
 /**
- * Potions used by every setup instead of its own (e.g. smelling salts or overloads in raids).
+ * Picks a set of potions from the calculator's potion list, or none at all; the chip's X goes back to null.
  */
-const PotionOverride: React.FC = observer(() => {
-  const store = useBulkStore();
-  const { potions } = store.filters;
+export const PotionPicker: React.FC<PotionPickerProps> = ({
+  potions,
+  onChange,
+  unsetLabel = (
+    <>
+      <IconPlus size={14} />
+      Override potions
+    </>
+  ),
+  hint = 'Every setup uses these potions instead of its own',
+  clearLabel = 'Remove potion override',
+}) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -175,7 +195,7 @@ const PotionOverride: React.FC = observer(() => {
 
   const toggle = (p: Potion) => {
     const current = potions ?? [];
-    store.setFilters({ potions: current.includes(p) ? current.filter((x) => x !== p) : [...current, p] });
+    onChange(current.includes(p) ? current.filter((x) => x !== p) : [...current, p]);
   };
 
   return (
@@ -186,22 +206,21 @@ const PotionOverride: React.FC = observer(() => {
           className="flex items-center gap-0.5 h-8 px-2 rounded border border-dashed border-body-400 dark:border-dark-200 hover:border-orange-400 text-xs"
           onClick={() => setOpen(!open)}
         >
-          <IconPlus size={14} />
-          Override potions
+          {unsetLabel}
         </button>
       ) : (
-        <span className={chipClass} data-tooltip-id="tooltip" data-tooltip-content="Every setup uses these potions">
-          <button type="button" className="flex items-center gap-0.5" aria-label="Change potion override" onClick={() => setOpen(!open)}>
+        <span className={chipClass} data-tooltip-id="tooltip" data-tooltip-content={hint}>
+          <button type="button" className="flex items-center gap-0.5" aria-label="Change potions" onClick={() => setOpen(!open)}>
             {potions.length === 0 ? 'No potions' : potions.map((p) => (
               <img key={p} className="w-5 h-5 object-contain" src={PotionMap[p].image.src} alt={PotionMap[p].name} />
             ))}
           </button>
           <button
             type="button"
-            aria-label="Remove potion override"
+            aria-label={clearLabel}
             className="text-gray-400 hover:text-red-300"
             onClick={() => {
-              store.setFilters({ potions: null });
+              onChange(null);
               setOpen(false);
             }}
           >
@@ -211,7 +230,7 @@ const PotionOverride: React.FC = observer(() => {
       )}
       {open && (
         <div className="absolute z-20 top-full left-0 mt-1 p-2 rounded shadow-xl bg-tile dark:bg-dark-300 border border-body-300 dark:border-dark-200 text-black dark:text-white">
-          <p className="text-xs mb-1 text-gray-500 dark:text-gray-300">Every setup uses these potions instead of its own:</p>
+          <p className="text-xs mb-1 text-gray-500 dark:text-gray-300">{`${hint}:`}</p>
           <div className="w-64 max-h-72 overflow-y-auto bg-white dark:bg-dark-500 rounded border border-gray-300 dark:border-dark-200">
             {Object.entries(PotionMap).sort((a, b) => a[1].order - b[1].order).map(([k, v]) => {
               const p: Potion = parseInt(k);
@@ -221,7 +240,7 @@ const PotionOverride: React.FC = observer(() => {
             })}
           </div>
           {potions === null && (
-            <button type="button" className="mt-1 text-xs underline text-gray-500 dark:text-gray-300 hover:text-orange-300" onClick={() => store.setFilters({ potions: [] })}>
+            <button type="button" className="mt-1 text-xs underline text-gray-500 dark:text-gray-300 hover:text-orange-300" onClick={() => onChange([])}>
               Or use no potions at all
             </button>
           )}
@@ -229,6 +248,14 @@ const PotionOverride: React.FC = observer(() => {
       )}
     </div>
   );
+};
+
+/**
+ * Potions used by every setup instead of its own (e.g. smelling salts or overloads in raids).
+ */
+const PotionOverride: React.FC = observer(() => {
+  const store = useBulkStore();
+  return <PotionPicker potions={store.filters.potions} onChange={(potions) => store.setFilters({ potions })} />;
 });
 
 /**

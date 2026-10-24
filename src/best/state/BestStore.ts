@@ -90,8 +90,8 @@ export class BestStore implements TargetHolder {
 
   private storage: PresetStorage;
 
-  // set when saved state couldn't be read, so we never overwrite it with defaults
-  private readFailed = false;
+  // set when saved state couldn't be read, so we never overwrite it with defaults; the page warns about it
+  readFailed = false;
 
   constructor(storage: PresetStorage = localforage) {
     this.storage = storage;
@@ -100,16 +100,19 @@ export class BestStore implements TargetHolder {
 
   async load() {
     let saved: SavedBest | null = null;
+    let failed = false;
     try {
       saved = await this.storage.getItem<SavedBest>(BEST_STORAGE_KEY);
     } catch (e) {
       console.warn('[BestStore] Could not read saved state', e);
-      this.readFailed = true;
+      failed = true;
     }
-    this.apply(saved);
+    this.apply(saved, failed);
   }
 
-  private apply(saved: unknown) {
+  // an action, so the page's banner sees readFailed change together with loaded
+  private apply(saved: unknown, readFailed: boolean) {
+    this.readFailed = readFailed;
     const { inputs, monster } = readSaved(saved);
     this.inputs = inputs;
     this.monster = monster;
