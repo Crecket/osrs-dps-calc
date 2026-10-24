@@ -234,6 +234,18 @@ describe('searchWeapon', () => {
     expect(ids(linkedEffects(pool, twinflame('Fire Surge')).hands)).not.toContain(gauntlets.id);
   });
 
+  test('ranged weapons that fire no ammo leave the ammo slot empty', () => {
+    const base = basePlayer(inputs, 'ranged');
+    const bofa = jobFor('ranged', 'Bow of Faerdhinen', 'Charged', 'Rapid');
+    const blowpipe = weaponJobs(pool, 'ranged').find((j) => j.dartId !== null && j.combatStyle.name === 'Rapid')!;
+    [bofa, blowpipe].forEach((job) => {
+      expect(baselineGear(pool, job).ammo).toBeNull();
+      const results = searchWeapon(base, vorkath, job, pool, { mode: 'exhaustive', topN: 3, cap: 20000 });
+      expect(results.length).toBeGreaterThan(0);
+      results.forEach((r) => expect(r.gear.ammo).toBeNull());
+    });
+  });
+
   test('topN 0 returns nothing', () => {
     const base = basePlayer(inputs, 'slash');
     expect(searchWeapon(base, vorkath, scytheJob, pool, {

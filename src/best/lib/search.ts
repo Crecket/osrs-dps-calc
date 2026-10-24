@@ -146,6 +146,12 @@ const searchSlots = (job: WeaponJob): GearSlot[] => {
   return GEAR_SLOTS.filter((slot) => !(slot === 'shield' && twoHanded) && !(slot === 'ammo' && job.ammoId !== null));
 };
 
+/** Ranged jobs without fixed ammo (bowfa, blowpipes, thrown weapons): ammo bonuses don't count, so only ammo effects can matter. */
+const firesNoAmmo = (job: WeaponJob) => job.style === 'ranged' && job.ammoId === null;
+
+/** The plain candidates the job can use in `slot`: none in the ammo slot of a job that fires no ammo. */
+const usablePlain = (job: WeaponJob, slot: GearSlot, items: EquipmentPiece[]) => (slot === 'ammo' && firesNoAmmo(job) ? [] : items);
+
 const sumScore = (item: EquipmentPiece, style: BestStyle) => styleScore(item, style).reduce((a, b) => a + b);
 
 /** The item with the highest attack + strength; ties keep the first. */
@@ -153,7 +159,7 @@ const strongestOf = (items: EquipmentPiece[], style: BestStyle): EquipmentPiece 
   .reduce<EquipmentPiece | undefined>((best, e) => (!best || sumScore(e, style) > sumScore(best, style) ? e : best), undefined);
 
 const baselineFrom = (job: WeaponJob, plain: SlotLists): Gear => Object.fromEntries(searchSlots(job)
-  .map((slot) => [slot, strongestOf(plain[slot] ?? [], job.style)?.id ?? null]));
+  .map((slot) => [slot, strongestOf(usablePlain(job, slot, plain[slot] ?? []), job.style)?.id ?? null]));
 
 /** Per slot the plain candidate with the highest attack + strength for the job's style; the shield stays empty for two-handers. */
 export const baselineGear = (pool: EquipmentPiece[], job: WeaponJob): Gear => {
@@ -280,7 +286,7 @@ export const searchWeapon = (
   slots.forEach((slot) => {
     const activeIds = new Set((active[slot] ?? []).map((e) => e.id));
     // empty is a (0, 0) plain item that wins ties: it beats items with nothing positive, and loses to items with nothing negative
-    plain[slot] = paretoFront([...candidates[slot].plain, ...candidates[slot].effect.filter((e) => !activeIds.has(e.id))], style)
+    plain[slot] = paretoFront(usablePlain(job, slot, [...candidates[slot].plain, ...candidates[slot].effect.filter((e) => !activeIds.has(e.id))]), style)
       .filter((e) => styleScore(e, style).some((v) => v > 0));
     const emptyDominated = plain[slot]!.some((e) => styleScore(e, style).every((v) => v >= 0));
     const ids = [
