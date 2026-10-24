@@ -6,7 +6,10 @@ import {
   BEST_STYLES, BestStyle, CombatConditions, PrayerUnlocks,
 } from '@/best/types';
 import { useBestStore } from '@/best/state/BestStore';
-import { defaultPotions } from '@/best/lib/loadout';
+import {
+  bestPrayers, canUsePrayer, DEFENCE_LEVEL, defaultPotions, PRAYER_LEVEL, prayerChoices, PrayerGroup, stylePrayers,
+} from '@/best/lib/loadout';
+import { Prayer, PrayerMap } from '@/enums/Prayer';
 import { PotionPicker } from '@/bulk/components/FilterBar';
 import Panel, { inputClass } from '@/bulk/components/Panel';
 
@@ -102,6 +105,81 @@ const CONDITIONS: [keyof Omit<CombatConditions, 'soulreaperStacks' | 'currentHp'
   ['kandarinDiary', 'Kandarin hard diary'],
 ];
 
+const UNLOCK_PRAYER: Record<Exclude<keyof PrayerUnlocks, 'prayerLevel'>, Prayer> = {
+  piety: Prayer.PIETY,
+  rigour: Prayer.RIGOUR,
+  augury: Prayer.AUGURY,
+  deadeye: Prayer.DEADEYE,
+  mysticVigour: Prayer.MYSTIC_VIGOUR,
+  zeal: Prayer.ZEAL,
+};
+
+/** What the player lacks for the prayer, e.g. 'needs 70 Prayer, 70 Defence'; null when the levels are met. */
+const missingLevels = (p: Prayer, prayerLevel: number, defLevel: number): string | null => {
+  const prayer = PRAYER_LEVEL[p] ?? 0;
+  const defence = DEFENCE_LEVEL[p] ?? 0;
+  if (prayerLevel >= prayer && defLevel >= defence) return null;
+  return `needs ${prayer} Prayer${defence > 0 ? `, ${defence} Defence` : ''}`;
+};
+
+/** Why an unlocked prayer can't be used yet, or null. Piety's unlock covers Chivalry too, which needs less. */
+const unlockNote = (k: Exclude<keyof PrayerUnlocks, 'prayerLevel'>, prayerLevel: number, defLevel: number): string | null => {
+  if (k !== 'piety') return missingLevels(UNLOCK_PRAYER[k], prayerLevel, defLevel);
+  const chivalry = missingLevels(Prayer.CHIVALRY, prayerLevel, defLevel);
+  if (chivalry) return `Chivalry ${chivalry}`;
+  const piety = missingLevels(Prayer.PIETY, prayerLevel, defLevel);
+  return piety && `Piety ${piety}`;
+};
+
+const prayerNames = (prayers: Prayer[]) => prayers.map((p) => PrayerMap[p].name).join(' + ');
+const choiceValue = (prayers: Prayer[]) => prayers.join(',');
+
+/** The prayer select of one group: Auto (the best usable prayers), every usable choice, and None. */
+const PrayerPicker: React.FC<{ group: PrayerGroup; label: string; style: BestStyle }> = observer(({ group, label, style }) => {
+  const store = useBestStore();
+  const { unlocks, skills, prayerOverrides = {} } = store.inputs;
+  const id = useId();
+  const auto = bestPrayers(style, unlocks, skills.def);
+  const override = prayerOverrides[group];
+  const unusable = override !== undefined && !override.every((p) => canUsePrayer(p, unlocks, skills.def));
+  const used = stylePrayers(style, unlocks, skills.def, prayerOverrides);
+
+  const choices = prayerChoices(group, unlocks, skills.def);
+  // a saved choice that's usable but not offered (e.g. a weaker pair) stays selectable
+  if (override && override.length > 0 && !unusable && !choices.some((c) => choiceValue(c) === choiceValue(override))) choices.push(override);
+  let value = 'auto';
+  if (override !== undefined && !unusable) value = override.length === 0 ? 'none' : choiceValue(override);
+
+  return (
+    <div className="flex flex-col gap-0.5 text-sm">
+      <label htmlFor={id} className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1">
+          {label}
+          {used.map((p) => <img key={p} className="w-4 h-4 object-contain" src={PrayerMap[p].image.src} alt={PrayerMap[p].name} />)}
+        </span>
+        <select
+          id={id}
+          className={`${inputClass} max-w-[14rem]`}
+          value={value}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === 'auto') store.setPrayerOverride(group, null);
+            else if (v === 'none') store.setPrayerOverride(group, []);
+            else store.setPrayerOverride(group, v.split(',').map(Number) as Prayer[]);
+          }}
+        >
+          <option value="auto">{`Auto — ${auto.length > 0 ? prayerNames(auto) : 'none available'}`}</option>
+          {choices.map((c) => <option key={choiceValue(c)} value={choiceValue(c)}>{prayerNames(c)}</option>)}
+          <option value="none">None</option>
+        </select>
+      </label>
+      {unusable && (
+        <span className="text-xs text-orange-700 dark:text-orange-300">{`${prayerNames(override!)} isn't usable at these levels, so Auto is used`}</span>
+      )}
+    </div>
+  );
+});
+
 export const styleName = (s: BestStyle) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const POTION_GROUPS: { group: 'melee' | 'ranged' | 'magic'; label: string; style: BestStyle }[] = [
@@ -144,9 +222,15 @@ const InputsPanel: React.FC = observer(() => {
               store.setUnlocks({ prayerLevel: v });
             }}
           />
-          {UNLOCKS.map(([k, label]) => (
-            <Check key={k} label={label} checked={unlocks[k]} onChange={(v) => store.setUnlocks({ [k]: v })} />
-          ))}
+          {UNLOCKS.map(([k, label]) => {
+            const missing = unlockNote(k, unlocks.prayerLevel, skills.def);
+            return (
+              <div key={k} className={missing ? 'opacity-60' : ''}>
+                <Check label={missing ? `${label} — ${missing}` : label} checked={unlocks[k]} onChange={(v) => store.setUnlocks({ [k]: v })} />
+              </div>
+            );
+          })}
+          {POTION_GROUPS.map(({ group, label, style }) => <PrayerPicker key={group} group={group} label={label} style={style} />)}
         </Section>
 
         <Section title="Conditions">

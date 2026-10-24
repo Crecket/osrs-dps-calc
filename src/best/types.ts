@@ -1,5 +1,6 @@
 import { PlayerSkills } from '@/types/Player';
 import Potion from '@/enums/Potion';
+import { Prayer } from '@/enums/Prayer';
 
 export type BestStyle = 'stab' | 'slash' | 'crush' | 'ranged' | 'magic';
 export const BEST_STYLES: BestStyle[] = ['stab', 'slash', 'crush', 'ranged', 'magic'];
@@ -36,6 +37,8 @@ export interface BestInputs {
   potions: Partial<Record<'melee' | 'ranged' | 'magic', Potion[]>>;
   styles: BestStyle[];
   topN: number;
+  /** Per prayer group: the prayers to use instead of the best usable ones; a missing group is Auto, [] is no prayer */
+  prayerOverrides?: Partial<Record<'melee' | 'ranged' | 'magic', Prayer[]>>;
 }
 
 // not on slayer task: upstream defaults to on, which would make the slayer helm win every boss

@@ -2,7 +2,9 @@ import { describe, expect, test } from '@jest/globals';
 import { Prayer } from '@/enums/Prayer';
 import Potion from '@/enums/Potion';
 import { DEFAULT_CONDITIONS, DEFAULT_UNLOCKS, BestInputs } from '@/best/types';
-import { bestPrayers, defaultPotions } from '@/best/lib/loadout';
+import {
+  bestPrayers, defaultPotions, isPrayerChoice, prayerChoices, stylePrayers,
+} from '@/best/lib/loadout';
 import { basePlayer } from '@/best/lib/basePlayer';
 
 const skills99 = {
@@ -40,6 +42,48 @@ describe('bestPrayers', () => {
   });
 });
 
+describe('prayer choices', () => {
+  const pure = { ...DEFAULT_UNLOCKS, prayerLevel: 31 };
+
+  test('a level 31 pure gets Ultimate Strength + Improved Reflexes on Auto', () => {
+    expect(bestPrayers('slash', pure, 1)).toEqual([Prayer.ULTIMATE_STRENGTH, Prayer.IMPROVED_REFLEXES]);
+    expect(stylePrayers('slash', pure, 1)).toEqual([Prayer.ULTIMATE_STRENGTH, Prayer.IMPROVED_REFLEXES]);
+  });
+
+  test('melee choices: combined prayers, the best pair, then each strength and attack prayer', () => {
+    expect(prayerChoices('melee', pure, 1)).toEqual([
+      [Prayer.ULTIMATE_STRENGTH, Prayer.IMPROVED_REFLEXES],
+      [Prayer.ULTIMATE_STRENGTH], [Prayer.SUPERHUMAN_STRENGTH], [Prayer.BURST_OF_STRENGTH],
+      [Prayer.IMPROVED_REFLEXES], [Prayer.CLARITY_OF_THOUGHT],
+    ]);
+    expect(prayerChoices('melee', DEFAULT_UNLOCKS, 99).slice(0, 4)).toEqual([
+      [Prayer.ZEAL], [Prayer.PIETY], [Prayer.CHIVALRY], [Prayer.ULTIMATE_STRENGTH, Prayer.INCREDIBLE_REFLEXES],
+    ]);
+    expect(prayerChoices('ranged', pure, 1)).toEqual([[Prayer.HAWK_EYE], [Prayer.SHARP_EYE]]);
+    expect(prayerChoices('magic', { ...DEFAULT_UNLOCKS, prayerLevel: 8 }, 1)).toEqual([]);
+  });
+
+  test('an override is used as-is, [] is no prayer, an unusable one falls back to Auto', () => {
+    expect(stylePrayers('slash', pure, 1, { melee: [Prayer.SUPERHUMAN_STRENGTH] })).toEqual([Prayer.SUPERHUMAN_STRENGTH]);
+    expect(stylePrayers('slash', pure, 1, { melee: [] })).toEqual([]);
+    // Piety needs 70 Prayer
+    expect(stylePrayers('slash', pure, 1, { melee: [Prayer.PIETY] })).toEqual([Prayer.ULTIMATE_STRENGTH, Prayer.IMPROVED_REFLEXES]);
+    // another group's override doesn't apply
+    expect(stylePrayers('ranged', pure, 1, { melee: [] })).toEqual([Prayer.HAWK_EYE]);
+  });
+
+  test('isPrayerChoice accepts only combinations of the group', () => {
+    expect(isPrayerChoice('melee', [Prayer.ULTIMATE_STRENGTH, Prayer.IMPROVED_REFLEXES])).toBe(true);
+    expect(isPrayerChoice('melee', [Prayer.PIETY])).toBe(true);
+    expect(isPrayerChoice('melee', [])).toBe(true);
+    expect(isPrayerChoice('melee', [Prayer.PIETY, Prayer.ULTIMATE_STRENGTH])).toBe(false);
+    expect(isPrayerChoice('melee', [Prayer.ULTIMATE_STRENGTH, Prayer.SUPERHUMAN_STRENGTH])).toBe(false);
+    expect(isPrayerChoice('melee', [Prayer.RIGOUR])).toBe(false);
+    expect(isPrayerChoice('ranged', [Prayer.RIGOUR])).toBe(true);
+    expect(isPrayerChoice('magic', [Prayer.RIGOUR])).toBe(false);
+  });
+});
+
 describe('defaultPotions', () => {
   test('one potion per group', () => {
     expect(defaultPotions('stab')).toEqual([Potion.SUPER_COMBAT]);
@@ -71,6 +115,13 @@ describe('basePlayer', () => {
     const p = basePlayer({ ...inputs, potions: { ranged: [Potion.SUPER_RANGING] }, conditions: { ...DEFAULT_CONDITIONS, currentHp: 50 } }, 'ranged');
     expect(p.buffs.potions).toEqual([Potion.SUPER_RANGING]);
     expect(p.boosts.hp).toBe(-49);
+  });
+
+  test('prayer overrides: used as-is per group, [] is none, Auto without one', () => {
+    const pure = { ...inputs, unlocks: { ...DEFAULT_UNLOCKS, prayerLevel: 31 }, skills: { ...skills99, def: 1 } };
+    expect(basePlayer(pure, 'slash').prayers).toEqual([Prayer.ULTIMATE_STRENGTH, Prayer.IMPROVED_REFLEXES]);
+    expect(basePlayer({ ...pure, prayerOverrides: { melee: [Prayer.SUPERHUMAN_STRENGTH] } }, 'crush').prayers).toEqual([Prayer.SUPERHUMAN_STRENGTH]);
+    expect(basePlayer({ ...pure, prayerOverrides: { ranged: [] } }, 'ranged').prayers).toEqual([]);
   });
 
   test('current HP above Hitpoints counts as full HP', () => {

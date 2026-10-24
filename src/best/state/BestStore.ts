@@ -2,11 +2,13 @@ import { createContext, useContext } from 'react';
 import localforage from 'localforage';
 import { makeAutoObservable, toJS } from 'mobx';
 import Potion from '@/enums/Potion';
+import { Prayer, PrayerMap } from '@/enums/Prayer';
 import { PlayerSkills } from '@/types/Player';
 import { PotionMap } from '@/utils';
 import {
   BEST_STYLES, BestInputs, BestStyle, CombatConditions, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS, PrayerUnlocks,
 } from '@/best/types';
+import { isPrayerChoice, PRAYER_GROUPS, PrayerGroup } from '@/best/lib/loadout';
 import { BulkMonster } from '@/bulk/types';
 import type { PresetStorage } from '@/bulk/state/BulkStore';
 import type { TargetHolder } from '@/bulk/state/TargetSync';
@@ -27,6 +29,7 @@ const defaultInputs = (): BestInputs => ({
   potions: {},
   styles: [...BEST_STYLES],
   topN: 5,
+  prayerOverrides: {},
 });
 
 const POTION_GROUPS = ['melee', 'ranged', 'magic'] as const;
@@ -60,6 +63,17 @@ const readSaved = (raw: unknown): SavedBest => {
     }
   }
 
+  // only known groups, and only prayer combinations of that group
+  const prayerOverrides: BestInputs['prayerOverrides'] = {};
+  if (isRecord(i.prayerOverrides)) {
+    for (const g of PRAYER_GROUPS) {
+      const p = i.prayerOverrides[g];
+      if (Array.isArray(p) && p.every((x) => typeof x === 'number' && x in PrayerMap) && isPrayerChoice(g, p as Prayer[])) {
+        prayerOverrides[g] = p as Prayer[];
+      }
+    }
+  }
+
   const m = r.monster;
   const monster = isRecord(m) && isRecord(m.monster) && isNum(m.monster.id) && typeof m.monster.name === 'string'
     ? m as unknown as BulkMonster
@@ -76,6 +90,7 @@ const readSaved = (raw: unknown): SavedBest => {
       potions,
       styles: styles.length > 0 ? styles : base.styles,
       topN: typeof i.topN === 'number' && Number.isInteger(i.topN) && i.topN > 0 ? i.topN : base.topN,
+      prayerOverrides,
     },
     monster,
   };
@@ -166,13 +181,23 @@ export class BestStore implements TargetHolder {
     this.save();
   }
 
+  /** null removes the override, so the group goes back to Auto (the best usable prayers); [] is no prayer */
+  setPrayerOverride(group: PrayerGroup, prayers: Prayer[] | null) {
+    const overrides = { ...this.inputs.prayerOverrides };
+    if (prayers === null) delete overrides[group];
+    else overrides[group] = [...prayers];
+    this.inputs.prayerOverrides = overrides;
+    this.save();
+  }
+
   /** Changes whenever anything that affects the result changes; null while there is nothing to run against */
   get runKey(): string | null {
     if (!this.monster) return null;
-    const { potions, ...rest } = toJS(this.inputs);
-    // fixed order for the potion groups, so the order they were set in doesn't matter
+    const { potions, prayerOverrides = {}, ...rest } = toJS(this.inputs);
+    // fixed order for the potion and prayer groups, so the order they were set in doesn't matter
     const sortedPotions = POTION_GROUPS.map((g) => [g, potions[g] ?? null]);
-    return JSON.stringify({ inputs: { ...rest, potions: sortedPotions }, monster: toJS(this.monster.monster) });
+    const sortedPrayers = PRAYER_GROUPS.map((g) => [g, prayerOverrides[g] ?? null]);
+    return JSON.stringify({ inputs: { ...rest, potions: sortedPotions, prayerOverrides: sortedPrayers }, monster: toJS(this.monster.monster) });
   }
 
   private save() {

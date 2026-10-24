@@ -2,7 +2,7 @@ import { generateEmptyPlayer } from '@/state';
 import { Player } from '@/types/Player';
 import { potionBoosts } from '@/bulk/lib/filters';
 import { BestInputs, BestStyle } from '@/best/types';
-import { bestPrayers, defaultPotions } from '@/best/lib/loadout';
+import { defaultPotions, stylePrayers } from '@/best/lib/loadout';
 
 /** The naked player the search dresses: skills, prayers, potions and conditions for one style, no equipment. */
 // eslint-disable-next-line import/prefer-default-export
@@ -10,7 +10,7 @@ export const basePlayer = (inputs: BestInputs, style: BestStyle): Player => {
   const player = generateEmptyPlayer();
   const { conditions } = inputs;
   player.skills = { ...inputs.skills };
-  player.prayers = bestPrayers(style, inputs.unlocks, inputs.skills.def);
+  player.prayers = stylePrayers(style, inputs.unlocks, inputs.skills.def, inputs.prayerOverrides);
 
   const group = style === 'ranged' || style === 'magic' ? style : 'melee';
   const potions = inputs.potions[group] ?? defaultPotions(style);

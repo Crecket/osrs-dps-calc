@@ -5,6 +5,7 @@ import type { PresetStorage } from '@/bulk/state/BulkStore';
 import { monsterFromSearch } from '@/bulk/lib/presetIO';
 import { getMonsters } from '@/lib/Monsters';
 import Potion from '@/enums/Potion';
+import { Prayer } from '@/enums/Prayer';
 import { BestInputs } from '@/best/types';
 import TargetSync from '@/bulk/state/TargetSync';
 import { GlobalState } from '@/state';
@@ -137,6 +138,30 @@ describe('BestStore', () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
+  test('setPrayerOverride saves per group; null goes back to Auto; runKey ignores the order groups were set in', async () => {
+    const storage = new MemoryStorage();
+    const a = new BestStore(storage);
+    await a.load();
+    a.setTarget(abyssal());
+    const auto = a.runKey;
+    a.setPrayerOverride('melee', [Prayer.SUPERHUMAN_STRENGTH]);
+    a.setPrayerOverride('ranged', []);
+    expect(a.runKey).not.toBe(auto);
+    await flush();
+    expect(savedInputs(storage).prayerOverrides).toEqual({ melee: [Prayer.SUPERHUMAN_STRENGTH], ranged: [] });
+
+    const b = new BestStore(new MemoryStorage());
+    await b.load();
+    b.setTarget(abyssal());
+    b.setPrayerOverride('ranged', []);
+    b.setPrayerOverride('melee', [Prayer.SUPERHUMAN_STRENGTH]);
+    expect(b.runKey).toBe(a.runKey);
+
+    a.setPrayerOverride('melee', null);
+    a.setPrayerOverride('ranged', null);
+    expect(a.runKey).toBe(auto);
+  });
+
   test('setTarget before load leaves storage untouched and load keeps the saved state', async () => {
     const storage = new MemoryStorage();
     const first = new BestStore(storage);
@@ -226,6 +251,10 @@ describe('BestStore', () => {
           styles: ['magic', 'nonsense'],
           topN: -2,
           potions: { melee: [Potion.SUPER_COMBAT, 'x', 9999], other: [1], ranged: 'no' },
+          // a valid ranged choice, a magic prayer under melee, an unknown group, a non-prayer
+          prayerOverrides: {
+            ranged: [Prayer.HAWK_EYE], melee: [Prayer.AUGURY], other: [], magic: [9999],
+          },
         },
         monster: { id: 'x' },
       });
@@ -245,6 +274,7 @@ describe('BestStore', () => {
       expect(store.inputs.styles).toEqual(['magic']);
       expect(store.inputs.topN).toBe(5);
       expect(store.inputs.potions).toEqual({ melee: [Potion.SUPER_COMBAT] });
+      expect(store.inputs.prayerOverrides).toEqual({ ranged: [Prayer.HAWK_EYE] });
       expect(store.monster).toBeNull();
     });
 

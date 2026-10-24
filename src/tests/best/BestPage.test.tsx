@@ -7,6 +7,7 @@ import { act } from 'react-dom/test-utils';
 import type { StyleOutcome } from '@/best/lib/run';
 import type { BestInputs } from '@/best/types';
 import type { BulkPreset } from '@/bulk/types';
+import { Prayer } from '@/enums/Prayer';
 
 // in-memory storage for both the best and the bulk store; a key in mockFailing makes reads of it throw
 const mockData = new Map<string, unknown>();
@@ -242,6 +243,35 @@ describe('BestPage', () => {
     await wait(10);
     expect(container.textContent).toContain('New');
     expect(container.textContent).not.toContain('Old');
+    await unmount();
+  });
+
+  test('the prayer Auto label shows the prayers bestPrayers picks, and follows the Prayer level', async () => {
+    const { container, unmount } = await mount();
+    const melee = () => [...container.querySelectorAll('select')].find((sel) => sel.options[0].text.startsWith('Auto'))!;
+    const prayerLevel = [...container.querySelectorAll('label')].find((l) => l.querySelector('span')?.textContent === 'Prayer')!
+      .querySelector('input')!;
+    expect(melee().options[0].text).toBe('Auto — Zeal');
+
+    await setNumber(prayerLevel, '31');
+    expect(melee().options[0].text).toBe('Auto — Ultimate Strength + Improved Reflexes');
+    expect([...melee().options].map((o) => o.text)).toContain('Burst of Strength');
+    // Piety's unlock note
+    expect(container.textContent).toContain('Chivalry needs 60 Prayer, 65 Defence');
+
+    // choosing a prayer saves an override, and nothing runs
+    await act(async () => {
+      melee().value = String(Prayer.SUPERHUMAN_STRENGTH);
+      melee().dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await wait(10);
+    expect((mockData.get(BEST_STORAGE_KEY) as { inputs: BestInputs }).inputs.prayerOverrides).toEqual({ melee: [Prayer.SUPERHUMAN_STRENGTH] });
+    expect(mockRun).not.toHaveBeenCalled();
+
+    // an override the levels no longer allow falls back to Auto, with a note
+    await setNumber(prayerLevel, '10');
+    expect(container.textContent).toContain("Superhuman Strength isn't usable at these levels, so Auto is used");
+    expect(melee().value).toBe('auto');
     await unmount();
   });
 
