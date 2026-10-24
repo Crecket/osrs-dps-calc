@@ -33,7 +33,7 @@ class TargetSync {
   start() {
     this.disposers.push(
       reaction(
-        () => [this.holder.targetScope, toJS(this.holder.target?.monster)] as const,
+        () => [this.holder.targetScope, this.holder.canSave, toJS(this.holder.target?.monster)] as const,
         () => this.load(),
         { fireImmediately: true, equals: (a, b) => isEqual(a, b) },
       ),

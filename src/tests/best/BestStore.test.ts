@@ -6,6 +6,8 @@ import { monsterFromSearch } from '@/bulk/lib/presetIO';
 import { getMonsters } from '@/lib/Monsters';
 import Potion from '@/enums/Potion';
 import { BestInputs } from '@/best/types';
+import TargetSync from '@/bulk/state/TargetSync';
+import { GlobalState } from '@/state';
 
 class MemoryStorage implements PresetStorage {
   data = new Map<string, unknown>();
@@ -101,5 +103,169 @@ describe('BestStore', () => {
     expect(before).not.toBeNull();
     store.setConditions({ inWilderness: true });
     expect(store.runKey).not.toBe(before);
+  });
+
+  test('runKey ignores the order potion groups were set in', async () => {
+    const a = new BestStore(new MemoryStorage());
+    const b = new BestStore(new MemoryStorage());
+    await a.load();
+    await b.load();
+    a.setTarget(abyssal());
+    b.setTarget(abyssal());
+    a.setPotions('melee', [Potion.SUPER_COMBAT]);
+    a.setPotions('ranged', [Potion.RANGING]);
+    b.setPotions('ranged', [Potion.RANGING]);
+    b.setPotions('melee', [Potion.SUPER_COMBAT]);
+
+    expect(a.runKey).toBe(b.runKey);
+  });
+
+  test('runKey changes with styles, potions, skills and the monster', async () => {
+    const store = new BestStore(new MemoryStorage());
+    await store.load();
+    store.setTarget(abyssal());
+    const keys = [store.runKey];
+    store.setStyles(['magic']);
+    keys.push(store.runKey);
+    store.setPotions('magic', [Potion.SATURATED_HEART]);
+    keys.push(store.runKey);
+    store.setSkills({ atk: 70 });
+    keys.push(store.runKey);
+    store.setTarget(monsterFromSearch(getMonsters().find((m) => m.id !== 415)!));
+    keys.push(store.runKey);
+
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  test('setTarget before load leaves storage untouched and load keeps the saved state', async () => {
+    const storage = new MemoryStorage();
+    const first = new BestStore(storage);
+    await first.load();
+    first.setSkills({ atk: 42 });
+    first.setTarget(abyssal());
+    await flush();
+
+    const store = new BestStore(storage);
+    expect(store.canSave).toBe(false);
+    store.setTarget(monsterFromSearch(getMonsters().find((m) => m.id !== 415)!));
+    store.setSkills({ atk: 1 });
+    await flush();
+    expect(savedInputs(storage).skills.atk).toBe(42);
+
+    await store.load();
+    expect(store.inputs.skills.atk).toBe(42);
+    expect(store.monster?.monster.id).toBe(415);
+    expect(store.canSave).toBe(true);
+  });
+
+  test('canSave stays false when the saved state could not be read', async () => {
+    const storage = new MemoryStorage();
+    storage.getItem = async () => { throw new Error('boom'); };
+    const store = new BestStore(storage);
+    await store.load();
+
+    expect(store.canSave).toBe(false);
+  });
+
+  describe('with TargetSync started before load', () => {
+    test('ends with the saved monster', async () => {
+      const storage = new MemoryStorage();
+      const first = new BestStore(storage);
+      await first.load();
+      first.setTarget(abyssal());
+      await flush();
+
+      const store = new BestStore(storage);
+      const calc = new GlobalState();
+      const sync = new TargetSync(store, calc, 0);
+      sync.start();
+      await store.load();
+      await flush();
+
+      expect(store.monster?.monster.id).toBe(415);
+      expect(calc.monster.id).toBe(415);
+      expect((storage.data.get(BEST_STORAGE_KEY) as { monster: { monster: { id: number } } }).monster.monster.id).toBe(415);
+      sync.dispose();
+    });
+
+    test('adopts the panel monster when nothing was saved', async () => {
+      const storage = new MemoryStorage();
+      const store = new BestStore(storage);
+      const calc = new GlobalState();
+      const sync = new TargetSync(store, calc, 0);
+      sync.start();
+      expect(store.monster).toBeNull();
+      await store.load();
+      await flush();
+
+      expect(store.monster?.monster.id).toBe(calc.monster.id);
+      expect(storage.data.has(BEST_STORAGE_KEY)).toBe(true);
+      sync.dispose();
+    });
+  });
+
+  describe('load validation', () => {
+    const loadWith = async (raw: unknown) => {
+      const storage = new MemoryStorage();
+      storage.data.set(BEST_STORAGE_KEY, raw);
+      const store = new BestStore(storage);
+      await store.load();
+      return store;
+    };
+    const defaults = async () => (await loadWith(null)).inputs;
+
+    test('garbage values fall back to defaults', async () => {
+      const store = await loadWith({
+        inputs: {
+          evil: 1,
+          skills: { atk: 'a', str: 50, bogus: 3 },
+          unlocks: { piety: 'yes', rigour: false, prayerLevel: null },
+          conditions: {
+            onSlayerTask: 3, soulreaperStacks: 'x', currentHp: 'x', inWilderness: true,
+          },
+          styles: ['magic', 'nonsense'],
+          topN: -2,
+          potions: { melee: [Potion.SUPER_COMBAT, 'x', 9999], other: [1], ranged: 'no' },
+        },
+        monster: { id: 'x' },
+      });
+      const d = await defaults();
+
+      expect(store.inputs).not.toHaveProperty('evil');
+      expect(store.inputs.skills).not.toHaveProperty('bogus');
+      expect(store.inputs.skills.atk).toBe(99);
+      expect(store.inputs.skills.str).toBe(50);
+      expect(store.inputs.unlocks.piety).toBe(d.unlocks.piety);
+      expect(store.inputs.unlocks.rigour).toBe(false);
+      expect(store.inputs.unlocks.prayerLevel).toBe(d.unlocks.prayerLevel);
+      expect(store.inputs.conditions.onSlayerTask).toBe(false);
+      expect(store.inputs.conditions.soulreaperStacks).toBe(d.conditions.soulreaperStacks);
+      expect(store.inputs.conditions.currentHp).toBeNull();
+      expect(store.inputs.conditions.inWilderness).toBe(true);
+      expect(store.inputs.styles).toEqual(['magic']);
+      expect(store.inputs.topN).toBe(5);
+      expect(store.inputs.potions).toEqual({ melee: [Potion.SUPER_COMBAT] });
+      expect(store.monster).toBeNull();
+    });
+
+    test.each([
+      [null], [42], ['str'], [[]], [{}], [{ inputs: 'x', monster: 3 }], [{ inputs: { styles: [], topN: 2.5, skills: 4 } }],
+    ])('unusable saved data %j loads defaults', async (raw) => {
+      const store = await loadWith(raw);
+      const d = await defaults();
+
+      expect(store.loaded).toBe(true);
+      expect(store.inputs).toEqual(d);
+      expect(store.monster).toBeNull();
+    });
+
+    test('older partial data keeps what is valid', async () => {
+      const store = await loadWith({ inputs: { skills: { atk: 60 }, topN: 8 }, monster: abyssal() });
+
+      expect(store.inputs.skills.atk).toBe(60);
+      expect(store.inputs.skills.def).toBe(99);
+      expect(store.inputs.topN).toBe(8);
+      expect(store.monster?.monster.id).toBe(415);
+    });
   });
 });

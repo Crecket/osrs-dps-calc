@@ -3,6 +3,7 @@ import localforage from 'localforage';
 import { makeAutoObservable, toJS } from 'mobx';
 import Potion from '@/enums/Potion';
 import { PlayerSkills } from '@/types/Player';
+import { PotionMap } from '@/utils';
 import {
   BEST_STYLES, BestInputs, BestStyle, CombatConditions, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS, PrayerUnlocks,
 } from '@/best/types';
@@ -28,17 +29,64 @@ const defaultInputs = (): BestInputs => ({
   topN: 5,
 });
 
+const POTION_GROUPS = ['melee', 'ranged', 'magic'] as const;
+
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** Keeps the fields of `base` that `raw` has with the same type as the default; nothing else is copied */
+const mergeTyped = <T extends object>(base: T, raw: unknown, valid: (k: keyof T, v: unknown) => boolean): T => {
+  const out = { ...base };
+  if (!isRecord(raw)) return out;
+  for (const k of Object.keys(base) as (keyof T)[]) {
+    if (k in raw && valid(k, raw[k as string])) out[k] = raw[k as string] as T[keyof T];
+  }
+  return out;
+};
+
+const isNum = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+
+/** Saved state with defaults for anything missing or invalid, like readFilters does for bulk filters */
+const readSaved = (raw: unknown): SavedBest => {
+  const r = isRecord(raw) ? raw : {};
+  const i = isRecord(r.inputs) ? r.inputs : {};
+  const base = defaultInputs();
+
+  const styles = Array.isArray(i.styles) ? BEST_STYLES.filter((s) => (i.styles as unknown[]).includes(s)) : [];
+  const potions: BestInputs['potions'] = {};
+  if (isRecord(i.potions)) {
+    for (const g of POTION_GROUPS) {
+      const p = i.potions[g];
+      if (Array.isArray(p)) potions[g] = p.filter((x): x is Potion => typeof x === 'number' && x in PotionMap);
+    }
+  }
+
+  const m = r.monster;
+  const monster = isRecord(m) && isRecord(m.monster) && isNum(m.monster.id) && typeof m.monster.name === 'string'
+    ? m as unknown as BulkMonster
+    : null;
+
+  return {
+    inputs: {
+      skills: mergeTyped(base.skills, i.skills, (_, v) => isNum(v)),
+      unlocks: mergeTyped(base.unlocks, i.unlocks, (k, v) => (k === 'prayerLevel' ? isNum(v) : typeof v === 'boolean')),
+      conditions: mergeTyped(base.conditions, i.conditions, (k, v) => {
+        if (k === 'currentHp') return v === null || isNum(v);
+        return k === 'soulreaperStacks' ? isNum(v) : typeof v === 'boolean';
+      }),
+      potions,
+      styles: styles.length > 0 ? styles : base.styles,
+      topN: typeof i.topN === 'number' && Number.isInteger(i.topN) && i.topN > 0 ? i.topN : base.topN,
+    },
+    monster,
+  };
+};
+
 export class BestStore implements TargetHolder {
   inputs: BestInputs = defaultInputs();
 
   monster: BulkMonster | null = null;
 
   loaded = false;
-
-  // TargetHolder: there is a single target and it can always be set
-  readonly targetScope = 'best';
-
-  readonly canSave = true;
 
   private storage: PresetStorage;
 
@@ -47,7 +95,7 @@ export class BestStore implements TargetHolder {
 
   constructor(storage: PresetStorage = localforage) {
     this.storage = storage;
-    makeAutoObservable<BestStore, 'storage' | 'readFailed'>(this, { storage: false, readFailed: false }, { autoBind: true });
+    makeAutoObservable<BestStore, 'storage'>(this, { storage: false }, { autoBind: true });
   }
 
   async load() {
@@ -61,20 +109,18 @@ export class BestStore implements TargetHolder {
     this.apply(saved);
   }
 
-  private apply(saved: SavedBest | null) {
-    const base = defaultInputs();
-    const s = saved?.inputs;
-    // merge over the defaults so inputs added in a later version still get a value
-    this.inputs = {
-      ...base,
-      ...s,
-      skills: { ...base.skills, ...s?.skills },
-      unlocks: { ...base.unlocks, ...s?.unlocks },
-      conditions: { ...base.conditions, ...s?.conditions },
-      potions: { ...s?.potions },
-    };
-    this.monster = saved?.monster ?? null;
+  private apply(saved: unknown) {
+    const { inputs, monster } = readSaved(saved);
+    this.inputs = inputs;
+    this.monster = monster;
     this.loaded = true;
+  }
+
+  // TargetHolder: there is a single target; it can be set once saved state has been read and is safe to overwrite
+  readonly targetScope = 'best';
+
+  get canSave(): boolean {
+    return this.loaded && !this.readFailed;
   }
 
   get target(): BulkMonster | null {
@@ -82,6 +128,8 @@ export class BestStore implements TargetHolder {
   }
 
   setTarget(m: BulkMonster) {
+    // before load the saved monster hasn't been read yet, and load would discard this one anyway
+    if (!this.canSave) return;
     this.monster = m;
     this.save();
   }
@@ -118,11 +166,14 @@ export class BestStore implements TargetHolder {
   /** Changes whenever anything that affects the result changes; null while there is nothing to run against */
   get runKey(): string | null {
     if (!this.monster) return null;
-    return JSON.stringify({ inputs: toJS(this.inputs), monster: toJS(this.monster.monster) });
+    const { potions, ...rest } = toJS(this.inputs);
+    // fixed order for the potion groups, so the order they were set in doesn't matter
+    const sortedPotions = POTION_GROUPS.map((g) => [g, potions[g] ?? null]);
+    return JSON.stringify({ inputs: { ...rest, potions: sortedPotions }, monster: toJS(this.monster.monster) });
   }
 
   private save() {
-    if (this.readFailed) return;
+    if (!this.canSave) return;
     const data: SavedBest = { inputs: toJS(this.inputs), monster: toJS(this.monster) };
     this.storage.setItem(BEST_STORAGE_KEY, data).catch((e) => {
       console.error('[BestStore] Could not save state', e);

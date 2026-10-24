@@ -5,7 +5,7 @@ import { GlobalState, StoreProvider } from '@/state';
 import MonsterContainer from '@/app/components/monster/MonsterContainer';
 import { useBulkStore } from '@/bulk/state/BulkStore';
 import TargetSync, { TargetHolder } from '@/bulk/state/TargetSync';
-import { fromCalculatorState, newId, readCalculatorState } from '@/bulk/lib/presetIO';
+import { fromCalculatorState, readCalculatorState } from '@/bulk/lib/presetIO';
 import { buttonClass } from '@/bulk/components/Panel';
 
 /**
@@ -30,7 +30,7 @@ const TargetMonster: React.FC<{ holder?: TargetHolder }> = observer(({ holder: g
       return;
     }
     try {
-      holder.setTarget({ id: newId(), monster: fromCalculatorState({ ...state, loadouts: [] }, 'all').monster.monster });
+      holder.setTarget(fromCalculatorState({ ...state, loadouts: [] }, 'all').monster);
     } catch (e) {
       toast.error(`Could not import from the calculator: ${e instanceof Error ? e.message : String(e)}`);
     }
