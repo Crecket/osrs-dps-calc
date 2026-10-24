@@ -88,7 +88,7 @@ describe('defaultSetups', () => {
 
     const bloodMoon = byName('Max macuahuitl blood moon');
     expect([bloodMoon.equipment.head?.name, bloodMoon.equipment.body?.name, bloodMoon.equipment.legs?.name])
-      .toEqual(['Blood moon helm', 'Blood moon chestplate', 'Blood moon tassets']);
+      .toEqual(['Blood Moon helm', 'Blood Moon chestplate', 'Blood Moon tassets']);
 
     expect(byName('Max scythe bellator blood fury').equipment.neck?.id).toBe(24780);
     expect(byName('Max scythe bellator blood fury').equipment.ring?.id).toBe(28316);
