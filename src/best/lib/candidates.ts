@@ -3,6 +3,8 @@ import {
 } from '@/lib/Equipment';
 import { BLOWPIPE_IDS } from '@/lib/constants';
 import { EquipmentCategory } from '@/enums/EquipmentCategory';
+import { MonsterAttribute } from '@/enums/MonsterAttribute';
+import { Monster } from '@/types/Monster';
 import { EquipmentPiece, PlayerEquipment } from '@/types/Player';
 import { CombatStyleStance, PlayerCombatStyle } from '@/types/PlayerCombatStyle';
 import { isBindSpell, spells } from '@/types/Spell';
@@ -116,6 +118,30 @@ const TWINFLAME_SPELL_CANDIDATES: string[] = [...new Set([
   ...spells.filter((s) => s.spellbook === 'standard' && s.element && /( Bolt| Blast| Wave)$/.test(s.name)).map((s) => s.name),
 ])].sort();
 
+/**
+ * Spells only some weapons can cast, with those weapons, as BaseCalc's spell-weapon check lists them. Names compare case-insensitively, as upstream intends (some of its names differ from the data in case).
+ * Upstream checks 'Flames of Zamarok', so it lets any weapon cast Flames of Zamorak; only the Zamorak staves really can.
+ */
+const WEAPON_LOCKED_SPELLS: Record<string, string[]> = {
+  'Iban Blast': ["Iban's staff", "Iban's staff (u)"],
+  'Saradomin Strike': ['Saradomin staff', 'Staff of Light'],
+  'Claws of Guthix': ['Guthix staff', 'Void knight mace', 'Staff of balance'],
+  'Flames of Zamorak': ['Zamorak staff', 'Staff of the dead', 'Toxic staff of the dead', "Thammaron's sceptre (a)", 'Accursed sceptre (a)'],
+  'Magic Dart': ["Slayer's staff", "Slayer's staff (e)", 'Staff of the Dead', 'Toxic staff of the Dead', 'Staff of Light', 'Staff of Balance'],
+};
+
+const canCast = (weapon: EquipmentPiece, spellName: string): boolean => {
+  const weapons = WEAPON_LOCKED_SPELLS[spellName];
+  return !weapons || weapons.some((w) => w.toLowerCase() === weapon.name.toLowerCase());
+};
+
+/** Whether the engine lets `spellName` hit `monster`: demonbane spells need a demon, Crumble Undead an undead. */
+const canTarget = (spellName: string, monster: Monster): boolean => {
+  if (spellName.includes('Demonbane')) return monster.attributes.includes(MonsterAttribute.DEMON);
+  if (spellName === 'Crumble Undead') return monster.attributes.includes(MonsterAttribute.UNDEAD);
+  return true;
+};
+
 // Stances that add no offence: melee Defensive, ranged and powered-staff Longrange, Defensive Autocast
 const NO_OFFENCE: Record<'melee' | 'ranged' | 'magic', ReadonlySet<CombatStyleStance>> = {
   melee: new Set(['Defensive']),
@@ -184,8 +210,9 @@ const requiresAmmo = (weapon: EquipmentPiece) => ammoApplicability(weapon.id, un
  * chinchompa fuses, powered staves, ...) is the same for every weapon of the category. Ranged weapons that take ammo
  * get one job per candidate ammo, blowpipes one per candidate dart, spellcasting weapons one per candidate spell.
  * Sorted by weapon id, then stance order, then ammo/dart id or spell name.
+ * Weapon-locked spells pair only with their weapons; with `monster`, spells that can't hit it (demonbane, Crumble Undead) are left out.
  */
-export const weaponJobs = (pool: EquipmentPiece[], style: BestStyle): WeaponJob[] => {
+export const weaponJobs = (pool: EquipmentPiece[], style: BestStyle, monster?: Monster): WeaponJob[] => {
   const ammo = pool.filter((e) => e.slot === 'ammo');
   const validAmmoCache = new Map<number, EquipmentPiece[]>();
   const validAmmo = (weapon: EquipmentPiece) => {
@@ -245,6 +272,7 @@ export const weaponJobs = (pool: EquipmentPiece[], style: BestStyle): WeaponJob[
       extras = ammoCandidates(validAmmo(weapon)).map((ammoId) => ({ ammoId, spellName: null, dartId: null }));
     } else if (style === 'magic' && !BUILT_IN_MAGIC.has(weapon.category)) {
       extras = (weapon.name === 'Twinflame staff' ? TWINFLAME_SPELL_CANDIDATES : SPELL_CANDIDATES)
+        .filter((spellName) => canCast(weapon, spellName) && (!monster || canTarget(spellName, monster)))
         .map((spellName) => ({ ammoId: null, spellName, dartId: null }));
     }
     return stances.flatMap((combatStyle) => extras.map((extra) => ({

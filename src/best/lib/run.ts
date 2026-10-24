@@ -141,7 +141,7 @@ export const runBestSetup = async (
 
   try {
     const plans: StylePlan[] = inputs.styles.map((style) => ({
-      style, base: basePlayer(inputs, style), jobs: weaponJobs(getPool(), style),
+      style, base: basePlayer(inputs, style), jobs: weaponJobs(getPool(), style, target),
     }));
 
     // progress counts jobs: one per effect test, one per searched job and phase

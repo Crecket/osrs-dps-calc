@@ -7,7 +7,10 @@ import {
   bestPool, paretoFront, slotCandidates, styleScore, weaponJobs,
 } from '@/best/lib/candidates';
 import { BEST_STYLES } from '@/best/types';
-import { findEquipment } from '@/tests/utils/TestUtils';
+import { Monster } from '@/types/Monster';
+import { findEquipment, getTestMonster } from '@/tests/utils/TestUtils';
+
+const WEAPON_LOCKED = ['Iban Blast', 'Saradomin Strike', 'Claws of Guthix', 'Flames of Zamorak', 'Magic Dart'];
 
 const pool = bestPool();
 
@@ -151,12 +154,13 @@ describe('weaponJobs', () => {
     const staffSpells = jobs.filter((j) => j.weaponId === kodai.id).map((j) => j.spellName);
     expect(staffSpells).toEqual(expect.arrayContaining([
       'Wind Surge', 'Water Surge', 'Earth Surge', 'Fire Surge',
-      'Blood Barrage', 'Ice Barrage', 'Shadow Barrage', 'Smoke Barrage',
-      'Saradomin Strike', 'Claws of Guthix', 'Flames of Zamorak', 'Iban Blast', 'Magic Dart', 'Crumble Undead',
+      'Blood Barrage', 'Ice Barrage', 'Shadow Barrage', 'Smoke Barrage', 'Crumble Undead',
       'Inferior Demonbane', 'Superior Demonbane', 'Dark Demonbane',
       'Ghostly Grasp', 'Skeletal Grasp', 'Undead Grasp',
     ]));
     ['Fire Wave', 'Fire Bolt', 'Ice Blitz', 'Bind', 'Entangle', 'Confuse', 'Tele Block'].forEach((s) => expect(staffSpells).not.toContain(s));
+    // spells that need a particular weapon
+    WEAPON_LOCKED.forEach((s) => expect(staffSpells).not.toContain(s));
 
     // the Twinflame staff adds a hitsplat to Bolt, Blast and Wave spells
     const twinflame = findEquipment('Twinflame staff');
@@ -164,12 +168,47 @@ describe('weaponJobs', () => {
     expect(twinSpells).toEqual(expect.arrayContaining([...staffSpells, 'Fire Wave', 'Fire Blast', 'Fire Bolt', 'Wind Wave', 'Water Bolt', 'Earth Blast']));
     expect(twinSpells).not.toContain('Fire Strike');
 
-    // every other spellcasting weapon gets the same list; plain staves like the Staff of fire lose to better plain staves
+    // every other spellcasting weapon gets the same list, plus the weapon-locked spells it may cast; plain staves like the Staff of fire lose to better plain staves
     const withSpells = jobs.filter((j) => j.spellName !== null && j.weaponId !== twinflame.id);
     new Set(withSpells.map((j) => j.weaponId)).forEach((id) => {
-      expect(new Set(withSpells.filter((j) => j.weaponId === id).map((j) => j.spellName))).toEqual(new Set(staffSpells));
+      const own = withSpells.filter((j) => j.weaponId === id).map((j) => j.spellName!);
+      expect(new Set(own.filter((s) => !WEAPON_LOCKED.includes(s)))).toEqual(new Set(staffSpells));
     });
     expect(jobs.some((j) => j.weaponId === findEquipment('Staff of fire').id)).toBe(false);
+  });
+
+  test('magic: weapon-locked spells only with the weapons that may cast them', () => {
+    const jobs = weaponJobs(pool, 'magic');
+    const spellsOf = (weapon: string, version = '') => {
+      const { id } = findEquipment(weapon, version);
+      return jobs.filter((j) => j.weaponId === id).map((j) => j.spellName);
+    };
+    expect(spellsOf("Iban's staff", 'Regular')).toContain('Iban Blast');
+    expect(spellsOf('Kodai wand')).not.toContain('Iban Blast');
+    expect(spellsOf('Saradomin staff')).toContain('Saradomin Strike');
+    expect(spellsOf('Guthix staff')).toContain('Claws of Guthix');
+    expect(spellsOf("Slayer's staff (e)")).toContain('Magic Dart');
+    // upstream's typo lets any staff cast Flames of Zamorak; only the Zamorak staves really can
+    expect(spellsOf('Zamorak staff')).toContain('Flames of Zamorak');
+    expect(spellsOf('Saradomin staff')).not.toContain('Flames of Zamorak');
+    // each locked spell is cast by at least one weapon
+    WEAPON_LOCKED.forEach((s) => expect(jobs.some((j) => j.spellName === s)).toBe(true));
+  });
+
+  test('magic: demonbane and Crumble Undead only against matching monsters', () => {
+    const vorkath = getTestMonster('Vorkath', 'Post-quest');
+    const demon = getTestMonster('Abyssal demon', 'Standard');
+    const names = (m?: Monster) => new Set(weaponJobs(pool, 'magic', m).map((j) => j.spellName));
+    // Vorkath is undead and a dragon, not a demon
+    expect(names(vorkath).has('Crumble Undead')).toBe(true);
+    expect(names(vorkath).has('Dark Demonbane')).toBe(false);
+    expect(names(demon).has('Crumble Undead')).toBe(false);
+    expect(names(demon).has('Dark Demonbane')).toBe(true);
+    // grasp spells can be cast on anything
+    expect(names(demon).has('Ghostly Grasp')).toBe(true);
+    // without a monster every spell stays
+    expect(names().has('Crumble Undead')).toBe(true);
+    expect(names().has('Dark Demonbane')).toBe(true);
   });
 
   test('no stance without offence', () => {
