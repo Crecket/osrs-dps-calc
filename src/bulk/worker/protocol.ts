@@ -1,23 +1,20 @@
 import { computeRow } from '@/bulk/lib/compute';
 import { BulkMonster, BulkRow, BulkSetup } from '@/bulk/types';
+import { TaskChunk, TaskResult } from '@/bulk/worker/TaskPool';
 
-export interface BulkChunkRequest {
-  runId: number;
-  chunkId: number;
+export interface BulkPayload {
   setups: BulkSetup[];
   monsters: BulkMonster[];
   // [setup index, monster index] into this chunk's setups and monsters
   jobs: [number, number][];
 }
 
-export interface BulkChunkResponse {
-  runId: number;
-  chunkId: number;
-  rows: BulkRow[];
-}
+export type BulkChunkRequest = TaskChunk<BulkPayload>;
 
-export const handleChunk = (req: BulkChunkRequest): BulkChunkResponse => ({
-  runId: req.runId,
-  chunkId: req.chunkId,
-  rows: req.jobs.map(([s, m]) => computeRow(req.setups[s], req.monsters[m])),
+export type BulkChunkResponse = TaskResult<BulkRow>;
+
+export const handleChunk = ({ runId, chunkId, payload }: BulkChunkRequest): BulkChunkResponse => ({
+  runId,
+  chunkId,
+  results: payload.jobs.map(([s, m]) => computeRow(payload.setups[s], payload.monsters[m])),
 });
