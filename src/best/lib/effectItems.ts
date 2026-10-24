@@ -446,6 +446,13 @@ export const WEAPON_LINKED: readonly LinkedEffect[] = [
   { items: ['Tome of Fire', 'Tome of Water', 'Tome of Earth'], spells: /^(Fire|Water|Earth) / },
   // elemental amulets boost spells of their element
   { items: ['Elemental amulet', 'Amulet of air', 'Amulet of water', 'Amulet of earth', 'Amulet of fire'], spells: /^(Wind|Water|Earth|Fire) / },
+  // Efaritay's aid boosts silver weapons against vampyres (BaseCalc's isWearingSilverWeapon; its silver bolts entries carry '#version' and never match a name, so ammo is left out)
+  {
+    items: ["Efaritay's aid"],
+    weapons: /^(Blessed axe|Ivandis flail|Blisterwood flail|Hallowed flail|Silver sickle|Silver sickle \(b\)|Emerald sickle|Emerald sickle \(b\)|Enchanted emerald sickle \(b\)|Ruby sickle \(b\)|Enchanted ruby sickle \(b\)|Blisterwood sickle|Silverlight|Darklight|Arclight|Rod of Ivandis|Wolfbane|Blisterwood stake)$/,
+  },
+  // +3 max hit on spells named Bolt
+  { items: ['Chaos gauntlets'], spells: /bolt/i },
   // god capes boost their god spell under Charge
   {
     items: [

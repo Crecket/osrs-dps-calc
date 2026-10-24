@@ -180,7 +180,7 @@ export const activeEffects = (base: Player, monster: Monster, job: WeaponJob, ba
 };
 
 /** Pool items of the WEAPON_LINKED entries that match the job's weapon, spell or ammo, per slot. */
-const linkedEffects = (pool: EquipmentPiece[], job: WeaponJob): SlotLists => {
+export const linkedEffects = (pool: EquipmentPiece[], job: WeaponJob): SlotLists => {
   const weapon = itemById(job.weaponId).name;
   const byName = poolByName(pool, job.style);
   const items = WEAPON_LINKED

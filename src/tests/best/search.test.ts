@@ -7,7 +7,7 @@ import {
 } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
 import {
-  activeEffects, activeSets, baselineGear, buildPlayer, effectCandidates, effectMatters, evalDps, Gear, plainTwin,
+  activeEffects, activeSets, baselineGear, buildPlayer, effectCandidates, effectMatters, evalDps, Gear, linkedEffects, plainTwin,
   searchWeapon, styleEffects,
 } from '@/best/lib/search';
 import {
@@ -209,6 +209,29 @@ describe('searchWeapon', () => {
       mode: 'descent', topN: 1, cap: 20000, effects,
     });
     expect(best.dps).toBeGreaterThan(noBerserker.dps);
+  });
+
+  // the linked item is re-tested for the matching job, and is active there
+  const linkedAndActive = (style: BestStyle, target: Monster, job: WeaponJob, item: EquipmentPiece) => {
+    const base = basePlayer(inputs, style);
+    const linked = linkedEffects(pool, job);
+    const active = activeEffects(base, target, job, baselineGear(pool, job), linked);
+    return [ids(linked[item.slot as GearSlot]).includes(item.id), ids(active[item.slot as GearSlot]).includes(item.id)];
+  };
+
+  test("Efaritay's aid is linked to silver weapons", () => {
+    const juvinate = monster('Vampyre Juvinate', 'Level 54 (Darkmeyer)');
+    const efaritay = poolItem("Efaritay's aid");
+    const flail = jobFor('crush', 'Blisterwood flail', '', 'Pound');
+    expect(linkedAndActive('crush', juvinate, flail, efaritay)).toEqual([true, true]);
+    expect(ids(linkedEffects(pool, jobFor('crush', 'Dragon mace', '', 'Pound')).ring)).not.toContain(efaritay.id);
+  });
+
+  test('Chaos gauntlets are linked to Bolt spells', () => {
+    const gauntlets = poolItem('Chaos gauntlets');
+    const twinflame = (spell: string) => jobFor('magic', 'Twinflame staff', '', 'Spell', (j) => j.spellName === spell);
+    expect(linkedAndActive('magic', vorkath, twinflame('Fire Bolt'), gauntlets)).toEqual([true, true]);
+    expect(ids(linkedEffects(pool, twinflame('Fire Surge')).hands)).not.toContain(gauntlets.id);
   });
 
   test('topN 0 returns nothing', () => {
