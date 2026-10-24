@@ -5,6 +5,7 @@ import { basePlayer } from '@/best/lib/basePlayer';
 import {
   BestRunDeps, JOBS_PER_WEAPON, referenceGroups, runBestSetup, unionEffects,
 } from '@/best/lib/run';
+import { searchWeapon } from '@/best/lib/search';
 import { BestPayload, BestResult, handleBestChunk } from '@/best/worker/protocol';
 import { computeRow, prepareMonster } from '@/bulk/lib/compute';
 import { BulkMonster } from '@/bulk/types';
@@ -231,6 +232,23 @@ describe('runBestSetup', () => {
     expect(o.rows[0].dps).toBeGreaterThan(0);
     // Efaritay's aid boosts vampyrebane weapons
     expect(o.setups[0].player.equipment.ring?.name).toBe("Efaritay's aid");
+  }, 60000);
+
+  test('a demon on slash: a demonbane sword wins when it beats the strong non-demonbane weapons', async () => {
+    const demon = prepareMonster(getTestMonster('Abyssal demon', 'Standard'));
+    const { deps } = fakeDeps();
+    const [o] = await runBestSetup(inputs(['slash']), { id: 'demon', monster: demon }, deps, () => {}, opts);
+
+    // the best each strong non-demonbane slash weapon can do, over all its jobs
+    const base = basePlayer(inputs(['slash']), 'slash');
+    const others = ['Scythe of Vitur', 'Blade of Saeldor (c)', 'Soulreaper axe', 'Abyssal tentacle', 'Inquisitor\'s mace']
+      .map((name) => availableEquipment.filter((e) => e.name === name).map((e) => e.id))
+      .flatMap((ids) => weaponJobs(pool, 'slash').filter((j) => ids.includes(j.weaponId)))
+      .flatMap((job) => searchWeapon(base, demon, job, pool, { mode: 'descent', topN: 1, cap: 500 }))
+      .map((r) => r.dps);
+    expect(others.length).toBeGreaterThan(0);
+    expect(o.setups[0].player.equipment.weapon!.name).toMatch(/^(Arclight|Emberlight)$/);
+    expect(o.rows[0].dps).toBeGreaterThan(Math.max(...others));
   }, 60000);
 
   test('a new run cancels the previous one', async () => {
