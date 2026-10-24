@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
-import { AmmoApplicability, ammoApplicability } from '@/lib/Equipment';
+import { AmmoApplicability, ammoApplicability, availableEquipment } from '@/lib/Equipment';
 import { BLOWPIPE_IDS } from '@/lib/constants';
 import { EquipmentPiece } from '@/types/Player';
 import { isEffectItem } from '@/best/lib/effectItems';
@@ -155,6 +155,36 @@ describe('weaponJobs', () => {
     expect(jobs.some((j) => j.weaponId === findEquipment('Bronze crossbow').id)).toBe(true);
     // named effect weapons are always kept
     expect(jobs.some((j) => j.weaponId === findEquipment('Dragon crossbow').id)).toBe(true);
+  });
+
+  test('plain ammo is pruned per kind, named ammo is kept', () => {
+    const jobs = weaponJobs(pool, 'ranged');
+    const ammoNames = (weapon: string) => new Set(jobs.filter((j) => j.weaponId === findEquipment(weapon).id)
+      .map((j) => pool.find((e) => e.id === j.ammoId)?.name));
+    const tbow = ammoNames('Twisted bow');
+    expect(tbow.has('Dragon arrow')).toBe(true);
+    expect(tbow.has('Rune arrow')).toBe(false);
+    const acb = ammoNames('Armadyl crossbow');
+    expect(acb.has('Ruby dragon bolts (e)')).toBe(true);
+    expect(acb.has('Diamond dragon bolts (e)')).toBe(true);
+    expect(acb.has('Runite bolts')).toBe(false);
+  });
+
+  test('magic jobs only for weapons that autocast, have built-in magic or magic strength', () => {
+    const ids = new Set(weaponJobs(pool, 'magic').map((j) => j.weaponId));
+    ['Dragon dagger', 'Keris', 'Abyssal dagger'].forEach((name) => {
+      expect([name, availableEquipment.some((e) => e.name === name && ids.has(e.id))]).toEqual([name, false]);
+    });
+    // the Rod of Ivandis is a Staff (it can autocast); its ten charge versions collapse to one
+    expect(availableEquipment.filter((e) => e.name === 'Rod of Ivandis' && ids.has(e.id))).toHaveLength(1);
+    expect(ids.has(findEquipment('Kodai wand').id)).toBe(true);
+    expect(ids.has(findEquipment("Tumeken's shadow", 'Charged').id)).toBe(true);
+  });
+
+  test('variants with equal stats collapse to the lowest id', () => {
+    const ids = new Set(weaponJobs(pool, 'stab').map((j) => j.weaponId));
+    const daggers = availableEquipment.filter((e) => e.name === 'Dragon dagger' && ids.has(e.id));
+    expect(daggers.map((e) => e.id)).toEqual([Math.min(...pool.filter((e) => e.name === 'Dragon dagger').map((e) => e.id))]);
   });
 
   test('jobs carry no shield and are deterministic', () => {

@@ -338,12 +338,18 @@ export const EFFECT_NAME_PATTERNS: readonly RegExp[] = [
   /^Revenant/,
   /^(Blood|Blue|Eclipse) Moon /,
   /^Crystal (helm|body|legs|bow|halberd)/,
-  // ammo is only valid with some weapons (ammoApplicability), and enchanted bolts have their own effects
-  /\barrows?\b/i,
-  /\bbolts?\b/i,
   / brutal/,
   /spear/i,
   /halberd/i,
+];
+
+/**
+ * Names that mark a shared type, like a category: ammo is only valid with some weapons (ammoApplicability). Enchanted
+ * bolts and other ammo with their own effects are listed by name.
+ */
+const SHARED_TYPE_PATTERNS: readonly RegExp[] = [
+  /\barrows?\b/i,
+  /\bbolts?\b/i,
 ];
 
 /** Weapon categories the engine branches on regardless of the item name. */
@@ -356,12 +362,14 @@ const EFFECT_CATEGORIES: ReadonlySet<EquipmentCategory> = new Set([
   EquipmentCategory.SALAMANDER,
 ]);
 
-/** True when the engine singles the item (or its canonical form) out by name; category effects don't count. */
+/** True when the engine singles the item (or its canonical form) out by name; category and shared-type effects don't count. */
 export const hasNamedEffect = (piece: EquipmentPiece): boolean => {
   const { name } = getCanonicalItem(piece);
   return EFFECT_ITEM_NAMES.has(name) || EFFECT_NAME_PATTERNS.some((p) => p.test(name));
 };
 
 /** True when the item (or its canonical form) has an effect the optimizer cannot read off its bonuses. */
-export const isEffectItem = (piece: EquipmentPiece): boolean => hasNamedEffect(piece)
-  || EFFECT_CATEGORIES.has(getCanonicalItem(piece).category);
+export const isEffectItem = (piece: EquipmentPiece): boolean => {
+  const { name, category } = getCanonicalItem(piece);
+  return hasNamedEffect(piece) || EFFECT_CATEGORIES.has(category) || SHARED_TYPE_PATTERNS.some((p) => p.test(name));
+};

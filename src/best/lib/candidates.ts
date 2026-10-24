@@ -2,7 +2,7 @@ import {
   AmmoApplicability, ammoApplicability, availableEquipment, getCanonicalItemId,
 } from '@/lib/Equipment';
 import { BLOWPIPE_IDS } from '@/lib/constants';
-import { EquipmentCategory, MAGIC_WEAPONS } from '@/enums/EquipmentCategory';
+import { EquipmentCategory } from '@/enums/EquipmentCategory';
 import { EquipmentPiece, PlayerEquipment } from '@/types/Player';
 import { CombatStyleStance, PlayerCombatStyle } from '@/types/PlayerCombatStyle';
 import { isBindSpell, spells } from '@/types/Spell';
@@ -106,8 +106,8 @@ const stancesFor = (weapon: EquipmentPiece, style: BestStyle): PlayerCombatStyle
     const real = all.filter((s) => s.stance !== 'Manual Cast');
     if (real.length > 0) {
       styles = real;
-    } else if (MAGIC_WEAPONS.includes(weapon.category) || weapon.offensive.magic > 0 || weapon.bonuses.magic_str > 0) {
-      // every weapon can manually cast; only weapons that help magic are worth a job
+    } else if (weapon.bonuses.magic_str > 0) {
+      // every weapon can manually cast; only those with magic strength are worth a job
       styles = all;
     } else {
       styles = [];
@@ -117,10 +117,41 @@ const stancesFor = (weapon: EquipmentPiece, style: BestStyle): PlayerCombatStyle
   return styles.filter((s, i) => styles.findIndex((o) => o.stance === s.stance) === i);
 };
 
+// Variant suffixes the engine never checks names with: poison, karambwan poison, charges
+const VARIANT_SUFFIX = /\s*\((p\+{0,2}|kp|\d+)\)$/;
+
+/**
+ * Poison and charge variants of one weapon calculate identically when their stats match; the engine only checks the
+ * 'Charged' version, so that stays apart.
+ */
+const variantKey = (weapon: EquipmentPiece) => JSON.stringify([
+  weapon.name.replace(VARIANT_SUFFIX, ''),
+  weapon.version === 'Charged',
+  weapon.offensive,
+  weapon.defensive,
+  weapon.bonuses,
+  weapon.speed,
+]);
+
+const ammoKind = (ammo: EquipmentPiece) => {
+  if (/\barrows?\b/i.test(ammo.name)) return 'arrow';
+  if (/\bbolts?\b/i.test(ammo.name)) return 'bolt';
+  return 'other';
+};
+
+/** Ammo the engine names is always kept; the rest is dominance-pruned among ammo of the same kind. */
+const ammoCandidates = (valid: EquipmentPiece[]): number[] => {
+  const plain = valid.filter((a) => !hasNamedEffect(a));
+  return [
+    ...[...new Set(plain.map(ammoKind))].flatMap((kind) => paretoFront(plain.filter((a) => ammoKind(a) === kind), 'ranged')),
+    ...valid.filter(hasNamedEffect),
+  ].map((a) => a.id).sort((a, b) => a - b);
+};
+
 const requiresAmmo = (weapon: EquipmentPiece) => ammoApplicability(weapon.id, undefined) !== AmmoApplicability.ALLOWED;
 
 /**
- * Weapon setups for `style`. Weapons the engine names are all kept; the rest are dominance-pruned on (attack, strength,
+ * Weapon setups for `style`. Interchangeable variants (poison, charges) collapse to one. Weapons the engine names are all kept; the rest are dominance-pruned on (attack, strength,
  * -speed) among weapons that are otherwise interchangeable: same handedness, category, stances, ammo and kind of magic.
  * A category effect (bolt procs, chinchompa fuses, powered staves, ...) is the same for every weapon of the category.
  * Ranged weapons that take ammo get one job per candidate ammo, blowpipes one per candidate dart, spellcasting
@@ -130,12 +161,13 @@ export const weaponJobs = (pool: EquipmentPiece[], style: BestStyle): WeaponJob[
   const ammo = pool.filter((e) => e.slot === 'ammo');
   const validAmmo = (weapon: EquipmentPiece) => ammo.filter((a) => ammoApplicability(weapon.id, a.id) === AmmoApplicability.INCLUDED);
 
-  const weapons = pool.filter((e) => e.slot === 'weapon')
+  const allWeapons = pool.filter((e) => e.slot === 'weapon')
     .map((weapon) => ({ weapon, stances: stancesFor(weapon, style) }))
-    .filter((w) => w.stances.length > 0);
+    .filter((w) => w.stances.length > 0)
+    .sort((a, b) => a.weapon.id - b.weapon.id);
 
   // weapons only compete with weapons they could replace one-for-one
-  const groupKey = ({ weapon, stances }: typeof weapons[number]) => JSON.stringify([
+  const groupKey = ({ weapon, stances }: typeof allWeapons[number]) => JSON.stringify([
     weapon.isTwoHanded,
     weapon.category,
     stances.map((s) => s.stance),
@@ -143,6 +175,14 @@ export const weaponJobs = (pool: EquipmentPiece[], style: BestStyle): WeaponJob[
     BLOWPIPE_IDS.includes(weapon.id),
     BUILT_IN_MAGIC.has(weapon.category),
   ]);
+  // of interchangeable variants only the lowest id stays
+  const seenVariants = new Set<string>();
+  const weapons = allWeapons.filter((w) => {
+    const key = groupKey(w) + variantKey(w.weapon);
+    if (seenVariants.has(key)) return false;
+    seenVariants.add(key);
+    return true;
+  });
   const groups = new Map<string, EquipmentPiece[]>();
   weapons.filter((w) => !hasNamedEffect(w.weapon)).forEach((w) => {
     const key = groupKey(w);
@@ -151,8 +191,7 @@ export const weaponJobs = (pool: EquipmentPiece[], style: BestStyle): WeaponJob[
   const keptPlain = new Set([...groups.values()]
     .flatMap((group) => paretoBy(group, (e) => [...styleScore(e, style), -e.speed]))
     .map((e) => e.id));
-  const kept = weapons.filter((w) => hasNamedEffect(w.weapon) || keptPlain.has(w.weapon.id))
-    .sort((a, b) => a.weapon.id - b.weapon.id);
+  const kept = weapons.filter((w) => hasNamedEffect(w.weapon) || keptPlain.has(w.weapon.id));
 
   const darts = pool.filter((e) => e.slot === 'weapon' && e.category === EquipmentCategory.THROWN && e.name.endsWith(' dart'));
   // a blowpipe takes only the dart's ranged strength
@@ -167,10 +206,7 @@ export const weaponJobs = (pool: EquipmentPiece[], style: BestStyle): WeaponJob[
     if (style === 'ranged' && BLOWPIPE_IDS.includes(weapon.id)) {
       extras = dartIds.map((dartId) => ({ ammoId: null, spellName: null, dartId }));
     } else if (style === 'ranged' && requiresAmmo(weapon)) {
-      const valid = validAmmo(weapon);
-      extras = [...paretoFront(valid.filter((a) => !isEffectItem(a)), 'ranged'), ...valid.filter(isEffectItem)]
-        .map((a) => a.id).sort((a, b) => a - b)
-        .map((ammoId) => ({ ammoId, spellName: null, dartId: null }));
+      extras = ammoCandidates(validAmmo(weapon)).map((ammoId) => ({ ammoId, spellName: null, dartId: null }));
     } else if (style === 'magic' && !BUILT_IN_MAGIC.has(weapon.category)) {
       extras = SPELL_CANDIDATES.map((spellName) => ({ ammoId: null, spellName, dartId: null }));
     }
