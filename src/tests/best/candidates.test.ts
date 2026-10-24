@@ -44,6 +44,10 @@ describe('bestPool', () => {
     [22227, 22228, 22229, 22230, 30694, 30696].forEach((id) => expect(ids.has(id)).toBe(false));
     const gauntlet = /^(Corrupted|Crystal) (halberd|bow|staff|helm|body|legs) \((basic|attuned|perfected)\)$/;
     expect(pool.filter((e) => gauntlet.test(e.name))).toEqual([]);
+    // Crystal dagger (perfected), the sceptres and the Gauntlet's tools
+    [30340, 23820, 23861, 23821, 23822, 23823, 23862, 23863, 23864].forEach((id) => expect(ids.has(id)).toBe(false));
+    // Vesta's blighted longsword only works in PvP areas
+    expect(ids.has(findEquipment("Vesta's blighted longsword", 'Active').id)).toBe(false);
     // the Prifddinas crystal armour and bow are real items
     expect(ids.has(findEquipment('Crystal helm', 'Active').id)).toBe(true);
     expect(ids.has(findEquipment('Bow of Faerdhinen', 'Charged').id)).toBe(true);

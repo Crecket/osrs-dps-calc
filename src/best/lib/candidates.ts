@@ -31,6 +31,10 @@ const EXCLUDED_ITEM_IDS = new Set([
   22227, 22228, 22229, 22230,
   // minigame-only ammo: Castle wars arrow and bolts
   30694, 30696,
+  // minigame-only gear: The Gauntlet's Crystal dagger (perfected), sceptres and tools (names checked against equipment.json)
+  30340, 23820, 23861, 23821, 23822, 23823, 23862, 23863, 23864,
+  // Vesta's blighted longsword (Active): bought with LMS points, works only in PvP areas (Bounty Hunter Wilderness, minigames)
+  24617,
 ]);
 // minigame-only gear: The Gauntlet's tiered weapons and armour, which can't leave it
 const GAUNTLET_ONLY = /^(Corrupted|Crystal) (halberd|bow|staff|helm|body|legs) \((basic|attuned|perfected)\)$/;
