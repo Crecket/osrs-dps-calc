@@ -47,6 +47,7 @@ const { BEST_STORAGE_KEY } = require('@/best/state/BestStore') as typeof import(
 const { STORAGE_KEY } = require('@/bulk/state/BulkStore') as typeof import('@/bulk/state/BulkStore');
 const { monsterFromSearch } = require('@/bulk/lib/presetIO') as typeof import('@/bulk/lib/presetIO');
 const { getMonsters } = require('@/lib/Monsters') as typeof import('@/lib/Monsters');
+const { availableEquipment } = require('@/lib/Equipment') as typeof import('@/lib/Equipment');
 const { generateEmptyPlayer } = require('@/state') as typeof import('@/state');
 const { TaskPool } = require('@/bulk/worker/TaskPool') as typeof import('@/bulk/worker/TaskPool');
 const { BulkPool } = require('@/bulk/worker/BulkPool') as typeof import('@/bulk/worker/BulkPool');
@@ -302,6 +303,34 @@ describe('BestPage', () => {
     expect(chip('Ranged').disabled).toBe(true);
     await act(async () => find(container).click());
     expect(mockRun.mock.calls[1][0].styles).toEqual(['ranged']);
+    await unmount();
+  });
+
+  test('right-clicking an item in a result excludes it without running; the chip removes it again', async () => {
+    const torture = availableEquipment.find((e) => e.name === 'Amulet of torture')!;
+    const withNeck = outcome('Whip');
+    withNeck.setups[0].player.equipment.neck = torture;
+    mockRun.mockResolvedValue([withNeck]);
+    const { container, unmount } = await mount();
+    await act(async () => find(container).click());
+    await wait(10);
+
+    const cell = container.querySelector(`img[alt="${torture.name}"]`)!.closest('div')!;
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    await act(async () => { cell.dispatchEvent(event); });
+    await wait(10);
+    expect(event.defaultPrevented).toBe(true);
+    expect((mockData.get(BEST_STORAGE_KEY) as { inputs: BestInputs }).inputs.excludedItemIds).toEqual([torture.id]);
+    expect(mockToast.info).toHaveBeenCalledWith(`Excluded ${torture.name} — click Find best setup to update`);
+    expect(mockRun).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Inputs changed — results are out of date');
+
+    // the Excluded items chip, and its remove button
+    const remove = container.querySelector<HTMLButtonElement>(`button[aria-label="Include ${torture.name} again"]`)!;
+    await act(async () => remove.click());
+    await wait(10);
+    expect((mockData.get(BEST_STORAGE_KEY) as { inputs: BestInputs }).inputs.excludedItemIds).toEqual([]);
+    expect(mockRun).toHaveBeenCalledTimes(1);
     await unmount();
   });
 

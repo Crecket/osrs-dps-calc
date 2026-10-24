@@ -1,4 +1,6 @@
-import React, { useEffect, useId, useState } from 'react';
+import React, {
+  useEffect, useId, useMemo, useState,
+} from 'react';
 import { observer } from 'mobx-react-lite';
 import { StaticImageData } from 'next/image';
 import attackIcon from '@/public/img/bonuses/attack.png';
@@ -10,8 +12,13 @@ import hitpointsIcon from '@/public/img/bonuses/hitpoints.png';
 import prayerIcon from '@/public/img/tabs/prayer.png';
 import miningIcon from '@/public/img/bonuses/mining.png';
 import herbloreIcon from '@/public/img/bonuses/herblore.png';
-import { PotionMap } from '@/utils';
-import { PlayerSkills } from '@/types/Player';
+import { IconX } from '@tabler/icons-react';
+import { getCdnImage, PotionMap } from '@/utils';
+import { GlobalState, StoreProvider } from '@/state';
+import { availableEquipment } from '@/lib/Equipment';
+import EquipmentSelect from '@/app/components/player/equipment/EquipmentSelect';
+import { bestPool } from '@/best/lib/candidates';
+import { EquipmentPiece, PlayerSkills } from '@/types/Player';
 import {
   BestStyle, CombatConditions,
 } from '@/best/types';
@@ -179,6 +186,54 @@ const POTION_GROUPS: { group: 'melee' | 'ranged' | 'magic'; label: string; style
   { group: 'magic', label: 'Magic', style: 'magic' },
 ];
 
+let poolIds: Set<number> | null = null;
+// only items the search could pick are worth excluding
+const inPool = (e: EquipmentPiece) => {
+  if (!poolIds) poolIds = new Set(bestPool().map((p) => p.id));
+  return poolIds.has(e.id);
+};
+
+/** Items the search leaves out: chips with a remove button, Clear all, and a search box to exclude more. */
+const ExcludedItems: React.FC = observer(() => {
+  const store = useBestStore();
+  const excluded = store.inputs.excludedItemIds ?? [];
+  // upstream's item search reads the monster from a calculator store, so give it a scratch one
+  const [scratch] = useState(() => new GlobalState());
+  const filter = useMemo(() => inPool, []);
+  const items = excluded.map((id) => availableEquipment.find((e) => e.id === id)).filter((e): e is EquipmentPiece => e !== undefined);
+
+  return (
+    <Section title="Excluded items">
+      {items.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {items.map((item) => (
+            <span key={item.id} className="flex items-center gap-1 pl-1 pr-0.5 py-0.5 rounded border border-body-400 dark:border-dark-200 bg-body-100 dark:bg-dark-400 text-xs">
+              {item.image && <img className="w-5 h-5 object-contain" src={getCdnImage(`equipment/${item.image}`)} alt="" />}
+              {item.name}
+              <button
+                type="button"
+                className="px-1 text-gray-500 dark:text-gray-300 hover:text-orange-500"
+                aria-label={`Include ${item.name} again`}
+                onClick={() => store.includeItem(item.id)}
+              >
+                <IconX size={12} />
+              </button>
+            </span>
+          ))}
+          <button type="button" className="text-xs underline text-gray-500 dark:text-gray-300 hover:text-orange-300" onClick={store.clearExcluded}>
+            Clear all
+          </button>
+        </div>
+      ) : (
+        <p className="text-xs text-gray-500 dark:text-gray-300">None. Right-click an item in a result to exclude it, or search below.</p>
+      )}
+      <StoreProvider store={scratch}>
+        <EquipmentSelect customAvailableEquipmentFilter={filter} onSelectedItemChange={(item) => item && store.excludeItem(item.equipment.id)} />
+      </StoreProvider>
+    </Section>
+  );
+});
+
 /**
  * Everything the search takes besides the monster and the styles: levels, prayers, conditions and potions.
  */
@@ -260,6 +315,10 @@ const InputsPanel: React.FC = observer(() => {
               </div>
             ))}
           </Section>
+        </div>
+
+        <div className="sm:col-span-2">
+          <ExcludedItems />
         </div>
       </div>
     </Panel>

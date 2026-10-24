@@ -9,6 +9,7 @@ import {
   firstClickDir, Mode, NORMAL_COLUMNS, SortKey, SortState, SPEC_COLUMNS,
 } from '@/bulk/lib/table';
 import { BulkFilters, BulkRow, BulkSetup } from '@/bulk/types';
+import { EquipmentPiece, PlayerEquipment } from '@/types/Player';
 import { overriddenSlots } from '@/bulk/lib/filters';
 import StyleLabel from '@/bulk/components/StyleLabel';
 
@@ -44,11 +45,13 @@ interface BulkTableProps {
   stale?: Set<string>;
   // an extra last cell per row, e.g. a button acting on that setup
   rowAction?: (setupId: string) => React.ReactNode;
+  /** A right-click on a worn item in a row's gear cells */
+  onItemContextMenu?: (slot: keyof PlayerEquipment, item: EquipmentPiece) => void;
 }
 
 // observer, so renaming a setup re-renders rows without the parent having to
 const BulkTable: React.FC<BulkTableProps> = observer(({
-  rows, setups, mode, sort, onSort, hasRun, overrides = {}, filtered = new Map(), stale = new Set(), rowAction,
+  rows, setups, mode, sort, onSort, hasRun, overrides = {}, filtered = new Map(), stale = new Set(), rowAction, onItemContextMenu,
 }) => {
   // not memoized: preset arrays are mutated in place, so their identity can't be used as a dependency
   const setupsById = new Map(setups.map((s) => [s.id, s]));
@@ -116,7 +119,7 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
                 <StyleLabel player={setup.player} className="ml-1 align-middle" />
                 {reason && <span className="ml-2 text-xs italic">{reason}</span>}
               </td>
-              <td className="px-2 py-1" aria-label="Gear"><GearCells player={setup.player} marked={overriddenSlots(setup.player, overrides)} /></td>
+              <td className="px-2 py-1" aria-label="Gear"><GearCells player={setup.player} marked={overriddenSlots(setup.player, overrides)} onItemContextMenu={onItemContextMenu} /></td>
               <td className="px-2 py-1 whitespace-nowrap" aria-label="Prayers and potions"><BuffIcons player={setup.player} /></td>
               {r.error ? (
                 <td colSpan={columns.length} className="px-2 py-1 text-right text-red-400">

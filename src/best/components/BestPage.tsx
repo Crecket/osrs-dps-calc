@@ -22,6 +22,7 @@ import { newId } from '@/bulk/lib/presetIO';
 import { defaultSort, selectRows, SortState } from '@/bulk/lib/table';
 import { monsterLabel } from '@/bulk/lib/format';
 import { BulkSetup } from '@/bulk/types';
+import { EquipmentPiece } from '@/types/Player';
 import TargetMonster from '@/bulk/components/TargetMonster';
 import BulkTable from '@/bulk/components/BulkTable';
 import Panel, { buttonClass } from '@/bulk/components/Panel';
@@ -61,8 +62,13 @@ interface Pools {
   rows: BulkPool;
 }
 
-const StyleResults: React.FC<{ outcome: StyleOutcome; sort: SortState; onSort: (s: SortState) => void }> = ({
-  outcome, sort, onSort,
+const StyleResults: React.FC<{
+  outcome: StyleOutcome;
+  sort: SortState;
+  onSort: (s: SortState) => void;
+  onExclude: (item: EquipmentPiece) => void;
+}> = ({
+  outcome, sort, onSort, onExclude,
 }) => {
   const setupsById = new Map(outcome.setups.map((s) => [s.id, s]));
   return (
@@ -93,6 +99,7 @@ const StyleResults: React.FC<{ outcome: StyleOutcome; sort: SortState; onSort: (
             sort={sort}
             onSort={onSort}
             hasRun
+            onItemContextMenu={(_, item) => onExclude(item)}
             rowAction={(id) => {
               const setup = setupsById.get(id);
               return setup && (
@@ -187,6 +194,12 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
     setStopped(true);
   };
 
+  // a right-click on an item in a result leaves it out of the next search; nothing runs until the button is clicked
+  const exclude = (item: EquipmentPiece) => {
+    store.excludeItem(item.id);
+    toast.info(`Excluded ${item.name} — click Find best setup to update`);
+  };
+
   const { monster } = store;
   const pct = progress && progress.total > 0 ? (progress.done / progress.total) * 100 : 0;
   const stale = outcomes.length > 0 && resultKey !== store.runKey;
@@ -237,7 +250,7 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
       )}
       {outcomes.length > 0 && (
         <div className={`flex flex-col gap-3 p-3 ${stale ? 'opacity-60' : ''}`}>
-          {outcomes.map((o) => <StyleResults key={o.style} outcome={o} sort={sort} onSort={setSort} />)}
+          {outcomes.map((o) => <StyleResults key={o.style} outcome={o} sort={sort} onSort={setSort} onExclude={exclude} />)}
         </div>
       )}
     </Panel>
