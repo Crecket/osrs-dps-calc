@@ -15,7 +15,7 @@ The point of building it here instead of using GearScape is the engine: results 
 1. **Best setup for one monster.** For the chosen monster, find the best setup for each combat style (stab, slash, crush, ranged, magic) and show them ranked by DPS, using the existing bulk results table (gear row, max hit, accuracy, DPS, TTK).
 2. **Item pool.** The search only uses allowed items:
    - **All items** (default when no pool is set up).
-   - **Bank import**: paste from the RuneLite Bank Memory plugin ("Copy item data to clipboard", TSV `Item id \t Item name \t Item quantity` with a header row). Match on id.
+   - **Bank import**: paste from the RuneLite Bank Memory plugin ("Copy item data to clipboard", TSV `Item id \t Item name \t Item quantity` with a header row). Match on id. **Owning rule (my call):** owning any variant of an item counts as owning the version the calc uses — uncharged/charged, degraded, ornament kits (via `EquipmentAliases` plus a name-based mapping for "(uncharged)"/degraded variants built by the import module). Un-imbued items do **not** count as imbued. Quantity 0 (placeholders) doesn't count. The import shows which bank lines matched nothing, so silent drops are visible.
    - **Manual entries**: add items to, and remove items from, the pool by hand, on top of an import.
    - **Exclude list / locks**: never use an item; force an item into a slot.
 3. **Player constraints.**
@@ -72,9 +72,13 @@ Exhaustive over a pruned space, not greedy. GearScape needs greedy steps because
 
 Per monster, per style (stab, slash, crush, ranged, magic):
 
-1. **Fixed inputs**: player levels, best unlocked prayer for the style, potions, monster with its inputs, attack stance chosen per weapon (the calc's default rule: rapid, else aggressive, else first; for melee also try the style's other stances only if they change the attack type).
+1. **Fixed inputs**: player levels, best unlocked prayer for the style, potions, combat conditions (below), monster with its inputs. Stance: every stance of the weapon whose attack type is this style is tried (at most 3), since accurate can beat aggressive against high defence.
+
+**Combat conditions (my call).** The engine reads player buffs that change which gear wins: on slayer task, in wilderness, Charge, Mark of Darkness, Kandarin diary, Forinthry surge, Soulreaper stacks, current HP, chinchompa distance. Best setup mode has a conditions panel with these, saved with the preset. Defaults: **not on slayer task** (upstream defaults to on, which would make the slayer helm win every boss and raid), not in wilderness, Kandarin diary on, Charge off, Mark of Darkness off, Forinthry surge off, Soulreaper stacks 5 (as the bulk defaults), current HP = max HP, chinchompa distance as upstream's default. They're part of the search inputs and of the cache key.
 2. **Weapon candidates**: every weapon in the pool whose styles include this attack type and whose requirements are met; for ranged, paired with each valid ammo from the pool (`ammoForRangedWeapons`); for magic, paired with the spells it can cast (best elemental spell per element the player can cast, plus god spells/special spells where the engine supports them). Plain weapons (no effect) are also dominance-pruned on (attack bonus, strength bonus, attack speed). Monster-specific weapon rules (vampyre tiers, guardians, etc.) are applied as filters — see "Builder's calls".
-3. **Per-slot candidates** for the other 10 slots (shield emptied for two-handers): the non-dominated plain items + every special-effect item in the pool for that slot + "empty".
+3. **Per-slot candidates** for the other 10 slots (shield emptied for two-handers): the non-dominated plain items + every *active* special-effect item in the pool for that slot + "empty".
+   - **Activity test (my call, replaces hand-written monster conditions).** For each weapon, each special-effect item is swapped into a baseline setup (that weapon + the best plain items) twice: once as itself, once as a "plain twin" (same bonuses, a name and id the engine doesn't recognise). If both give the same DPS, the effect does nothing for this monster/style/weapon (salve vs a non-undead, demonbane vs a non-demon, crystal armour without a crystal bow, …) and the item is treated as a plain item, so dominance pruning applies to it. Sets are tested as a whole set the same way. This keeps the search exact for this monster without the optimizer having to know *why* an item is special, and leaves only a few active effect items per slot.
+   - If a weapon still has more than a cap of combinations after pruning (the builder picks the cap from measurements; start around 20k), the search for that weapon falls back to coordinate descent from the best plain setup (try every candidate in each slot, keep the best, repeat until nothing changes) and the result is marked "approximate". Expected to be rare.
 4. **Sets as units**: set effects (void variants, inquisitor, obsidian, crystal, barrows, Blood Moon, Virtus) are added as whole-set candidates so the search can compare "full set" vs "best individual pieces".
 5. **Search**: for each weapon (+ammo/spell), enumerate combinations of the per-slot candidates, evaluating DPS only, in worker chunks. Use a bound to skip combinations: an upper bound per weapon from the best plain bonuses lets whole weapons be skipped when they can't beat the current best. Expected size: a few hundred to a few thousand evaluations per weapon.
 6. **Output**: the top N setups per style (N ≈ 3–5, so near-ties and cheaper alternatives are visible), then full `computeRow` (TTK, spec, issues) for those only.
@@ -93,14 +97,18 @@ Per style, a ranked list of offensive prayers, filtered by an "unlocked" setting
 
 ## UI (decided at the level of what's shown; layout is the builder's)
 
-- A **Best setup** mode in the bulk page (next to the existing setups list), with: monster (or monster group), item pool panel (import paste box, manual add/remove, exclude, locks), player levels (with hiscore lookup), prayer unlocks, potions, styles to include.
-- Results go in the existing bulk results table: one block per style (or per boss × style in group mode), top N rows each.
+- **Its own page** (user: the UI differs too much from the bulk page), at `/best` (`src/app/best/page.tsx`), next to the bulk tool (`/`) and the calculator (`/calc`). The top bar's bulk nav link (`src/bulk/components/BulkNavLink.tsx`) gains a link to it; full page loads between pages, as today. Page code lives under `src/best/` and reuses `src/bulk/` (engine entry `compute.ts`, worker pool, results table, gear cells, monster picker) rather than copying it.
+- Inputs: monster (or monster group), item pool panel (import paste box, manual add/remove, exclude, locks), player levels (with hiscore lookup), prayer unlocks, potions, combat conditions, styles to include.
+- Results reuse the bulk results table components: one block per style (or per boss × style in group mode), top N rows each.
+- Best setup state (pool, levels, unlocks, conditions, monster list) is saved in its own localforage key, separate from bulk presets.
 - A result row can be saved as a normal bulk setup / sent to the calculator, reusing the existing sync code (`SetupSync`, `calculatorLoadouts`).
 - Progress shown while searching; changing an input cancels and restarts (the pool already supports cancellation).
 
 ## Group mode (decided)
 
-Presets gain an optional list of monsters for best-setup runs (today a preset has exactly one `monster`). Raid shortcuts fill the list from the engine's id lists in `src/lib/constants.ts` (ToA, ToB, CoX), each with its monster inputs editable as today. Each monster is searched independently; caching is per monster.
+The best setup page holds a list of monsters (bulk presets are unchanged). Raid shortcuts fill the list, each monster's inputs editable as today. Each monster is searched independently; caching is per monster.
+
+**Raid shortcuts (my call).** Bosses only (no adds, obelisks, crabs, webs, or CoX non-boss rooms), one entry per phase where phases have different stats (Verzik P1/P2/P3, Wardens P2/P3, Olm head/hands as separate entries), and a mode picker per raid: ToB normal/hard/entry, CoX normal/CM, ToA with invocation level. The boss lists are hand-kept in `src/best/` (the engine's id lists aren't boss lists), checked by a test that every id exists in `monsters.json`.
 
 ## Builder's calls
 
@@ -113,7 +121,10 @@ Presets gain an optional list of monsters for best-setup runs (today a preset ha
 
 ## Calls I made (for the user to check)
 
-- **Exhaustive search over pruned candidates**, not GearScape's greedy hill-climb: exact for everything kept, and the measured candidate counts make it cheap.
+- **Exhaustive search over pruned candidates**, not GearScape's greedy hill-climb: exact for everything kept, and the measured candidate counts make it cheap. Special-effect items that do nothing against the chosen monster are found by testing them against a "plain twin", not by a hand-written list of conditions. Above a combination cap the search falls back to coordinate descent and says so.
+- **Combat condition defaults**: not on slayer task, not in wilderness, Charge off, Kandarin diary on.
+- **Bank ownership**: any charged/uncharged/degraded/ornament variant counts; un-imbued doesn't count as imbued; placeholders don't count.
+- **Raid shortcuts**: bosses only, one entry per phase, mode picker per raid.
 - **Requirements from the game cache**, in a separate JSON file, rather than osrsreboxed-db (stale) — this needs a one-off data script and is the most work of the data tasks.
 - **Quest requirements are ignored** in v1; the pool handles "I don't have it".
 - **Budget is out of v1.**
