@@ -118,16 +118,59 @@ describe('BestPage', () => {
     delete (globalThis as any).BroadcastChannel;
   });
 
-  test('runs once the saved state is loaded, and adds a result to the bulk preset', async () => {
+  const find = (container: HTMLElement) => button(container, 'Find best setup')!;
+
+  test('nothing runs on load or on an input change; the button runs once', async () => {
     mockRun.mockResolvedValue([outcome('Whip')]);
     const { container, unmount } = await mount();
+    await wait(400);
+    expect(mockRun).not.toHaveBeenCalled();
+    await setNumber(container.querySelector<HTMLInputElement>('input[type=number]')!, '80');
+    await wait(400);
+    expect(mockRun).not.toHaveBeenCalled();
+
+    expect(find(container).disabled).toBe(false);
+    await act(async () => find(container).click());
     await wait(10);
     expect(mockRun).toHaveBeenCalledTimes(1);
+    expect(mockRun.mock.calls[0][0].skills.atk).toBe(80);
+    expect(container.textContent).toContain('Whip');
+    await wait(400);
+    expect(mockRun).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  test('an input change after a run keeps the results and marks them out of date', async () => {
+    mockRun.mockResolvedValue([outcome('Whip')]);
+    const { container, unmount } = await mount();
+    await act(async () => find(container).click());
+    await wait(10);
+    expect(container.textContent).not.toContain('out of date');
+
+    const attack = container.querySelector<HTMLInputElement>('input[type=number]')!;
+    const before = attack.value;
+    await setNumber(attack, '80');
+    await wait(400);
+    expect(mockRun).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Whip');
+    expect(container.textContent).toContain('Inputs changed — results are out of date');
+
+    // back to the searched inputs: the results are current again
+    await setNumber(attack, before);
+    expect(container.textContent).not.toContain('out of date');
+    await unmount();
+  });
+
+  test('adds a result to the bulk preset', async () => {
+    mockRun.mockResolvedValue([outcome('Whip')]);
+    const { container, unmount } = await mount();
+    await act(async () => find(container).click());
+    await wait(10);
     expect(container.textContent).toContain('Slash');
     expect(container.textContent).toContain('Whip');
     expect(container.textContent).toContain('7.500');
 
-    const add = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Add to bulk preset'))!;
+    const add = button(container, 'Add to bulk preset')!;
     await act(async () => add.click());
     await wait(10);
     const saved = mockData.get(STORAGE_KEY) as { presets: BulkPreset[]; activeId: string };
@@ -150,6 +193,7 @@ describe('BestPage', () => {
     mockFailingWrites.add(STORAGE_KEY);
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
     const { container, unmount } = await mount();
+    await act(async () => find(container).click());
     await wait(10);
     await act(async () => button(container, 'Add to bulk preset')!.click());
     await wait(10);
@@ -160,24 +204,24 @@ describe('BestPage', () => {
     await unmount();
   });
 
-  test('Stop cancels the run and a pending restart, and ignores the stopped run\'s result', async () => {
+  test('Stop cancels the run and ignores the stopped run\'s result', async () => {
     let resolveFirst: (o: StyleOutcome[]) => void = () => {};
     mockRun.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
     const searchCancel = jest.spyOn(TaskPool.prototype, 'cancel');
     const rowsCancel = jest.spyOn(BulkPool.prototype, 'cancel');
     const { container, unmount } = await mount();
-    await wait(10);
+    await act(async () => find(container).click());
     expect(mockRun).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Searching...');
+    expect(find(container)).toBeUndefined();
 
-    // an input change waits for the debounce; Stop comes first
-    await setNumber(container.querySelector<HTMLInputElement>('input[type=number]')!, '80');
     await act(async () => button(container, 'Stop')!.click());
     expect(searchCancel).toHaveBeenCalled();
     expect(rowsCancel).toHaveBeenCalled();
     expect(container.textContent).toContain('Search stopped');
 
     await act(async () => resolveFirst([outcome('Late')]));
-    await wait(400);
+    await wait(10);
     expect(mockRun).toHaveBeenCalledTimes(1);
     expect(container.textContent).not.toContain('Late');
     await unmount();
@@ -188,44 +232,16 @@ describe('BestPage', () => {
     mockRun.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
     mockRun.mockImplementationOnce(async () => [outcome('New')]);
     const { container, unmount } = await mount();
+    await act(async () => find(container).click());
+    await act(async () => button(container, 'Stop')!.click());
+    await act(async () => find(container).click());
     await wait(10);
-    await setNumber(container.querySelector<HTMLInputElement>('input[type=number]')!, '80');
-    await wait(400);
     expect(container.textContent).toContain('New');
 
     await act(async () => resolveFirst([outcome('Old')]));
     await wait(10);
     expect(container.textContent).toContain('New');
     expect(container.textContent).not.toContain('Old');
-    await unmount();
-  });
-
-  test('an input change mid-run restarts without the old results or a cancelled error', async () => {
-    let rejectFirst: (e: Error) => void = () => {};
-    mockRun.mockImplementationOnce(() => new Promise((_, reject) => { rejectFirst = reject; }));
-    const { container, unmount } = await mount();
-    await wait(10);
-    expect(mockRun).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain('Searching...');
-
-    // the real runBestSetup rejects the older run when a newer one starts
-    mockRun.mockImplementationOnce(async () => {
-      rejectFirst(new Error('cancelled'));
-      return [outcome('Rapier')];
-    });
-    const attack = container.querySelector<HTMLInputElement>('input[type=number]')!;
-    await setNumber(attack, '8');
-    await setNumber(attack, '80');
-    // debounced: typing a level runs once, with the final value
-    await wait(100);
-    expect(mockRun).toHaveBeenCalledTimes(1);
-    await wait(400);
-
-    expect(mockRun).toHaveBeenCalledTimes(2);
-    expect(mockRun.mock.calls[1][0].skills.atk).toBe(80);
-    expect(container.textContent).toContain('Rapier');
-    expect(container.textContent).not.toContain('Searching...');
-    expect(mockToast.error).not.toHaveBeenCalled();
     await unmount();
   });
 
@@ -237,7 +253,8 @@ describe('BestPage', () => {
     expect(container.textContent).toContain('Saved best setup settings could not be read');
     expect(warn).toHaveBeenCalled();
     // nothing to run against: the saved monster was never read
-    await wait(400);
+    expect(find(container).disabled).toBe(true);
+    await act(async () => find(container).click());
     expect(mockRun).not.toHaveBeenCalled();
     expect(container.textContent).toContain('Pick a monster');
     await unmount();

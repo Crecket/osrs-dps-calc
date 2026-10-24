@@ -4,9 +4,11 @@ import React, {
   useCallback, useEffect, useRef, useState,
 } from 'react';
 import { observer } from 'mobx-react-lite';
-import { reaction, toJS } from 'mobx';
+import { toJS } from 'mobx';
 import { toast } from 'react-toastify';
-import { IconAlertTriangle, IconPlayerStop, IconPlus } from '@tabler/icons-react';
+import {
+  IconAlertTriangle, IconPlayerStop, IconPlus, IconSearch,
+} from '@tabler/icons-react';
 import { BestStore, BestStoreContext } from '@/best/state/BestStore';
 import { runBestSetup, StyleOutcome } from '@/best/lib/run';
 import { BestPayload, BestResult } from '@/best/worker/protocol';
@@ -114,33 +116,21 @@ const StyleResults: React.FC<{ outcome: StyleOutcome; sort: SortState; onSort: (
 
 const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ store, pools }) => {
   const [outcomes, setOutcomes] = useState<StyleOutcome[]>([]);
+  // the runKey the shown results were searched with; results go stale when the inputs or the monster change
+  const [resultKey, setResultKey] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [running, setRunning] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [sort, setSort] = useState<SortState>(defaultSort('normal'));
   const runToken = useRef(0);
-  // the debounced restart after an input change, until it starts
-  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelPending = () => {
-    if (pending.current) clearTimeout(pending.current);
-    pending.current = null;
-  };
 
+  // the only way a search starts: the Find best setup button
   const run = useCallback(async () => {
+    const { monster, runKey } = store;
+    if (!store.loaded || runKey === null || !monster) return;
     runToken.current += 1;
     const token = runToken.current;
-    // the previous run's results belong to other inputs: never show them next to this run's
-    setOutcomes([]);
     setStopped(false);
-    const { monster } = store;
-    if (store.runKey === null || !monster) {
-      pools.search.cancel();
-      pools.rows.cancel();
-      setProgress(null);
-      setRunning(false);
-      return;
-    }
-
     setRunning(true);
     setProgress({ done: 0, total: 0 });
     try {
@@ -148,7 +138,10 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
       const result = await runBestSetup(toJS(store.inputs), toJS(monster), pools, (done, total) => {
         if (token === runToken.current) setProgress({ done, total });
       });
-      if (token === runToken.current) setOutcomes(result);
+      if (token === runToken.current) {
+        setOutcomes(result);
+        setResultKey(runKey);
+      }
     } catch (e) {
       if (!isCancelled(e)) toast.error(e instanceof Error ? e.message : 'Search failed');
     } finally {
@@ -156,25 +149,7 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
     }
   }, [store, pools]);
 
-  // run now, then again whenever an input or the monster changes, debounced so that typing a level runs once; the
-  // debounce is our own timer rather than the reaction's delay so that Stop can cancel it
-  useEffect(() => {
-    run();
-    const dispose = reaction(() => store.runKey, () => {
-      cancelPending();
-      pending.current = setTimeout(() => {
-        pending.current = null;
-        run();
-      }, 300);
-    });
-    return () => {
-      dispose();
-      cancelPending();
-    };
-  }, [store, run]);
-
   const stop = () => {
-    cancelPending();
     // the stopped run's result, should it still arrive, is ignored
     runToken.current += 1;
     pools.search.cancel();
@@ -185,22 +160,35 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
 
   const { monster } = store;
   const pct = progress && progress.total > 0 ? (progress.done / progress.total) * 100 : 0;
+  const stale = outcomes.length > 0 && resultKey !== store.runKey;
 
   return (
     <Panel
       title={monster ? `Best setups vs ${monsterLabel(monster)}` : 'Best setups'}
       actions={(
         <>
-          {running && (
+          {stale && !running && (
+            <span className="text-xs text-orange-700 dark:text-orange-300">Inputs changed — results are out of date</span>
+          )}
+          {running ? (
             <button type="button" className={`${buttonClass} font-bold`} onClick={stop}>
               <span className="flex items-center gap-1">
                 <IconPlayerStop size={16} />
                 {progress && progress.total > 0 ? `Stop (${progress.done} / ${progress.total})` : 'Stop'}
               </span>
             </button>
-          )}
-          {!running && stopped && (
-            <button type="button" className={buttonClass} onClick={run}>Search again</button>
+          ) : (
+            <button
+              type="button"
+              className={`${buttonClass} !bg-orange-400 dark:!bg-orange-700 font-bold`}
+              disabled={!store.loaded || !monster}
+              onClick={run}
+            >
+              <span className="flex items-center gap-1">
+                <IconSearch size={16} />
+                Find best setup
+              </span>
+            </button>
           )}
         </>
       )}
@@ -212,10 +200,13 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
       {!monster && <p className="px-4 py-6 text-center text-gray-500 dark:text-gray-300">Pick a monster</p>}
       {monster && running && <p className="px-4 py-6 text-center text-gray-500 dark:text-gray-300">Searching...</p>}
       {monster && !running && stopped && (
-        <p className="px-4 py-6 text-center text-gray-500 dark:text-gray-300">Search stopped. Change an input or search again.</p>
+        <p className="px-4 py-6 text-center text-gray-500 dark:text-gray-300">Search stopped. Click Find best setup to search again.</p>
+      )}
+      {monster && !running && !stopped && outcomes.length === 0 && (
+        <p className="px-4 py-6 text-center text-gray-500 dark:text-gray-300">Set your stats and click Find best setup.</p>
       )}
       {outcomes.length > 0 && (
-        <div className="flex flex-col gap-3 p-3">
+        <div className={`flex flex-col gap-3 p-3 ${stale ? 'opacity-60' : ''}`}>
           {outcomes.map((o) => <StyleResults key={o.style} outcome={o} sort={sort} onSort={setSort} />)}
         </div>
       )}
