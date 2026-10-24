@@ -199,11 +199,13 @@ describe('searchWeapon', () => {
     expect(ids(effects.neck)).not.toContain(berserker.id);
 
     const job = jobFor('crush', 'Tzhaar-ket-om', '', 'Pound');
-    const [best] = searchWeapon(base, target, job, pool, {
+    // the Amulet of rancour beats the necklace here, so leave it out
+    const noRancour = pool.filter((e) => !e.name.startsWith('Amulet of rancour'));
+    const [best] = searchWeapon(base, target, job, noRancour, {
       mode: 'descent', topN: 1, cap: 20000, effects,
     });
     expect(best.gear.neck).toBe(berserker.id);
-    const [noBerserker] = searchWeapon(base, target, job, pool.filter((e) => !e.name.startsWith('Berserker necklace')), {
+    const [noBerserker] = searchWeapon(base, target, job, noRancour.filter((e) => !e.name.startsWith('Berserker necklace')), {
       mode: 'descent', topN: 1, cap: 20000, effects,
     });
     expect(best.dps).toBeGreaterThan(noBerserker.dps);

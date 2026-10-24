@@ -23,7 +23,8 @@ export interface WeaponJob {
 }
 
 const EXCLUDED_VERSIONS = new Set(['Uncharged', 'Inactive', 'Deadman Mode', 'Cosmetic', 'Broken']);
-const EXCLUDED_NAME = /\(unobtainable item\)|\(beta\)/i;
+// Deadman copies are often listed under their own name with no Deadman version, e.g. "Armadyl godsword (Deadman)"
+const EXCLUDED_NAME = /\(unobtainable item\)|\(beta\)|\(deadman( mode)?\)/i;
 const EXCLUDED_ITEM_IDS = new Set([
   21433, // Wilderness champion amulet: +100 to every attack from a past event, not obtainable in normal play
 ]);
@@ -32,7 +33,9 @@ const EXCLUDED_ITEM_IDS = new Set([
 export const bestPool = (items: EquipmentPiece[] = availableEquipment): EquipmentPiece[] => items.filter((e) => getCanonicalItemId(e.id) === e.id
   && !EXCLUDED_VERSIONS.has(e.version)
   && !EXCLUDED_NAME.test(e.name)
-  && !EXCLUDED_ITEM_IDS.has(e.id));
+  && !EXCLUDED_ITEM_IDS.has(e.id)
+  // data artefacts held in the weapon slot: greegrees, Gnomeball (-1), crates and Christmas dinner (0)
+  && !(e.slot === 'weapon' && e.speed <= 1));
 
 /** The two numbers an item contributes to `style` through its bonuses. */
 export const styleScore = (item: EquipmentPiece, style: BestStyle): [attack: number, strength: number] => {

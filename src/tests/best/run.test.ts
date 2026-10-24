@@ -3,7 +3,7 @@ import { availableEquipment } from '@/lib/Equipment';
 import { bestPool, WeaponJob, weaponJobs } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
 import {
-  BestRunDeps, referenceJobs, runBestSetup, unionEffects,
+  BestRunDeps, JOBS_PER_WEAPON, referenceJobs, runBestSetup, unionEffects,
 } from '@/best/lib/run';
 import { BestPayload, BestResult, handleBestChunk } from '@/best/worker/protocol';
 import { computeRow, prepareMonster } from '@/bulk/lib/compute';
@@ -149,19 +149,20 @@ describe('runBestSetup', () => {
     });
     expect(descent.flatMap((p) => (p.kind === 'search' ? p.jobs : []))).toEqual(jobs);
 
-    // the top 3 weapons by their best job, and each weapon's top 2 jobs
+    // the top 3 weapons by their best job, and each weapon's top JOBS_PER_WEAPON jobs
     const byWeapon = new Map<number, WeaponJob[]>();
     jobs.forEach((j) => byWeapon.set(j.weaponId, [...(byWeapon.get(j.weaponId) ?? []), j]));
     const best = (ws: WeaponJob[]) => Math.max(...ws.map(fakeDps));
     const expected = [...byWeapon.values()].sort((a, b) => best(b) - best(a)).slice(0, 3)
-      .flatMap((ws) => [...ws].sort((a, b) => fakeDps(b) - fakeDps(a)).slice(0, 2));
+      .flatMap((ws) => [...ws].sort((a, b) => fakeDps(b) - fakeDps(a)).slice(0, JOBS_PER_WEAPON));
     // the test needs weapons with more jobs than are kept
-    expect([...byWeapon.values()].some((ws) => ws.length > 2)).toBe(true);
+    expect([...byWeapon.values()].some((ws) => ws.length > JOBS_PER_WEAPON)).toBe(true);
 
     const exhaustiveJobs = exhaustive.flatMap((p) => {
       if (p.kind !== 'search') throw new Error('expected a search payload');
       expect(p.mode).toBe('exhaustive');
-      expect(p.effects).toBeUndefined();
+      // the shared effects too: only the WEAPON_LINKED items are re-tested per job
+      expect(p.effects).toEqual({ head: [2, 3, 1], shield: [9], neck: [5] });
       return p.jobs;
     });
     expect(new Set(exhaustiveJobs)).toEqual(new Set(expected));

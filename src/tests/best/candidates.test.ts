@@ -29,6 +29,19 @@ describe('bestPool', () => {
     expect(pool.map((e) => e.id)).toContain(findEquipment('Scythe of Vitur', 'Charged').id);
     expect(pool.map((e) => e.id)).not.toContain(findEquipment('Wilderness champion amulet').id);
   });
+
+  test('drops Deadman-named copies, which upstream lists without a Deadman version', () => {
+    expect(pool.filter((e) => /\(deadman( mode)?\)/i.test(e.name))).toEqual([]);
+    const ids = pool.map((e) => e.id);
+    expect(ids).not.toContain(findEquipment("Statius's full helm (Deadman Mode)").id);
+    expect(ids).not.toContain(findEquipment('Armadyl godsword (Deadman)').id);
+    expect(ids).toContain(findEquipment('Armadyl godsword').id);
+  });
+
+  test('drops weapons without a real attack speed (greegrees, crates, Gnomeball)', () => {
+    expect(pool.filter((e) => e.slot === 'weapon' && e.speed <= 1)).toEqual([]);
+    expect(pool.map((e) => e.id)).not.toContain(findEquipment('Gnomeball').id);
+  });
 });
 
 describe('styleScore', () => {

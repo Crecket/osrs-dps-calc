@@ -32,9 +32,9 @@ export interface BestRunDeps {
 }
 
 /** Weapons that get the exhaustive search, per style, by their best descent DPS. */
-export const TOP_K_WEAPONS = 15;
+export const TOP_K_WEAPONS = 6;
 /** Jobs (stances, ammo, spells) per selected weapon that get the exhaustive search. */
-export const JOBS_PER_WEAPON = 2;
+export const JOBS_PER_WEAPON = 1;
 /** Combinations above which a job's exhaustive search falls back to descent. */
 export const COMBINATION_CAP = 20000;
 // descent is quick per job, so its jobs travel in batches; exhaustive jobs go one per payload to spread over the workers
@@ -113,9 +113,9 @@ interface StylePlan {
 /**
  * The top `inputs.topN` setups per style against `monster`. Per style: (0) the effect activity test for the style's
  * reference jobs, shared as the style's effects; (1) coordinate descent over every weapon job with those effects; (2) an
- * exhaustive search, with the full per-job activity test, of the best descent jobs of the `topK` best weapons. The shown setups
- * are the best distinct phase-2 results, with their numbers from computeRow. Each phase runs every style's payloads in
- * one pool run. A new call cancels the previous one, whose promise rejects with Error('cancelled').
+ * exhaustive search, with the same effects and a per-job re-test of the WEAPON_LINKED items, of the best descent jobs
+ * of the `topK` best weapons. The shown setups are the best distinct phase-2 results, with their numbers from
+ * computeRow. Each phase runs every style's payloads in one pool run. A new call cancels the previous one, whose promise rejects with Error('cancelled').
  */
 export const runBestSetup = async (
   inputs: BestInputs,
@@ -191,9 +191,10 @@ export const runBestSetup = async (
     // jobs with no damage skip phase 2
     total = done + topJobs.reduce((n, jobs) => n + jobs.length, 0);
 
-    // phase 2: exhaustive over the top weapons' top jobs, each with its own activity test
+    // phase 2: exhaustive over the top weapons' top jobs, with the style's effects; searchWeapon re-tests the
+    // WEAPON_LINKED items per job, so a weapon-specific effect isn't lost
     const exhaustiveResults = await searchRun(plans.flatMap((plan, i) => topJobs[i].map((job): BestPayload => ({
-      kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap,
+      kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap, effects: styleEffectIds[i],
     }))));
     // phase 2 may have been empty
     onProgress(done, total);
