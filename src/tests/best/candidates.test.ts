@@ -38,6 +38,17 @@ describe('bestPool', () => {
     expect(ids).toContain(findEquipment('Armadyl godsword').id);
   });
 
+  test('drops minigame-only items: Barbarian Assault and Castle Wars ammo, Gauntlet gear', () => {
+    const ids = new Set(pool.map((e) => e.id));
+    // Bullet, Field, Blunt and Barbed arrow; Castle wars arrow and bolts
+    [22227, 22228, 22229, 22230, 30694, 30696].forEach((id) => expect(ids.has(id)).toBe(false));
+    const gauntlet = /^(Corrupted|Crystal) (halberd|bow|staff|helm|body|legs) \((basic|attuned|perfected)\)$/;
+    expect(pool.filter((e) => gauntlet.test(e.name))).toEqual([]);
+    // the Prifddinas crystal armour and bow are real items
+    expect(ids.has(findEquipment('Crystal helm', 'Active').id)).toBe(true);
+    expect(ids.has(findEquipment('Bow of Faerdhinen', 'Charged').id)).toBe(true);
+  });
+
   test('drops weapons without a real attack speed (greegrees, crates, Gnomeball)', () => {
     expect(pool.filter((e) => e.slot === 'weapon' && e.speed <= 1)).toEqual([]);
     expect(pool.map((e) => e.id)).not.toContain(findEquipment('Gnomeball').id);

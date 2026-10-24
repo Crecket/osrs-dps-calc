@@ -27,13 +27,23 @@ const EXCLUDED_VERSIONS = new Set(['Uncharged', 'Inactive', 'Deadman Mode', 'Cos
 const EXCLUDED_NAME = /\(unobtainable item\)|\(beta\)|\(deadman( mode)?\)/i;
 const EXCLUDED_ITEM_IDS = new Set([
   21433, // Wilderness champion amulet: +100 to every attack from a past event, not obtainable in normal play
+  // minigame-only ammo: Barbarian Assault's Bullet, Field, Blunt and Barbed arrow (upstream lets bows fire them)
+  22227, 22228, 22229, 22230,
+  // minigame-only ammo: Castle wars arrow and bolts
+  30694, 30696,
 ]);
+// minigame-only gear: The Gauntlet's tiered weapons and armour, which can't leave it
+const GAUNTLET_ONLY = /^(Corrupted|Crystal) (halberd|bow|staff|helm|body|legs) \((basic|attuned|perfected)\)$/;
 
-/** The items the search may use: canonical items, without uncharged, inactive, broken, Deadman, cosmetic, unobtainable or excluded ones. */
+/**
+ * The items the search may use: canonical items, without uncharged, inactive, broken, Deadman, cosmetic, unobtainable,
+ * minigame-only or excluded ones.
+ */
 export const bestPool = (items: EquipmentPiece[] = availableEquipment): EquipmentPiece[] => items.filter((e) => getCanonicalItemId(e.id) === e.id
   && !EXCLUDED_VERSIONS.has(e.version)
   && !EXCLUDED_NAME.test(e.name)
   && !EXCLUDED_ITEM_IDS.has(e.id)
+  && !GAUNTLET_ONLY.test(e.name)
   // data artefacts held in the weapon slot: greegrees, Gnomeball (-1), crates and Christmas dinner (0)
   && !(e.slot === 'weapon' && e.speed <= 1));
 

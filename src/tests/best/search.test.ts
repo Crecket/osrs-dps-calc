@@ -239,4 +239,17 @@ describe('searchWeapon', () => {
     expect(wearsSet).toBe(true);
     expect(best.dps).toBeGreaterThanOrEqual(withSet - 1e-9);
   });
+
+  test('the Twisted bow vs Vorkath fires dragon arrows, not minigame ammo', () => {
+    const base = basePlayer(inputs, 'ranged');
+    const tbow = findEquipment('Twisted bow').id;
+    const jobs = weaponJobs(pool, 'ranged').filter((j) => j.weaponId === tbow && j.combatStyle.name === 'Rapid');
+    const results = jobs.flatMap((job) => searchWeapon(base, vorkath, job, pool, {
+      mode: 'descent', topN: 1, cap: 20000, effects: {},
+    }));
+    const best = results.reduce((a, b) => (b.dps > a.dps ? b : a));
+    const ammo = pool.find((e) => e.id === best.job.ammoId)!;
+    // the Seeking dragon arrow (+20 ranged attack) is a real arrow too
+    expect(ammo.name).toMatch(/dragon arrow/i);
+  });
 });
