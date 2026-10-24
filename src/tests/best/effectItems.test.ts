@@ -13,30 +13,37 @@ const listSources = (dir: string): string[] => fs.readdirSync(dir, { withFileTyp
   return entry.name.endsWith('.ts') ? [full] : [];
 });
 
-const sources = listSources(LIB_DIR).map((file) => fs.readFileSync(file, 'utf8'));
+const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
+const sources = listSources(LIB_DIR).map((file) => stripComments(fs.readFileSync(file, 'utf8')));
+
+const unescape = (lit: string) => lit.replace(/\\(.)/g, '$1');
+
+// Note: checks built from template strings or variables (e.g. includes(spellClass) in PlayerVsNPCCalc.ts) are not
+// visible to this extraction.
 const literals = new Set<string>();
 const substringChecks = new Set<string>();
 sources.forEach((src) => {
-  for (const m of src.matchAll(/'([^'\n\\]+)'|"([^"\n\\]+)"/g)) literals.add(m[1] ?? m[2]);
-  for (const m of src.matchAll(/\.(includes|startsWith|endsWith)\(\s*['"]([^'"]+)['"]/g)) substringChecks.add(m[2]);
+  for (const m of src.matchAll(/'((?:[^'\n\\]|\\.)+)'|"((?:[^"\n\\]|\\.)+)"/g)) literals.add(unescape(m[1] ?? m[2]).toLowerCase());
+  for (const m of src.matchAll(/\.(includes|startsWith|endsWith)\(\s*(?:'((?:[^'\n\\]|\\.)+)'|"((?:[^"\n\\]|\\.)+)")/g)) substringChecks.add(unescape(m[2] ?? m[3]));
 });
+
+// Generic words the engine only applies to the ammo slot; "Barrows gloves" or "Crate of arrowtips" are not ammo.
+const AMMO_SLOT_ONLY = new Set(['arrow', 'bolt']);
 
 describe('effectItems', () => {
   test('every equipment name the engine mentions is an effect item', () => {
     const missing = availableEquipment
-      .filter((e) => literals.has(e.name) && !isEffectItem(e))
+      .filter((e) => literals.has(e.name.toLowerCase()) && !isEffectItem(e))
       .map((e) => `${e.name}${e.version ? ` (${e.version})` : ''}`);
     expect([...new Set(missing)]).toEqual([]);
   });
 
   test('every substring check on names is covered', () => {
-    const missing = [...substringChecks].filter((sub) => {
-      const containing = availableEquipment.filter((e) => e.name.includes(sub));
-      if (containing.length === 0) return false;
-      if (containing.some((e) => e.name === sub)) return false;
-      return !containing.some((e) => isEffectItem(e));
-    });
+    const missing = [...substringChecks]
+      .flatMap((sub) => availableEquipment
+        .filter((e) => e.name.toLowerCase().includes(sub.toLowerCase()) && (!AMMO_SLOT_ONLY.has(sub) || e.slot === 'ammo') && !isEffectItem(e))
+        .map((e) => `${sub}: ${e.name}${e.version ? ` (${e.version})` : ''}`));
     expect(missing).toEqual([]);
   });
 

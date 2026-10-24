@@ -315,6 +315,15 @@ export const EFFECT_ITEM_NAMES: ReadonlySet<string> = new Set<string>([
   'Volatile Nightmare staff',
   'Warped sceptre',
   'Zamorak staff',
+  // apostrophe names the engine writes with escaped quotes, plus case-mismatched literals
+  "Craw's bow",
+  "Iban's staff",
+  "Iban's staff (u)",
+  "Slayer's staff",
+  "Thammaron's sceptre (a)",
+  'Toxic Staff of the Dead',
+  "V's helm",
+  "Viggora's chainmace",
 ]);
 
 /** Engine checks done by substring or prefix of the item name (.includes / .startsWith / .endsWith). */
@@ -327,14 +336,14 @@ export const EFFECT_NAME_PATTERNS: readonly RegExp[] = [
   /Demonbane/,
   /Glyphic Attenuation/,
   /^Revenant/,
-  /^Blood Moon /,
+  /^(Blood|Blue|Eclipse) Moon /,
   /^Crystal (helm|body|legs|bow|halberd)/,
   // ammo is only valid with some weapons (ammoApplicability), and enchanted bolts have their own effects
   /\barrows?\b/i,
   /\bbolts?\b/i,
   / brutal/,
-  /spear$/i,
-  /halberd$/i,
+  /spear/i,
+  /halberd/i,
 ];
 
 /** Weapon categories the engine branches on regardless of the item name. */
