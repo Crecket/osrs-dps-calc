@@ -1,16 +1,15 @@
 import { describe, expect, test } from '@jest/globals';
-import {
-  AmmoApplicability, ammoApplicability, availableEquipment, getCanonicalItemId,
-} from '@/lib/Equipment';
+import { AmmoApplicability, ammoApplicability } from '@/lib/Equipment';
 import { BLOWPIPE_IDS } from '@/lib/constants';
 import { EquipmentPiece } from '@/types/Player';
 import { isEffectItem } from '@/best/lib/effectItems';
 import {
-  paretoFront, slotCandidates, styleScore, weaponJobs,
+  bestPool, paretoFront, slotCandidates, styleScore, weaponJobs,
 } from '@/best/lib/candidates';
+import { BEST_STYLES } from '@/best/types';
 import { findEquipment } from '@/tests/utils/TestUtils';
 
-const pool = availableEquipment.filter((e) => getCanonicalItemId(e.id) === e.id);
+const pool = bestPool();
 
 const synthetic = (id: number, slash: number, str: number): EquipmentPiece => {
   const whip = findEquipment('Abyssal whip');
@@ -21,6 +20,15 @@ const synthetic = (id: number, slash: number, str: number): EquipmentPiece => {
     bonuses: { ...whip.bonuses, str },
   };
 };
+
+describe('bestPool', () => {
+  test('drops uncharged, inactive, Deadman, cosmetic and unobtainable items', () => {
+    const versions = ['Uncharged', 'Inactive', 'Deadman Mode', 'Cosmetic'];
+    expect(pool.filter((e) => versions.includes(e.version))).toEqual([]);
+    expect(pool.filter((e) => /\(unobtainable item\)|\(beta\)/i.test(e.name))).toEqual([]);
+    expect(pool.map((e) => e.id)).toContain(findEquipment('Scythe of Vitur', 'Charged').id);
+  });
+});
 
 describe('styleScore', () => {
   test('melee uses the style attack bonus and str', () => {
@@ -68,7 +76,7 @@ describe('weaponJobs', () => {
 
     const scythe = findEquipment('Scythe of Vitur', 'Charged');
     expect(jobs.filter((j) => j.weaponId === scythe.id).map((j) => j.combatStyle.stance).sort())
-      .toEqual(['Accurate', 'Aggressive', 'Defensive']);
+      .toEqual(['Accurate', 'Aggressive']);
 
     const shadow = findEquipment("Tumeken's shadow", 'Charged');
     expect(jobs.some((j) => j.weaponId === shadow.id)).toBe(false);
@@ -103,7 +111,7 @@ describe('weaponJobs', () => {
   test('magic: powered staves cast no spell, spellcasting staves get the spell list', () => {
     const jobs = weaponJobs(pool, 'magic');
     expect(jobs.every((j) => j.combatStyle.type === 'magic')).toBe(true);
-    expect(jobs.some((j) => j.combatStyle.stance === 'Defensive Autocast')).toBe(false);
+    expect(jobs.some((j) => j.combatStyle.stance === 'Defensive Autocast' || j.combatStyle.stance === 'Longrange')).toBe(false);
 
     const shadow = findEquipment("Tumeken's shadow", 'Charged');
     const shadowJobs = jobs.filter((j) => j.weaponId === shadow.id);
@@ -127,6 +135,26 @@ describe('weaponJobs', () => {
       expect(new Set(withSpells.filter((j) => j.weaponId === id).map((j) => j.spellName))).toEqual(new Set(staffSpells));
     });
     expect(jobs.some((j) => j.weaponId === findEquipment('Staff of fire').id)).toBe(false);
+  });
+
+  test('no stance without offence', () => {
+    BEST_STYLES.forEach((style) => {
+      const stances = new Set(weaponJobs(pool, style).map((j) => j.combatStyle.stance));
+      if (style === 'ranged' || style === 'magic') {
+        expect([style, stances.has('Longrange') || stances.has('Defensive Autocast')]).toEqual([style, false]);
+      } else {
+        expect([style, stances.has('Defensive')]).toEqual([style, false]);
+      }
+    });
+  });
+
+  test('category effect weapons are pruned like plain ones', () => {
+    const jobs = weaponJobs(pool, 'ranged');
+    // same ammo list (bronze tier); the bronze crossbow has more accuracy, crossbow bolt procs are the same
+    expect(jobs.some((j) => j.weaponId === findEquipment('Crossbow').id)).toBe(false);
+    expect(jobs.some((j) => j.weaponId === findEquipment('Bronze crossbow').id)).toBe(true);
+    // named effect weapons are always kept
+    expect(jobs.some((j) => j.weaponId === findEquipment('Dragon crossbow').id)).toBe(true);
   });
 
   test('jobs carry no shield and are deterministic', () => {

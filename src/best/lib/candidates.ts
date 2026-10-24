@@ -1,11 +1,13 @@
-import { AmmoApplicability, ammoApplicability } from '@/lib/Equipment';
+import {
+  AmmoApplicability, ammoApplicability, availableEquipment, getCanonicalItemId,
+} from '@/lib/Equipment';
 import { BLOWPIPE_IDS } from '@/lib/constants';
 import { EquipmentCategory, MAGIC_WEAPONS } from '@/enums/EquipmentCategory';
 import { EquipmentPiece, PlayerEquipment } from '@/types/Player';
-import { PlayerCombatStyle } from '@/types/PlayerCombatStyle';
+import { CombatStyleStance, PlayerCombatStyle } from '@/types/PlayerCombatStyle';
 import { isBindSpell, spells } from '@/types/Spell';
 import { getCombatStylesForCategory } from '@/utils';
-import { isEffectItem } from '@/best/lib/effectItems';
+import { hasNamedEffect, isEffectItem } from '@/best/lib/effectItems';
 import { BestStyle } from '@/best/types';
 
 export type GearSlot = Exclude<keyof PlayerEquipment, 'weapon'>;
@@ -19,6 +21,14 @@ export interface WeaponJob {
   spellName: string | null;
   dartId: number | null;
 }
+
+const EXCLUDED_VERSIONS = new Set(['Uncharged', 'Inactive', 'Deadman Mode', 'Cosmetic']);
+const EXCLUDED_NAME = /\(unobtainable item\)|\(beta\)/i;
+
+/** The items the search may use: canonical items, without uncharged, inactive, Deadman, cosmetic or unobtainable ones. */
+export const bestPool = (items: EquipmentPiece[] = availableEquipment): EquipmentPiece[] => items.filter((e) => getCanonicalItemId(e.id) === e.id
+  && !EXCLUDED_VERSIONS.has(e.version)
+  && !EXCLUDED_NAME.test(e.name));
 
 /** The two numbers an item contributes to `style` through its bonuses. */
 export const styleScore = (item: EquipmentPiece, style: BestStyle): [attack: number, strength: number] => {
@@ -79,15 +89,22 @@ const SPELL_CANDIDATES: string[] = (() => {
   return [...new Set([...perElement, ...barrages, ...named])].sort();
 })();
 
-/** The stances of `weapon` that attack with `style`, one per stance; empty when it can't. */
+// Stances that add no offence: melee Defensive, ranged and powered-staff Longrange, Defensive Autocast
+const NO_OFFENCE: Record<'melee' | 'ranged' | 'magic', ReadonlySet<CombatStyleStance>> = {
+  melee: new Set(['Defensive']),
+  ranged: new Set(['Longrange']),
+  magic: new Set(['Longrange', 'Defensive Autocast']),
+};
+
+/** The stances of `weapon` that attack with `style` and add offence, one per stance; empty when it can't. */
 const stancesFor = (weapon: EquipmentPiece, style: BestStyle): PlayerCombatStyle[] => {
-  const all = getCombatStylesForCategory(weapon.category).filter((s) => s.type === style);
+  const group = style === 'ranged' || style === 'magic' ? style : 'melee';
+  const all = getCombatStylesForCategory(weapon.category)
+    .filter((s) => s.type === style && !NO_OFFENCE[group].has(s.stance));
   let styles = all;
   if (style === 'magic') {
     const real = all.filter((s) => s.stance !== 'Manual Cast');
-    if (real.some((s) => s.stance === 'Autocast')) {
-      styles = real.filter((s) => s.stance !== 'Defensive Autocast');
-    } else if (real.length > 0) {
+    if (real.length > 0) {
       styles = real;
     } else if (MAGIC_WEAPONS.includes(weapon.category) || weapon.offensive.magic > 0 || weapon.bonuses.magic_str > 0) {
       // every weapon can manually cast; only weapons that help magic are worth a job
@@ -103,8 +120,9 @@ const stancesFor = (weapon: EquipmentPiece, style: BestStyle): PlayerCombatStyle
 const requiresAmmo = (weapon: EquipmentPiece) => ammoApplicability(weapon.id, undefined) !== AmmoApplicability.ALLOWED;
 
 /**
- * Weapon setups for `style`. Effect weapons are all kept; plain weapons are dominance-pruned on (attack, strength,
- * -speed) among weapons that are otherwise interchangeable: same handedness, stances, ammo and kind of magic.
+ * Weapon setups for `style`. Weapons the engine names are all kept; the rest are dominance-pruned on (attack, strength,
+ * -speed) among weapons that are otherwise interchangeable: same handedness, category, stances, ammo and kind of magic.
+ * A category effect (bolt procs, chinchompa fuses, powered staves, ...) is the same for every weapon of the category.
  * Ranged weapons that take ammo get one job per candidate ammo, blowpipes one per candidate dart, spellcasting
  * weapons one per candidate spell. Sorted by weapon id, then stance order, then ammo/dart id or spell name.
  */
@@ -116,23 +134,24 @@ export const weaponJobs = (pool: EquipmentPiece[], style: BestStyle): WeaponJob[
     .map((weapon) => ({ weapon, stances: stancesFor(weapon, style) }))
     .filter((w) => w.stances.length > 0);
 
-  // plain weapons only compete with weapons they could replace one-for-one
+  // weapons only compete with weapons they could replace one-for-one
   const groupKey = ({ weapon, stances }: typeof weapons[number]) => JSON.stringify([
     weapon.isTwoHanded,
+    weapon.category,
     stances.map((s) => s.stance),
     style === 'ranged' ? validAmmo(weapon).map((a) => a.id).sort((a, b) => a - b) : null,
     BLOWPIPE_IDS.includes(weapon.id),
     BUILT_IN_MAGIC.has(weapon.category),
   ]);
   const groups = new Map<string, EquipmentPiece[]>();
-  weapons.filter((w) => !isEffectItem(w.weapon)).forEach((w) => {
+  weapons.filter((w) => !hasNamedEffect(w.weapon)).forEach((w) => {
     const key = groupKey(w);
     groups.set(key, [...(groups.get(key) ?? []), w.weapon]);
   });
   const keptPlain = new Set([...groups.values()]
     .flatMap((group) => paretoBy(group, (e) => [...styleScore(e, style), -e.speed]))
     .map((e) => e.id));
-  const kept = weapons.filter((w) => isEffectItem(w.weapon) || keptPlain.has(w.weapon.id))
+  const kept = weapons.filter((w) => hasNamedEffect(w.weapon) || keptPlain.has(w.weapon.id))
     .sort((a, b) => a.weapon.id - b.weapon.id);
 
   const darts = pool.filter((e) => e.slot === 'weapon' && e.category === EquipmentCategory.THROWN && e.name.endsWith(' dart'));

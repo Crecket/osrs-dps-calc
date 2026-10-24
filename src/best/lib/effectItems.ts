@@ -356,10 +356,12 @@ const EFFECT_CATEGORIES: ReadonlySet<EquipmentCategory> = new Set([
   EquipmentCategory.SALAMANDER,
 ]);
 
-/** True when the item (or its canonical form) has an effect the optimizer cannot read off its bonuses. */
-export const isEffectItem = (piece: EquipmentPiece): boolean => {
-  const { name, category } = getCanonicalItem(piece);
-  return EFFECT_ITEM_NAMES.has(name)
-    || EFFECT_CATEGORIES.has(category)
-    || EFFECT_NAME_PATTERNS.some((p) => p.test(name));
+/** True when the engine singles the item (or its canonical form) out by name; category effects don't count. */
+export const hasNamedEffect = (piece: EquipmentPiece): boolean => {
+  const { name } = getCanonicalItem(piece);
+  return EFFECT_ITEM_NAMES.has(name) || EFFECT_NAME_PATTERNS.some((p) => p.test(name));
 };
+
+/** True when the item (or its canonical form) has an effect the optimizer cannot read off its bonuses. */
+export const isEffectItem = (piece: EquipmentPiece): boolean => hasNamedEffect(piece)
+  || EFFECT_CATEGORIES.has(getCanonicalItem(piece).category);
