@@ -31,8 +31,10 @@ export interface BestRunDeps {
   rows: Pick<BulkPool, 'run' | 'cancel'>;
 }
 
-/** Jobs that get the exhaustive search, per style, by descent DPS. */
+/** Weapons that get the exhaustive search, per style, by their best descent DPS. */
 export const TOP_K_WEAPONS = 15;
+/** Jobs (stances, ammo, spells) per selected weapon that get the exhaustive search. */
+export const JOBS_PER_WEAPON = 2;
 /** Combinations above which a job's exhaustive search falls back to descent. */
 export const COMBINATION_CAP = 20000;
 // descent is quick per job, so its jobs travel in batches; exhaustive jobs go one per payload to spread over the workers
@@ -66,14 +68,14 @@ const weaponScore = (job: WeaponJob) => styleScore(itemById(job.weaponId), job.s
  * The style's reference jobs for the shared effect test: the first job with the highest weapon attack + strength among
  * one-handed weapons, and the same among two-handed ones (shield effects need a one-hander).
  */
-const referenceJobs = (jobs: WeaponJob[]): WeaponJob[] => [false, true].flatMap((twoHanded) => {
+export const referenceJobs = (jobs: WeaponJob[]): WeaponJob[] => [false, true].flatMap((twoHanded) => {
   const best = jobs.filter((j) => itemById(j.weaponId).isTwoHanded === twoHanded)
     .reduce<WeaponJob | undefined>((b, j) => (!b || weaponScore(j) > weaponScore(b) ? j : b), undefined);
   return best ? [best] : [];
 });
 
 /** Per-slot union of effect ids, first seen first. */
-const unionEffects = (all: EffectIds[]): EffectIds => {
+export const unionEffects = (all: EffectIds[]): EffectIds => {
   const union: EffectIds = {};
   all.forEach((effects) => (Object.entries(effects) as [GearSlot, number[]][]).forEach(([slot, ids]) => {
     union[slot] = [...new Set([...(union[slot] ?? []), ...ids])];
@@ -89,6 +91,19 @@ const setupName = (job: WeaponJob) => {
   return name;
 };
 
+/**
+ * The jobs for the exhaustive search: the `topK` weapons with the best job DPS, and of each its `JOBS_PER_WEAPON` best
+ * jobs, so that one weapon's stances or ammo don't crowd out other weapons. Jobs with no DPS are left out. Of equal DPS
+ * the earlier job or weapon stays first.
+ */
+const topWeaponJobs = (jobs: WeaponJob[], dps: (job: WeaponJob) => number, topK: number): WeaponJob[] => {
+  const byWeapon = new Map<number, WeaponJob[]>();
+  // stable sort: best job first, so each weapon's list is sorted and the weapons come in order of their best job
+  jobs.filter((job) => dps(job) > 0).sort((a, b) => dps(b) - dps(a))
+    .forEach((job) => byWeapon.set(job.weaponId, [...(byWeapon.get(job.weaponId) ?? []), job]));
+  return [...byWeapon.values()].slice(0, topK).flatMap((weaponJobList) => weaponJobList.slice(0, JOBS_PER_WEAPON));
+};
+
 interface StylePlan {
   style: BestStyle;
   base: Player;
@@ -98,7 +113,7 @@ interface StylePlan {
 /**
  * The top `inputs.topN` setups per style against `monster`. Per style: (0) the effect activity test for the style's
  * reference jobs, shared as the style's effects; (1) coordinate descent over every weapon job with those effects; (2) an
- * exhaustive search, with the full per-job activity test, of the `topK` jobs with the best descent DPS. The shown setups
+ * exhaustive search, with the full per-job activity test, of the best descent jobs of the `topK` best weapons. The shown setups
  * are the best distinct phase-2 results, with their numbers from computeRow. Each phase runs every style's payloads in
  * one pool run. A new call cancels the previous one, whose promise rejects with Error('cancelled').
  */
@@ -138,7 +153,7 @@ export const runBestSetup = async (
       const phaseUnits = payloads.reduce((n, p) => n + units(p), 0);
       // the pool counts finished payloads (one result each); scale that to jobs
       const results = await deps.search.run(payloads, (p) => {
-        if (token === currentRun) onProgress(before + Math.round((p.done / p.total) * phaseUnits), total);
+        if (token === currentRun && p.total > 0) onProgress(before + Math.round((p.done / p.total) * phaseUnits), total);
       });
       check();
       done = before + phaseUnits;
@@ -150,7 +165,7 @@ export const runBestSetup = async (
     const effectPayloads = plans.flatMap((plan, i) => refs[i].map((job): BestPayload => ({
       kind: 'effects', base: plan.base, monster: target, job,
     })));
-    total = effectPayloads.length + plans.reduce((n, plan) => n + plan.jobs.length + Math.min(topK, plan.jobs.length), 0);
+    total = effectPayloads.length + plans.reduce((n, plan) => n + plan.jobs.length + Math.min(topK * JOBS_PER_WEAPON, plan.jobs.length), 0);
     const effectResults = await searchRun(effectPayloads);
     let at = 0;
     const styleEffectIds = refs.map((r) => {
@@ -171,15 +186,12 @@ export const runBestSetup = async (
       at += descentChunks[i].length;
       const bestDps = new Map<string, number>();
       results.forEach((r) => bestDps.set(jobKey(r.job), Math.max(r.dps, bestDps.get(jobKey(r.job)) ?? 0)));
-      // stable sort: of equal DPS the earlier job stays first
-      return plan.jobs.filter((job) => (bestDps.get(jobKey(job)) ?? 0) > 0)
-        .sort((a, b) => bestDps.get(jobKey(b))! - bestDps.get(jobKey(a))!)
-        .slice(0, topK);
+      return topWeaponJobs(plan.jobs, (job) => bestDps.get(jobKey(job)) ?? 0, topK);
     });
     // jobs with no damage skip phase 2
     total = done + topJobs.reduce((n, jobs) => n + jobs.length, 0);
 
-    // phase 2: exhaustive over the top jobs, each with its own activity test
+    // phase 2: exhaustive over the top weapons' top jobs, each with its own activity test
     const exhaustiveResults = await searchRun(plans.flatMap((plan, i) => topJobs[i].map((job): BestPayload => ({
       kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap,
     }))));

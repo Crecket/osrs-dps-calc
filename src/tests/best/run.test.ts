@@ -1,7 +1,10 @@
 import { describe, expect, test } from '@jest/globals';
-import { bestPool, weaponJobs } from '@/best/lib/candidates';
+import { availableEquipment } from '@/lib/Equipment';
+import { bestPool, WeaponJob, weaponJobs } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
-import { runBestSetup, BestRunDeps } from '@/best/lib/run';
+import {
+  BestRunDeps, referenceJobs, runBestSetup, unionEffects,
+} from '@/best/lib/run';
 import { BestPayload, BestResult, handleBestChunk } from '@/best/worker/protocol';
 import { computeRow, prepareMonster } from '@/bulk/lib/compute';
 import { BulkMonster } from '@/bulk/types';
@@ -25,8 +28,29 @@ const inputs = (styles: BestStyle[], topN = 3): BestInputs => ({
 
 const vorkath: BulkMonster = { id: 'vorkath', monster: prepareMonster(getTestMonster('Vorkath', 'Post-quest')) };
 
-// small enough to keep the tests fast
-const opts = { topK: 3, cap: 2000 };
+// small enough to keep the real search fast
+const opts = { topK: 2, cap: 500 };
+
+const twoHanded = (job: WeaponJob) => availableEquipment.find((e) => e.id === job.weaponId)!.isTwoHanded;
+
+/** A cheap made-up DPS per job, so that jobs of one weapon differ too. */
+const fakeDps = (job: WeaponJob) => {
+  const key = JSON.stringify([job.weaponId, job.combatStyle.name, job.ammoId, job.spellName, job.dartId]);
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) % 100003;
+  return 1 + hash / 1000;
+};
+
+/** Search answers without the engine: effects by handedness, one fake result per job. */
+const synthetic = (p: BestPayload): BestResult => {
+  if (p.kind === 'effects') return { kind: 'effects', effects: twoHanded(p.job) ? { head: [1, 2], neck: [5] } : { head: [2, 3], shield: [9] } };
+  return {
+    kind: 'search',
+    results: p.jobs.map((job) => ({
+      job, gear: {}, dps: fakeDps(job), approximate: p.mode === 'descent',
+    })),
+  };
+};
 
 /** Deps that compute in this thread, recording every search payload. */
 const fakeDeps = (handle: (p: BestPayload) => BestResult = handleBestChunk) => {
@@ -59,67 +83,80 @@ const fakeDeps = (handle: (p: BestPayload) => BestResult = handleBestChunk) => {
   };
 };
 
+describe('referenceJobs', () => {
+  test('picks a one-handed and a two-handed job when both exist', () => {
+    const refs = referenceJobs(weaponJobs(pool, 'slash'));
+    expect(refs.map(twoHanded)).toEqual([false, true]);
+  });
+
+  test('picks only the kind that exists', () => {
+    const refs = referenceJobs(weaponJobs(pool, 'slash').filter(twoHanded));
+    expect(refs.map(twoHanded)).toEqual([true]);
+  });
+});
+
+describe('unionEffects', () => {
+  test('merges per slot without duplicates', () => {
+    expect(unionEffects([{ head: [1, 2], neck: [5] }, { head: [2, 3], shield: [9] }])).toEqual({
+      head: [1, 2, 3], neck: [5], shield: [9],
+    });
+  });
+});
+
 describe('runBestSetup', () => {
   test('one outcome per style, top setups sorted by computeRow DPS', async () => {
     const { deps } = fakeDeps();
     const progress: [number, number][] = [];
-    const outcomes = await runBestSetup(inputs(['crush', 'slash']), vorkath, deps, (done, total) => progress.push([done, total]), opts);
+    const outcomes = await runBestSetup(inputs(['slash']), vorkath, deps, (done, total) => progress.push([done, total]), opts);
 
-    expect(outcomes.map((o) => o.style)).toEqual(['crush', 'slash']);
-    outcomes.forEach((o) => {
-      expect(o.message).toBeNull();
-      expect(o.setups.length).toBeGreaterThan(0);
-      expect(o.setups.length).toBeLessThanOrEqual(3);
-      expect(o.rows.length).toBe(o.setups.length);
-      o.setups.forEach((setup, i) => {
-        expect(setup.id).toBe(`best-${o.style}-${i}`);
-        expect(o.rows[i].setupId).toBe(setup.id);
-        expect(o.rows[i].dps).toBe(computeRow(setup, vorkath).dps);
-        if (i > 0) expect(o.rows[i].dps).toBeLessThanOrEqual(o.rows[i - 1].dps);
-        const { equipment, style, spell } = setup.player;
-        expect(setup.name.startsWith(`${equipment.weapon!.name} (${style.name})`)).toBe(true);
-        if (spell) expect(setup.name).toContain(` + ${spell.name}`);
-      });
+    expect(outcomes.map((o) => o.style)).toEqual(['slash']);
+    const [o] = outcomes;
+    expect(o.message).toBeNull();
+    expect(o.setups.length).toBeGreaterThan(0);
+    expect(o.setups.length).toBeLessThanOrEqual(3);
+    expect(o.rows.length).toBe(o.setups.length);
+    o.setups.forEach((setup, i) => {
+      expect(setup.id).toBe(`best-slash-${i}`);
+      expect(o.rows[i].setupId).toBe(setup.id);
+      expect(o.rows[i].dps).toBe(computeRow(setup, vorkath).dps);
+      if (i > 0) expect(o.rows[i].dps).toBeLessThanOrEqual(o.rows[i - 1].dps);
+      const { equipment, style } = setup.player;
+      expect(setup.name).toBe(`${equipment.weapon!.name} (${style.name})`);
     });
+    // every setup is built on the style's base player
+    expect(o.setups[0].player.prayers).toEqual(basePlayer(inputs(['slash']), 'slash').prayers);
+
     const [done, total] = progress[progress.length - 1];
     expect(done).toBe(total);
     expect(progress.every(([d, t]) => d <= t)).toBe(true);
-  });
+  }, 30000);
 
-  test('effects first, then descent over all jobs, then exhaustive over the top jobs', async () => {
-    const { deps, calls, answers } = fakeDeps();
-    const outcomes = await runBestSetup(inputs(['slash']), vorkath, deps, () => {}, opts);
-    const jobs = weaponJobs(pool, 'slash');
+  test('effects first, then descent over all jobs, then exhaustive over the top weapons', async () => {
+    const { deps, calls } = fakeDeps(synthetic);
+    const outcomes = await runBestSetup(inputs(['ranged']), vorkath, deps, () => {}, { topK: 3 });
+    const jobs = weaponJobs(pool, 'ranged');
 
     expect(calls.length).toBe(3);
     const [effects, descent, exhaustive] = calls;
 
-    expect(effects.length).toBeGreaterThanOrEqual(1);
-    expect(effects.length).toBeLessThanOrEqual(2);
-    expect(effects.every((p) => p.kind === 'effects')).toBe(true);
-
-    const descentPayloads = descent.filter((p) => p.kind === 'search');
-    expect(descentPayloads.length).toBe(descent.length);
-    descentPayloads.forEach((p) => {
-      if (p.kind !== 'search') return;
+    // one-handed and two-handed reference jobs, their effects merged
+    expect(effects.map((p) => (p.kind === 'effects' ? twoHanded(p.job) : null))).toEqual([false, true]);
+    descent.forEach((p) => {
+      if (p.kind !== 'search') throw new Error('expected a search payload');
       expect(p.mode).toBe('descent');
-      expect(p.effects).toBeDefined();
+      expect(p.effects).toEqual({ head: [2, 3, 1], shield: [9], neck: [5] });
       expect(p.jobs.length).toBeLessThanOrEqual(8);
     });
-    const descentJobs = descentPayloads.flatMap((p) => (p.kind === 'search' ? p.jobs : []));
-    expect(descentJobs).toEqual(jobs);
+    expect(descent.flatMap((p) => (p.kind === 'search' ? p.jobs : []))).toEqual(jobs);
 
-    // phase-1 best DPS per job, from the descent answers
-    const best = descentPayloads.flatMap((p, i) => {
-      const res = answers[1][i];
-      if (p.kind !== 'search' || res.kind !== 'search') return [];
-      return p.jobs.map((job) => Math.max(0, ...res.results.filter((r) => r.job === job).map((r) => r.dps)));
-    });
-    const topJobs = jobs.map((job, i) => ({ job, dps: best[i] }))
-      .filter((j) => j.dps > 0)
-      .sort((a, b) => b.dps - a.dps)
-      .slice(0, opts.topK)
-      .map((j) => j.job);
+    // the top 3 weapons by their best job, and each weapon's top 2 jobs
+    const byWeapon = new Map<number, WeaponJob[]>();
+    jobs.forEach((j) => byWeapon.set(j.weaponId, [...(byWeapon.get(j.weaponId) ?? []), j]));
+    const best = (ws: WeaponJob[]) => Math.max(...ws.map(fakeDps));
+    const expected = [...byWeapon.values()].sort((a, b) => best(b) - best(a)).slice(0, 3)
+      .flatMap((ws) => [...ws].sort((a, b) => fakeDps(b) - fakeDps(a)).slice(0, 2));
+    // the test needs weapons with more jobs than are kept
+    expect([...byWeapon.values()].some((ws) => ws.length > 2)).toBe(true);
 
     const exhaustiveJobs = exhaustive.flatMap((p) => {
       if (p.kind !== 'search') throw new Error('expected a search payload');
@@ -127,11 +164,12 @@ describe('runBestSetup', () => {
       expect(p.effects).toBeUndefined();
       return p.jobs;
     });
-    expect(new Set(exhaustiveJobs.map((j) => JSON.stringify(j)))).toEqual(new Set(topJobs.map((j) => JSON.stringify(j))));
-    expect(exhaustiveJobs.length).toBe(opts.topK);
+    expect(new Set(exhaustiveJobs)).toEqual(new Set(expected));
+    expect(exhaustiveJobs.length).toBe(expected.length);
+    expect(new Set(exhaustiveJobs.map((j) => j.weaponId)).size).toBe(3);
 
-    // every result is built on the style's base player
-    expect(outcomes[0].setups[0].player.prayers).toEqual(basePlayer(inputs(['slash']), 'slash').prayers);
+    // only exhaustive results are shown
+    expect(outcomes[0].approximate).toBe(false);
   });
 
   test('a style with only 0-DPS results has no setups and a message', async () => {
@@ -144,17 +182,20 @@ describe('runBestSetup', () => {
         })),
       });
     const { deps, calls } = fakeDeps(zero);
-    const outcomes = await runBestSetup(inputs(['magic']), vorkath, deps, () => {}, opts);
+    const progress: [number, number][] = [];
+    // the fake reports progress for the empty exhaustive phase too, with total 0
+    const outcomes = await runBestSetup(inputs(['magic']), vorkath, deps, (done, total) => progress.push([done, total]), opts);
 
     expect(outcomes).toEqual([{
       style: 'magic', setups: [], rows: [], approximate: false, message: 'No usable magic setup found',
     }]);
     // nothing worth an exhaustive search
     expect(calls.flat().some((p) => p.kind === 'search' && p.mode === 'exhaustive')).toBe(false);
+    expect(progress.every(([d, t]) => Number.isFinite(d) && d <= t)).toBe(true);
   });
 
   test('a new run cancels the previous one', async () => {
-    const { deps, searchCancels } = fakeDeps();
+    const { deps, searchCancels } = fakeDeps(synthetic);
     const first = runBestSetup(inputs(['slash'], 1), vorkath, deps, () => {}, opts);
     const second = runBestSetup(inputs(['slash'], 1), vorkath, deps, () => {}, opts);
 
