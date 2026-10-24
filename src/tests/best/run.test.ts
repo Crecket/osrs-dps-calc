@@ -3,7 +3,7 @@ import { availableEquipment } from '@/lib/Equipment';
 import { bestPool, WeaponJob, weaponJobs } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
 import {
-  BestRunDeps, JOBS_PER_WEAPON, referenceJobs, runBestSetup, unionEffects,
+  BestRunDeps, JOBS_PER_WEAPON, referenceGroups, runBestSetup, unionEffects,
 } from '@/best/lib/run';
 import { BestPayload, BestResult, handleBestChunk } from '@/best/worker/protocol';
 import { computeRow, prepareMonster } from '@/bulk/lib/compute';
@@ -43,7 +43,11 @@ const fakeDps = (job: WeaponJob) => {
 
 /** Search answers without the engine: effects by handedness, one fake result per job. */
 const synthetic = (p: BestPayload): BestResult => {
-  if (p.kind === 'effects') return { kind: 'effects', effects: twoHanded(p.job) ? { head: [1, 2], neck: [5] } : { head: [2, 3], shield: [9] } };
+  if (p.kind === 'effects') {
+    return {
+      kind: 'effects', effects: twoHanded(p.jobs[0]) ? { head: [1, 2], neck: [5] } : { head: [2, 3], shield: [9] }, job: p.jobs[0],
+    };
+  }
   return {
     kind: 'search',
     results: p.jobs.map((job) => ({
@@ -83,15 +87,18 @@ const fakeDeps = (handle: (p: BestPayload) => BestResult = handleBestChunk) => {
   };
 };
 
-describe('referenceJobs', () => {
-  test('picks a one-handed and a two-handed job when both exist', () => {
-    const refs = referenceJobs(weaponJobs(pool, 'slash'));
-    expect(refs.map(twoHanded)).toEqual([false, true]);
+describe('referenceGroups', () => {
+  test('splits the jobs into one-handed and two-handed ones', () => {
+    const jobs = weaponJobs(pool, 'slash');
+    const groups = referenceGroups(jobs);
+    expect(groups.map((g) => g.map(twoHanded))).toEqual([groups[0].map(() => false), groups[1].map(() => true)]);
+    expect(groups.flat().length).toBe(jobs.length);
   });
 
-  test('picks only the kind that exists', () => {
-    const refs = referenceJobs(weaponJobs(pool, 'slash').filter(twoHanded));
-    expect(refs.map(twoHanded)).toEqual([true]);
+  test('leaves out the kind that does not exist', () => {
+    const groups = referenceGroups(weaponJobs(pool, 'slash').filter(twoHanded));
+    expect(groups.length).toBe(1);
+    expect(groups[0].every(twoHanded)).toBe(true);
   });
 });
 
@@ -139,8 +146,9 @@ describe('runBestSetup', () => {
     expect(calls.length).toBe(3);
     const [effects, descent, exhaustive] = calls;
 
-    // one-handed and two-handed reference jobs, their effects merged
-    expect(effects.map((p) => (p.kind === 'effects' ? twoHanded(p.job) : null))).toEqual([false, true]);
+    // one-handed and two-handed jobs to pick the reference jobs from, their effects merged
+    expect(effects.map((p) => (p.kind === 'effects' ? [...new Set(p.jobs.map(twoHanded))] : null))).toEqual([[false], [true]]);
+    expect(new Set(effects.flatMap((p) => (p.kind === 'effects' ? p.jobs : [])))).toEqual(new Set(jobs));
     descent.forEach((p) => {
       if (p.kind !== 'search') throw new Error('expected a search payload');
       expect(p.mode).toBe('descent');
@@ -161,8 +169,8 @@ describe('runBestSetup', () => {
     const exhaustiveJobs = exhaustive.flatMap((p) => {
       if (p.kind !== 'search') throw new Error('expected a search payload');
       expect(p.mode).toBe('exhaustive');
-      // the shared effects too: only the WEAPON_LINKED items are re-tested per job
-      expect(p.effects).toEqual({ head: [2, 3, 1], shield: [9], neck: [5] });
+      // each job gets its own full activity test, not the shared effects
+      expect(p.effects).toBeUndefined();
       return p.jobs;
     });
     expect(new Set(exhaustiveJobs)).toEqual(new Set(expected));
@@ -175,7 +183,7 @@ describe('runBestSetup', () => {
 
   test('a style with only 0-DPS results has no setups and a message', async () => {
     const zero = (p: BestPayload): BestResult => (p.kind === 'effects'
-      ? { kind: 'effects', effects: {} }
+      ? { kind: 'effects', effects: {}, job: null }
       : {
         kind: 'search',
         results: p.jobs.map((job) => ({
@@ -194,6 +202,36 @@ describe('runBestSetup', () => {
     expect(calls.flat().some((p) => p.kind === 'search' && p.mode === 'exhaustive')).toBe(false);
     expect(progress.every(([d, t]) => Number.isFinite(d) && d <= t)).toBe(true);
   });
+
+  test('Kurask on task: only leaf-bladed weapons hurt it, and the slash setup still gets a slayer helm or V\'s helm', async () => {
+    const kurask: BulkMonster = { id: 'kurask', monster: prepareMonster(getTestMonster('Kurask', 'Normal')) };
+    const onTask = { ...inputs(['slash']), conditions: { ...DEFAULT_CONDITIONS, onSlayerTask: true } };
+    const { deps, answers } = fakeDeps();
+    const [o] = await runBestSetup(onTask, kurask, deps, () => {}, opts);
+
+    // the reference jobs deal damage, so the shared effects aren't all pruned
+    answers[0].forEach((r) => {
+      if (r.kind !== 'effects') throw new Error('expected an effects result');
+      expect(r.job).not.toBeNull();
+      expect(Object.values(r.effects).flat().length).toBeGreaterThan(0);
+    });
+    expect(o.setups.length).toBeGreaterThan(0);
+    expect(o.setups[0].player.equipment.weapon!.name).toMatch(/^Leaf-bladed /);
+    expect(['Slayer helmet (i)', "V's helm"]).toContain(o.setups[0].player.equipment.head?.name);
+  }, 60000);
+
+  test('a T3 vampyre: only vampyrebane weapons hurt it, and effect items are still considered', async () => {
+    const vyrewatch: BulkMonster = { id: 'vyrewatch', monster: prepareMonster(getTestMonster('Vyrewatch Sentinel', '1')) };
+    const { deps, answers } = fakeDeps();
+    const [o] = await runBestSetup(inputs(['crush']), vyrewatch, deps, () => {}, opts);
+
+    const refs = answers[0].map((r) => (r.kind === 'effects' ? r : null));
+    expect(refs.some((r) => r !== null && r.job !== null && Object.values(r.effects).flat().length > 0)).toBe(true);
+    expect(o.setups.length).toBeGreaterThan(0);
+    expect(o.rows[0].dps).toBeGreaterThan(0);
+    // Efaritay's aid boosts vampyrebane weapons
+    expect(o.setups[0].player.equipment.ring?.name).toBe("Efaritay's aid");
+  }, 60000);
 
   test('a new run cancels the previous one', async () => {
     const { deps, searchCancels } = fakeDeps(synthetic);

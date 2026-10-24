@@ -6,7 +6,7 @@ import { availableEquipment } from '@/lib/Equipment';
 import { EquipmentPiece, Player } from '@/types/Player';
 import { basePlayer } from '@/best/lib/basePlayer';
 import {
-  bestPool, GearSlot, styleScore, WeaponJob, weaponJobs,
+  bestPool, GearSlot, WeaponJob, weaponJobs,
 } from '@/best/lib/candidates';
 import { buildPlayer, SearchResult } from '@/best/lib/search';
 import { BestPayload, BestResult, EffectIds } from '@/best/worker/protocol';
@@ -62,17 +62,12 @@ const chunk = <T>(items: T[], size: number): T[][] => Array.from(
 
 const jobKey = (job: WeaponJob) => JSON.stringify([job.weaponId, job.combatStyle.name, job.ammoId, job.spellName, job.dartId]);
 
-const weaponScore = (job: WeaponJob) => styleScore(itemById(job.weaponId), job.style).reduce((a, b) => a + b);
-
 /**
- * The style's reference jobs for the shared effect test: the first job with the highest weapon attack + strength among
- * one-handed weapons, and the same among two-handed ones (shield effects need a one-hander).
+ * The style's jobs split by handedness, one-handed first, for the shared effect test: each group's reference job is the one with the best baseline DPS (shield effects need a one-hander). Empty groups are left out.
  */
-export const referenceJobs = (jobs: WeaponJob[]): WeaponJob[] => [false, true].flatMap((twoHanded) => {
-  const best = jobs.filter((j) => itemById(j.weaponId).isTwoHanded === twoHanded)
-    .reduce<WeaponJob | undefined>((b, j) => (!b || weaponScore(j) > weaponScore(b) ? j : b), undefined);
-  return best ? [best] : [];
-});
+export const referenceGroups = (jobs: WeaponJob[]): WeaponJob[][] => [false, true]
+  .map((twoHanded) => jobs.filter((j) => itemById(j.weaponId).isTwoHanded === twoHanded))
+  .filter((group) => group.length > 0);
 
 /** Per-slot union of effect ids, first seen first. */
 export const unionEffects = (all: EffectIds[]): EffectIds => {
@@ -111,10 +106,7 @@ interface StylePlan {
 }
 
 /**
- * The top `inputs.topN` setups per style against `monster`. Per style: (0) the effect activity test for the style's
- * reference jobs, shared as the style's effects; (1) coordinate descent over every weapon job with those effects; (2) an
- * exhaustive search, with the same effects and a per-job re-test of the WEAPON_LINKED items, of the best descent jobs
- * of the `topK` best weapons. The shown setups are the best distinct phase-2 results, with their numbers from
+ * The top `inputs.topN` setups per style against `monster`. Per style: (0) the effect activity test for the style's reference jobs (the best damaging one-handed and two-handed job by baseline DPS), shared as the style's effects; (1) coordinate descent over every weapon job with those effects; (2) an exhaustive search, with a full per-job activity test, of the best descent jobs of the `topK` best weapons. The shown setups are the best distinct phase-2 results, with their numbers from
  * computeRow. Each phase runs every style's payloads in one pool run. A new call cancels the previous one, whose promise rejects with Error('cancelled').
  */
 export const runBestSetup = async (
@@ -160,10 +152,10 @@ export const runBestSetup = async (
       return results;
     };
 
-    // phase 0: shared effects per style
-    const refs = plans.map((plan) => referenceJobs(plan.jobs));
-    const effectPayloads = plans.flatMap((plan, i) => refs[i].map((job): BestPayload => ({
-      kind: 'effects', base: plan.base, monster: target, job,
+    // phase 0: shared effects per style, from the best damaging one-handed and two-handed jobs
+    const refs = plans.map((plan) => referenceGroups(plan.jobs));
+    const effectPayloads = plans.flatMap((plan, i) => refs[i].map((jobs): BestPayload => ({
+      kind: 'effects', base: plan.base, monster: target, jobs,
     })));
     total = effectPayloads.length + plans.reduce((n, plan) => n + plan.jobs.length + Math.min(topK * JOBS_PER_WEAPON, plan.jobs.length), 0);
     const effectResults = await searchRun(effectPayloads);
@@ -191,10 +183,9 @@ export const runBestSetup = async (
     // jobs with no damage skip phase 2
     total = done + topJobs.reduce((n, jobs) => n + jobs.length, 0);
 
-    // phase 2: exhaustive over the top weapons' top jobs, with the style's effects; searchWeapon re-tests the
-    // WEAPON_LINKED items per job, so a weapon-specific effect isn't lost
+    // phase 2: exhaustive over the top weapons' top jobs, each with its own full activity test: the shared effects come from another weapon and can miss what matters for this one (an effect that needs the weapon to hurt the monster)
     const exhaustiveResults = await searchRun(plans.flatMap((plan, i) => topJobs[i].map((job): BestPayload => ({
-      kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap, effects: styleEffectIds[i],
+      kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap,
     }))));
     // phase 2 may have been empty
     onProgress(done, total);

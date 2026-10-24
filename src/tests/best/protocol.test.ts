@@ -1,7 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 import { bestPool, WeaponJob, weaponJobs } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
-import { searchWeapon, styleEffects } from '@/best/lib/search';
+import { referenceJob, searchWeapon, styleEffects } from '@/best/lib/search';
 import { handleBestChunk } from '@/best/worker/protocol';
 import { prepareMonster } from '@/bulk/lib/compute';
 import {
@@ -52,15 +52,28 @@ describe('handleBestChunk', () => {
     expect(res).toEqual({ kind: 'search', results: searchWeapon(base, vorkath, scytheJob, pool, { ...opts, effects }) });
   });
 
-  test('effects equals styleEffects mapped to ids', () => {
+  test('effects equals styleEffects of the reference job, mapped to ids', () => {
+    const jobs = weaponJobs(pool, 'slash').filter((j) => j.weaponId === scytheId);
     const res = handleBestChunk({
-      kind: 'effects', base, monster: vorkath, job: scytheJob,
+      kind: 'effects', base, monster: vorkath, jobs,
     });
 
-    const effects = styleEffects(base, vorkath, scytheJob, pool);
+    const job = referenceJob(base, vorkath, jobs, pool)!;
+    expect(job.weaponId).toBe(scytheId);
+    const effects = styleEffects(base, vorkath, job, pool);
     expect(res).toEqual({
       kind: 'effects',
       effects: Object.fromEntries(Object.entries(effects).map(([slot, items]) => [slot, items!.map((e) => e.id)])),
+      job,
     });
+  });
+
+  test('effects with no damaging job are empty', () => {
+    // melee can't hurt Zulrah
+    const zulrah = prepareMonster(getTestMonster('Zulrah', 'Serpentine'));
+    const melee = weaponJobs(pool, 'slash').slice(0, 20);
+    expect(handleBestChunk({
+      kind: 'effects', base, monster: zulrah, jobs: melee,
+    })).toEqual({ kind: 'effects', effects: {}, job: null });
   });
 });

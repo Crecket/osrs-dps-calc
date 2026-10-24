@@ -213,6 +213,22 @@ export const styleEffects = (base: Player, monster: Monster, job: WeaponJob, poo
   effectCandidates(pool, job.style),
 );
 
+/**
+ * The job to run the shared activity test on: the one with the highest baseline DPS, the first of equal ones. Null when none deals damage, since effects test as inactive on a job that can't hurt the monster.
+ */
+export const referenceJob = (base: Player, monster: Monster, jobs: WeaponJob[], pool: EquipmentPiece[]): WeaponJob | null => {
+  let best: WeaponJob | null = null;
+  let bestDps = 0;
+  jobs.forEach((job) => {
+    const dps = evalDps(base, monster, job, baselineGear(pool, job));
+    if (dps > bestDps + EPSILON) {
+      best = job;
+      bestDps = dps;
+    }
+  });
+  return best;
+};
+
 /** Each SETS entry with its pieces taken from the pool (the strongest version of each name); sets missing a piece are left out. */
 const resolveSets = perPoolStyle((pool, style): ResolvedSet[] => SETS.flatMap((set) => {
   const pieces: Partial<Record<GearSlot, EquipmentPiece>> = {};
