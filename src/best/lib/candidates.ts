@@ -22,10 +22,10 @@ export interface WeaponJob {
   dartId: number | null;
 }
 
-const EXCLUDED_VERSIONS = new Set(['Uncharged', 'Inactive', 'Deadman Mode', 'Cosmetic']);
+const EXCLUDED_VERSIONS = new Set(['Uncharged', 'Inactive', 'Deadman Mode', 'Cosmetic', 'Broken']);
 const EXCLUDED_NAME = /\(unobtainable item\)|\(beta\)/i;
 
-/** The items the search may use: canonical items, without uncharged, inactive, Deadman, cosmetic or unobtainable ones. */
+/** The items the search may use: canonical items, without uncharged, inactive, broken, Deadman, cosmetic or unobtainable ones. */
 export const bestPool = (items: EquipmentPiece[] = availableEquipment): EquipmentPiece[] => items.filter((e) => getCanonicalItemId(e.id) === e.id
   && !EXCLUDED_VERSIONS.has(e.version)
   && !EXCLUDED_NAME.test(e.name));
@@ -89,6 +89,12 @@ const SPELL_CANDIDATES: string[] = (() => {
   return [...new Set([...perElement, ...barrages, ...named])].sort();
 })();
 
+// The Twinflame staff adds a second hitsplat to standard Bolt, Blast and Wave spells, so those tiers can beat Surges
+const TWINFLAME_SPELL_CANDIDATES: string[] = [...new Set([
+  ...SPELL_CANDIDATES,
+  ...spells.filter((s) => s.spellbook === 'standard' && s.element && /( Bolt| Blast| Wave)$/.test(s.name)).map((s) => s.name),
+])].sort();
+
 // Stances that add no offence: melee Defensive, ranged and powered-staff Longrange, Defensive Autocast
 const NO_OFFENCE: Record<'melee' | 'ranged' | 'magic', ReadonlySet<CombatStyleStance>> = {
   melee: new Set(['Defensive']),
@@ -151,15 +157,24 @@ const ammoCandidates = (valid: EquipmentPiece[]): number[] => {
 const requiresAmmo = (weapon: EquipmentPiece) => ammoApplicability(weapon.id, undefined) !== AmmoApplicability.ALLOWED;
 
 /**
- * Weapon setups for `style`. Interchangeable variants (poison, charges) collapse to one. Weapons the engine names are all kept; the rest are dominance-pruned on (attack, strength,
- * -speed) among weapons that are otherwise interchangeable: same handedness, category, stances, ammo and kind of magic.
- * A category effect (bolt procs, chinchompa fuses, powered staves, ...) is the same for every weapon of the category.
- * Ranged weapons that take ammo get one job per candidate ammo, blowpipes one per candidate dart, spellcasting
- * weapons one per candidate spell. Sorted by weapon id, then stance order, then ammo/dart id or spell name.
+ * Weapon setups for `style`. Interchangeable variants (poison, charges) collapse to one. Weapons the engine names are
+ * all kept; the rest are dominance-pruned on (attack, strength, -speed) among weapons that are otherwise
+ * interchangeable: same handedness, category, stances, ammo and kind of magic. A category effect (bolt procs,
+ * chinchompa fuses, powered staves, ...) is the same for every weapon of the category. Ranged weapons that take ammo
+ * get one job per candidate ammo, blowpipes one per candidate dart, spellcasting weapons one per candidate spell.
+ * Sorted by weapon id, then stance order, then ammo/dart id or spell name.
  */
 export const weaponJobs = (pool: EquipmentPiece[], style: BestStyle): WeaponJob[] => {
   const ammo = pool.filter((e) => e.slot === 'ammo');
-  const validAmmo = (weapon: EquipmentPiece) => ammo.filter((a) => ammoApplicability(weapon.id, a.id) === AmmoApplicability.INCLUDED);
+  const validAmmoCache = new Map<number, EquipmentPiece[]>();
+  const validAmmo = (weapon: EquipmentPiece) => {
+    let valid = validAmmoCache.get(weapon.id);
+    if (!valid) {
+      valid = ammo.filter((a) => ammoApplicability(weapon.id, a.id) === AmmoApplicability.INCLUDED);
+      validAmmoCache.set(weapon.id, valid);
+    }
+    return valid;
+  };
 
   const allWeapons = pool.filter((e) => e.slot === 'weapon')
     .map((weapon) => ({ weapon, stances: stancesFor(weapon, style) }))
@@ -208,7 +223,8 @@ export const weaponJobs = (pool: EquipmentPiece[], style: BestStyle): WeaponJob[
     } else if (style === 'ranged' && requiresAmmo(weapon)) {
       extras = ammoCandidates(validAmmo(weapon)).map((ammoId) => ({ ammoId, spellName: null, dartId: null }));
     } else if (style === 'magic' && !BUILT_IN_MAGIC.has(weapon.category)) {
-      extras = SPELL_CANDIDATES.map((spellName) => ({ ammoId: null, spellName, dartId: null }));
+      extras = (weapon.name === 'Twinflame staff' ? TWINFLAME_SPELL_CANDIDATES : SPELL_CANDIDATES)
+        .map((spellName) => ({ ammoId: null, spellName, dartId: null }));
     }
     return stances.flatMap((combatStyle) => extras.map((extra) => ({
       style, weaponId: weapon.id, combatStyle, ...extra,

@@ -146,6 +146,7 @@ export const EFFECT_ITEM_NAMES: ReadonlySet<string> = new Set<string>([
   'Ruby dragon bolts (e)',
   'Scorching bow',
   'Seeking broad arrows',
+  'Silver bolts',
   'Sunspear',
   'Tome of Earth',
   'Tome of Fire',

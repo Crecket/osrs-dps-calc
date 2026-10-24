@@ -23,7 +23,7 @@ const synthetic = (id: number, slash: number, str: number): EquipmentPiece => {
 
 describe('bestPool', () => {
   test('drops uncharged, inactive, Deadman, cosmetic and unobtainable items', () => {
-    const versions = ['Uncharged', 'Inactive', 'Deadman Mode', 'Cosmetic'];
+    const versions = ['Uncharged', 'Inactive', 'Deadman Mode', 'Cosmetic', 'Broken'];
     expect(pool.filter((e) => versions.includes(e.version))).toEqual([]);
     expect(pool.filter((e) => /\(unobtainable item\)|\(beta\)/i.test(e.name))).toEqual([]);
     expect(pool.map((e) => e.id)).toContain(findEquipment('Scythe of Vitur', 'Charged').id);
@@ -127,10 +127,16 @@ describe('weaponJobs', () => {
       'Inferior Demonbane', 'Superior Demonbane', 'Dark Demonbane',
       'Ghostly Grasp', 'Skeletal Grasp', 'Undead Grasp',
     ]));
-    ['Fire Wave', 'Ice Blitz', 'Bind', 'Entangle', 'Confuse', 'Tele Block'].forEach((s) => expect(staffSpells).not.toContain(s));
+    ['Fire Wave', 'Fire Bolt', 'Ice Blitz', 'Bind', 'Entangle', 'Confuse', 'Tele Block'].forEach((s) => expect(staffSpells).not.toContain(s));
 
-    // every spellcasting weapon gets the same list; plain staves like the Staff of fire lose to better plain staves
-    const withSpells = jobs.filter((j) => j.spellName !== null);
+    // the Twinflame staff adds a hitsplat to Bolt, Blast and Wave spells
+    const twinflame = findEquipment('Twinflame staff');
+    const twinSpells = jobs.filter((j) => j.weaponId === twinflame.id).map((j) => j.spellName);
+    expect(twinSpells).toEqual(expect.arrayContaining([...staffSpells, 'Fire Wave', 'Fire Blast', 'Fire Bolt', 'Wind Wave', 'Water Bolt', 'Earth Blast']));
+    expect(twinSpells).not.toContain('Fire Strike');
+
+    // every other spellcasting weapon gets the same list; plain staves like the Staff of fire lose to better plain staves
+    const withSpells = jobs.filter((j) => j.spellName !== null && j.weaponId !== twinflame.id);
     new Set(withSpells.map((j) => j.weaponId)).forEach((id) => {
       expect(new Set(withSpells.filter((j) => j.weaponId === id).map((j) => j.spellName))).toEqual(new Set(staffSpells));
     });
@@ -168,6 +174,8 @@ describe('weaponJobs', () => {
     expect(acb.has('Ruby dragon bolts (e)')).toBe(true);
     expect(acb.has('Diamond dragon bolts (e)')).toBe(true);
     expect(acb.has('Runite bolts')).toBe(false);
+    // the engine checks silver bolts by name (vampyres)
+    expect(ammoNames('Rune crossbow').has('Silver bolts')).toBe(true);
   });
 
   test('magic jobs only for weapons that autocast, have built-in magic or magic strength', () => {

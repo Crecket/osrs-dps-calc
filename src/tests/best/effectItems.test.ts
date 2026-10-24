@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import path from 'node:path';
 import { availableEquipment } from '@/lib/Equipment';
-import { isEffectItem } from '@/best/lib/effectItems';
+import { hasNamedEffect, isEffectItem } from '@/best/lib/effectItems';
 import { findEquipment } from '@/tests/utils/TestUtils';
 
 const LIB_DIR = path.join(__dirname, '../../lib');
@@ -24,7 +24,8 @@ const unescape = (lit: string) => lit.replace(/\\(.)/g, '$1');
 const literals = new Set<string>();
 const substringChecks = new Set<string>();
 sources.forEach((src) => {
-  for (const m of src.matchAll(/'((?:[^'\n\\]|\\.)+)'|"((?:[^"\n\\]|\\.)+)"/g)) literals.add(unescape(m[1] ?? m[2]).toLowerCase());
+  // 'Silver bolts#Poison' names an item and its version
+  for (const m of src.matchAll(/'((?:[^'\n\\]|\\.)+)'|"((?:[^"\n\\]|\\.)+)"/g)) literals.add(unescape(m[1] ?? m[2]).replace(/#.*$/, '').toLowerCase());
   for (const m of src.matchAll(/\.(includes|startsWith|endsWith)\(\s*(?:'((?:[^'\n\\]|\\.)+)'|"((?:[^"\n\\]|\\.)+)")/g)) substringChecks.add(unescape(m[2] ?? m[3]));
 });
 
@@ -32,9 +33,10 @@ sources.forEach((src) => {
 const AMMO_SLOT_ONLY = new Set(['arrow', 'bolt']);
 
 describe('effectItems', () => {
-  test('every equipment name the engine mentions is an effect item', () => {
+  // named checks must be covered by name: the type-level patterns (every arrow, every bolt) don't stop pruning
+  test('every equipment name the engine mentions has a named effect', () => {
     const missing = availableEquipment
-      .filter((e) => literals.has(e.name.toLowerCase()) && !isEffectItem(e))
+      .filter((e) => literals.has(e.name.toLowerCase()) && !hasNamedEffect(e))
       .map((e) => `${e.name}${e.version ? ` (${e.version})` : ''}`);
     expect([...new Set(missing)]).toEqual([]);
   });
@@ -42,7 +44,8 @@ describe('effectItems', () => {
   test('every substring check on names is covered', () => {
     const missing = [...substringChecks]
       .flatMap((sub) => availableEquipment
-        .filter((e) => e.name.toLowerCase().includes(sub.toLowerCase()) && (!AMMO_SLOT_ONLY.has(sub) || e.slot === 'ammo') && !isEffectItem(e))
+        .filter((e) => e.name.toLowerCase().includes(sub.toLowerCase()) && (!AMMO_SLOT_ONLY.has(sub) || e.slot === 'ammo')
+          && !(AMMO_SLOT_ONLY.has(sub) ? isEffectItem(e) : hasNamedEffect(e)))
         .map((e) => `${sub}: ${e.name}${e.version ? ` (${e.version})` : ''}`));
     expect(missing).toEqual([]);
   });
