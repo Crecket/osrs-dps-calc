@@ -246,18 +246,23 @@ describe('BestPage', () => {
     await unmount();
   });
 
-  test('the prayer Auto label shows the prayers bestPrayers picks, and follows the Prayer level', async () => {
+  test('prayers: three rows with no unlock checkboxes; the Auto label follows the Prayer level', async () => {
     const { container, unmount } = await mount();
-    const melee = () => [...container.querySelectorAll('select')].find((sel) => sel.options[0].text.startsWith('Auto'))!;
-    const prayerLevel = [...container.querySelectorAll('label')].find((l) => l.querySelector('span')?.textContent === 'Prayer')!
-      .querySelector('input')!;
-    expect(melee().options[0].text).toBe('Auto — Zeal');
+    const selects = () => [...container.querySelectorAll('select')].filter((sel) => sel.options[0].text.startsWith('Auto'));
+    const melee = () => selects()[0];
+    const prayerLevel = [...container.querySelectorAll('label')].find((l) => l.textContent === 'Prayer')!.querySelector('input')!;
+    expect(selects().map((sel) => container.querySelector(`label[for="${sel.id}"]`)!.textContent)).toEqual(['Melee', 'Ranged', 'Magic']);
+    expect(selects().map((sel) => sel.options[0].text)).toEqual(['Auto (Zeal)', 'Auto (Rigour)', 'Auto (Augury)']);
+    const checkboxLabels = [...container.querySelectorAll('input[type=checkbox]')].map((c) => c.closest('label')!.textContent);
+    ['Piety', 'Rigour', 'Augury', 'Deadeye', 'Mystic Vigour', 'Zeal'].forEach((p) => expect(checkboxLabels.join('|')).not.toContain(p));
 
     await setNumber(prayerLevel, '31');
-    expect(melee().options[0].text).toBe('Auto — Ultimate Strength + Improved Reflexes');
-    expect([...melee().options].map((o) => o.text)).toContain('Burst of Strength');
-    // Piety's unlock note
-    expect(container.textContent).toContain('Chivalry needs 60 Prayer, 65 Defence');
+    expect(melee().options[0].text).toBe('Auto (Ultimate Strength + Improved Reflexes)');
+    const options = [...melee().options].map((o) => o.text);
+    expect(options).toContain('Burst of Strength');
+    // options the levels don't allow aren't listed
+    expect(options).not.toContain('Piety');
+    expect(options[options.length - 1]).toBe('None');
 
     // choosing a prayer saves an override, and nothing runs
     await act(async () => {
@@ -268,10 +273,35 @@ describe('BestPage', () => {
     expect((mockData.get(BEST_STORAGE_KEY) as { inputs: BestInputs }).inputs.prayerOverrides).toEqual({ melee: [Prayer.SUPERHUMAN_STRENGTH] });
     expect(mockRun).not.toHaveBeenCalled();
 
-    // an override the levels no longer allow falls back to Auto, with a note
+    // an override the levels no longer allow falls back to Auto, with one line
     await setNumber(prayerLevel, '10');
-    expect(container.textContent).toContain("Superhuman Strength isn't usable at these levels, so Auto is used");
+    expect(container.textContent).toContain('Superhuman Strength needs 13 Prayer — using Auto');
     expect(melee().value).toBe('auto');
+    await unmount();
+  });
+
+  test('style chips sit by the button; changing them only marks results stale', async () => {
+    mockRun.mockResolvedValue([outcome('Whip')]);
+    const { container, unmount } = await mount();
+    const chip = (name: string) => container.querySelector('[aria-label=Styles]')!.querySelector<HTMLButtonElement>(`button:nth-child(${['Stab', 'Slash', 'Crush', 'Ranged', 'Magic'].indexOf(name) + 1})`)!;
+    expect(chip('Magic').textContent).toBe('Magic');
+    await act(async () => find(container).click());
+    await wait(10);
+    await act(async () => chip('Magic').click());
+    await wait(400);
+    expect(chip('Magic').getAttribute('aria-pressed')).toBe('false');
+    expect(mockRun).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Inputs changed — results are out of date');
+
+    // the last style can't be turned off
+    for (const n of ['Stab', 'Slash', 'Crush', 'Ranged']) {
+      // eslint-disable-next-line no-await-in-loop
+      await act(async () => chip(n).click());
+    }
+    expect(['Stab', 'Slash', 'Crush', 'Ranged', 'Magic'].filter((n) => chip(n).getAttribute('aria-pressed') === 'true')).toEqual(['Ranged']);
+    expect(chip('Ranged').disabled).toBe(true);
+    await act(async () => find(container).click());
+    expect(mockRun.mock.calls[1][0].styles).toEqual(['ranged']);
     await unmount();
   });
 

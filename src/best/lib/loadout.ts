@@ -47,6 +47,11 @@ export const PRAYER_GROUPS: PrayerGroup[] = ['melee', 'ranged', 'magic'];
 
 export const prayerGroup = (style: BestStyle): PrayerGroup => (style === 'ranged' || style === 'magic' ? style : 'melee');
 
+/** The unlocks with every prayer unlocked: the page doesn't ask about unlocks, so only the levels limit the prayers. */
+export const allUnlocked = (unlocks: PrayerUnlocks): PrayerUnlocks => ({
+  prayerLevel: unlocks.prayerLevel, piety: true, rigour: true, augury: true, deadeye: true, mysticVigour: true, zeal: true,
+});
+
 /** Whether the prayer is unlocked and the prayer and Defence levels are high enough for it. */
 export const canUsePrayer = (p: Prayer, unlocks: PrayerUnlocks, defLevel: number): boolean => {
   const unlocked = (() => {

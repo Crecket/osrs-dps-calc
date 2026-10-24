@@ -1,13 +1,23 @@
 import React, { useEffect, useId, useState } from 'react';
 import { observer } from 'mobx-react-lite';
+import { StaticImageData } from 'next/image';
+import attackIcon from '@/public/img/bonuses/attack.png';
+import strengthIcon from '@/public/img/bonuses/strength.png';
+import defenceIcon from '@/public/img/bonuses/defence.png';
+import rangedIcon from '@/public/img/bonuses/ranged.png';
+import magicIcon from '@/public/img/bonuses/magic.png';
+import hitpointsIcon from '@/public/img/bonuses/hitpoints.png';
+import prayerIcon from '@/public/img/tabs/prayer.png';
+import miningIcon from '@/public/img/bonuses/mining.png';
+import herbloreIcon from '@/public/img/bonuses/herblore.png';
 import { PotionMap } from '@/utils';
 import { PlayerSkills } from '@/types/Player';
 import {
-  BEST_STYLES, BestStyle, CombatConditions, PrayerUnlocks,
+  BestStyle, CombatConditions,
 } from '@/best/types';
 import { useBestStore } from '@/best/state/BestStore';
 import {
-  bestPrayers, canUsePrayer, DEFENCE_LEVEL, defaultPotions, PRAYER_LEVEL, prayerChoices, PrayerGroup, stylePrayers,
+  allUnlocked, bestPrayers, canUsePrayer, DEFENCE_LEVEL, defaultPotions, PRAYER_LEVEL, prayerChoices, PrayerGroup, stylePrayers,
 } from '@/best/lib/loadout';
 import { Prayer, PrayerMap } from '@/enums/Prayer';
 import { PotionPicker } from '@/bulk/components/FilterBar';
@@ -25,8 +35,9 @@ const NumberField: React.FC<{
   onChange: (v: number | null) => void;
   allowEmpty?: boolean;
   placeholder?: string;
+  icon?: StaticImageData;
 }> = ({
-  label, value, min, max, onChange, allowEmpty, placeholder,
+  label, value, min, max, onChange, allowEmpty, placeholder, icon,
 }) => {
   const id = useId();
   const [text, setText] = useState(value === null ? '' : String(value));
@@ -34,7 +45,10 @@ const NumberField: React.FC<{
 
   return (
     <label htmlFor={id} className="flex items-center justify-between gap-2 text-sm">
-      <span>{label}</span>
+      <span className="flex items-center gap-1.5">
+        {icon && <img className="w-4 h-4 object-contain" src={icon.src} alt="" />}
+        <span>{label}</span>
+      </span>
       <input
         id={id}
         type="number"
@@ -76,24 +90,15 @@ const Section: React.FC<React.PropsWithChildren<{ title: string }>> = ({ title, 
 );
 
 // prayer is set together with the prayer level under Prayers
-const SKILLS: [keyof PlayerSkills, string, number][] = [
-  ['atk', 'Attack', 1],
-  ['str', 'Strength', 1],
-  ['def', 'Defence', 1],
-  ['ranged', 'Ranged', 1],
-  ['magic', 'Magic', 1],
-  ['hp', 'Hitpoints', 10],
-  ['mining', 'Mining', 1],
-  ['herblore', 'Herblore', 1],
-];
-
-const UNLOCKS: [Exclude<keyof PrayerUnlocks, 'prayerLevel'>, string][] = [
-  ['piety', 'Piety / Chivalry'],
-  ['rigour', 'Rigour'],
-  ['augury', 'Augury'],
-  ['deadeye', 'Deadeye'],
-  ['mysticVigour', 'Mystic Vigour'],
-  ['zeal', 'Zeal'],
+const SKILLS: [keyof PlayerSkills, string, number, StaticImageData][] = [
+  ['atk', 'Attack', 1, attackIcon],
+  ['str', 'Strength', 1, strengthIcon],
+  ['def', 'Defence', 1, defenceIcon],
+  ['ranged', 'Ranged', 1, rangedIcon],
+  ['magic', 'Magic', 1, magicIcon],
+  ['hp', 'Hitpoints', 10, hitpointsIcon],
+  ['mining', 'Mining', 1, miningIcon],
+  ['herblore', 'Herblore', 1, herbloreIcon],
 ];
 
 const CONDITIONS: [keyof Omit<CombatConditions, 'soulreaperStacks' | 'currentHp'>, string][] = [
@@ -105,61 +110,45 @@ const CONDITIONS: [keyof Omit<CombatConditions, 'soulreaperStacks' | 'currentHp'
   ['kandarinDiary', 'Kandarin hard diary'],
 ];
 
-const UNLOCK_PRAYER: Record<Exclude<keyof PrayerUnlocks, 'prayerLevel'>, Prayer> = {
-  piety: Prayer.PIETY,
-  rigour: Prayer.RIGOUR,
-  augury: Prayer.AUGURY,
-  deadeye: Prayer.DEADEYE,
-  mysticVigour: Prayer.MYSTIC_VIGOUR,
-  zeal: Prayer.ZEAL,
-};
-
-/** What the player lacks for the prayer, e.g. 'needs 70 Prayer, 70 Defence'; null when the levels are met. */
+/** Why the player can't use the prayer, e.g. 'Piety needs 70 Defence'; null when the levels are met. */
 const missingLevels = (p: Prayer, prayerLevel: number, defLevel: number): string | null => {
-  const prayer = PRAYER_LEVEL[p] ?? 0;
-  const defence = DEFENCE_LEVEL[p] ?? 0;
-  if (prayerLevel >= prayer && defLevel >= defence) return null;
-  return `needs ${prayer} Prayer${defence > 0 ? `, ${defence} Defence` : ''}`;
-};
-
-/** Why an unlocked prayer can't be used yet, or null. Piety's unlock covers Chivalry too, which needs less. */
-const unlockNote = (k: Exclude<keyof PrayerUnlocks, 'prayerLevel'>, prayerLevel: number, defLevel: number): string | null => {
-  if (k !== 'piety') return missingLevels(UNLOCK_PRAYER[k], prayerLevel, defLevel);
-  const chivalry = missingLevels(Prayer.CHIVALRY, prayerLevel, defLevel);
-  if (chivalry) return `Chivalry ${chivalry}`;
-  const piety = missingLevels(Prayer.PIETY, prayerLevel, defLevel);
-  return piety && `Piety ${piety}`;
+  const needs = [
+    ...(prayerLevel < (PRAYER_LEVEL[p] ?? 0) ? [`${PRAYER_LEVEL[p]} Prayer`] : []),
+    ...(defLevel < (DEFENCE_LEVEL[p] ?? 0) ? [`${DEFENCE_LEVEL[p]} Defence`] : []),
+  ];
+  return needs.length > 0 ? `${PrayerMap[p].name} needs ${needs.join(', ')}` : null;
 };
 
 const prayerNames = (prayers: Prayer[]) => prayers.map((p) => PrayerMap[p].name).join(' + ');
 const choiceValue = (prayers: Prayer[]) => prayers.join(',');
 
-/** The prayer select of one group: Auto (the best usable prayers), every usable choice, and None. */
+/** The prayer row of one group: Auto (the best usable prayers), every usable choice strongest first, and None. */
 const PrayerPicker: React.FC<{ group: PrayerGroup; label: string; style: BestStyle }> = observer(({ group, label, style }) => {
   const store = useBestStore();
-  const { unlocks, skills, prayerOverrides = {} } = store.inputs;
+  const { skills, prayerOverrides = {} } = store.inputs;
+  const unlocks = allUnlocked(store.inputs.unlocks);
   const id = useId();
   const auto = bestPrayers(style, unlocks, skills.def);
   const override = prayerOverrides[group];
-  const unusable = override !== undefined && !override.every((p) => canUsePrayer(p, unlocks, skills.def));
+  const blocked = override?.find((p) => !canUsePrayer(p, unlocks, skills.def));
   const used = stylePrayers(style, unlocks, skills.def, prayerOverrides);
 
   const choices = prayerChoices(group, unlocks, skills.def);
   // a saved choice that's usable but not offered (e.g. a weaker pair) stays selectable
-  if (override && override.length > 0 && !unusable && !choices.some((c) => choiceValue(c) === choiceValue(override))) choices.push(override);
+  if (override && override.length > 0 && blocked === undefined && !choices.some((c) => choiceValue(c) === choiceValue(override))) choices.push(override);
   let value = 'auto';
-  if (override !== undefined && !unusable) value = override.length === 0 ? 'none' : choiceValue(override);
+  if (override !== undefined && blocked === undefined) value = override.length === 0 ? 'none' : choiceValue(override);
 
   return (
-    <div className="flex flex-col gap-0.5 text-sm">
-      <label htmlFor={id} className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1">
-          {label}
+    <>
+      <label htmlFor={id} className="text-sm whitespace-nowrap">{label}</label>
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span className="flex shrink-0 w-9 gap-0.5">
           {used.map((p) => <img key={p} className="w-4 h-4 object-contain" src={PrayerMap[p].image.src} alt={PrayerMap[p].name} />)}
         </span>
         <select
           id={id}
-          className={`${inputClass} max-w-[14rem]`}
+          className={`${inputClass} w-full min-w-0`}
           value={value}
           onChange={(e) => {
             const v = e.target.value;
@@ -168,15 +157,17 @@ const PrayerPicker: React.FC<{ group: PrayerGroup; label: string; style: BestSty
             else store.setPrayerOverride(group, v.split(',').map(Number) as Prayer[]);
           }}
         >
-          <option value="auto">{`Auto — ${auto.length > 0 ? prayerNames(auto) : 'none available'}`}</option>
+          <option value="auto">{`Auto (${auto.length > 0 ? prayerNames(auto) : 'none'})`}</option>
           {choices.map((c) => <option key={choiceValue(c)} value={choiceValue(c)}>{prayerNames(c)}</option>)}
           <option value="none">None</option>
         </select>
-      </label>
-      {unusable && (
-        <span className="text-xs text-orange-700 dark:text-orange-300">{`${prayerNames(override!)} isn't usable at these levels, so Auto is used`}</span>
+      </div>
+      {blocked !== undefined && (
+        <span className="col-start-2 -mt-1.5 text-xs text-orange-700 dark:text-orange-300">
+          {`${missingLevels(blocked, unlocks.prayerLevel, skills.def)} — using Auto`}
+        </span>
       )}
-    </div>
+    </>
   );
 });
 
@@ -188,31 +179,28 @@ const POTION_GROUPS: { group: 'melee' | 'ranged' | 'magic'; label: string; style
   { group: 'magic', label: 'Magic', style: 'magic' },
 ];
 
-const toggleClass = (on: boolean) => `px-2.5 py-1 text-sm ${on
-  ? 'bg-orange-400 dark:bg-orange-700 text-white'
-  : 'bg-btns-400 dark:bg-dark-500 text-gray-300 line-through'}`;
-
 /**
- * Everything the search takes besides the monster: levels, prayers, conditions, styles and potions.
+ * Everything the search takes besides the monster and the styles: levels, prayers, conditions and potions.
  */
 const InputsPanel: React.FC = observer(() => {
   const store = useBestStore();
   const {
-    skills, unlocks, conditions, styles, potions,
+    skills, unlocks, conditions, potions,
   } = store.inputs;
 
   return (
     <Panel title="Your account" className="grow basis-[360px]">
       <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
         <Section title="Levels">
-          {SKILLS.map(([k, label, min]) => (
-            <NumberField key={k} label={label} value={skills[k]} min={min} max={99} onChange={(v) => v !== null && store.setSkills({ [k]: v })} />
+          {SKILLS.map(([k, label, min, icon]) => (
+            <NumberField key={k} label={label} icon={icon} value={skills[k]} min={min} max={99} onChange={(v) => v !== null && store.setSkills({ [k]: v })} />
           ))}
         </Section>
 
         <Section title="Prayers">
           <NumberField
             label="Prayer"
+            icon={prayerIcon}
             value={unlocks.prayerLevel}
             min={1}
             max={99}
@@ -222,15 +210,9 @@ const InputsPanel: React.FC = observer(() => {
               store.setUnlocks({ prayerLevel: v });
             }}
           />
-          {UNLOCKS.map(([k, label]) => {
-            const missing = unlockNote(k, unlocks.prayerLevel, skills.def);
-            return (
-              <div key={k} className={missing ? 'opacity-60' : ''}>
-                <Check label={missing ? `${label} — ${missing}` : label} checked={unlocks[k]} onChange={(v) => store.setUnlocks({ [k]: v })} />
-              </div>
-            );
-          })}
-          {POTION_GROUPS.map(({ group, label, style }) => <PrayerPicker key={group} group={group} label={label} style={style} />)}
+          <div className="grid grid-cols-[5rem_1fr] gap-x-3 gap-y-2 items-center">
+            {POTION_GROUPS.map(({ group, label, style }) => <PrayerPicker key={group} group={group} label={label} style={style} />)}
+          </div>
         </Section>
 
         <Section title="Conditions">
@@ -257,27 +239,6 @@ const InputsPanel: React.FC = observer(() => {
         </Section>
 
         <div className="flex flex-col gap-4">
-          <Section title="Styles">
-            <div className="flex flex-wrap rounded overflow-hidden border border-body-500 dark:border-dark-200 self-start">
-              {BEST_STYLES.map((s) => {
-                const on = styles.includes(s);
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    className={toggleClass(on)}
-                    aria-pressed={on}
-                    // at least one style stays on
-                    disabled={on && styles.length === 1}
-                    onClick={() => store.setStyles(on ? styles.filter((x) => x !== s) : BEST_STYLES.filter((x) => x === s || styles.includes(x)))}
-                  >
-                    {styleName(s)}
-                  </button>
-                );
-              })}
-            </div>
-          </Section>
-
           <Section title="Potions">
             {POTION_GROUPS.map(({ group, label, style }) => (
               <div key={group} className="flex items-center justify-between gap-2 text-sm">

@@ -26,6 +26,7 @@ import TargetMonster from '@/bulk/components/TargetMonster';
 import BulkTable from '@/bulk/components/BulkTable';
 import Panel, { buttonClass } from '@/bulk/components/Panel';
 import InputsPanel, { styleName } from '@/best/components/InputsPanel';
+import { BEST_STYLES } from '@/best/types';
 
 const isCancelled = (e: unknown) => e instanceof Error && e.message === 'cancelled';
 
@@ -114,6 +115,34 @@ const StyleResults: React.FC<{ outcome: StyleOutcome; sort: SortState; onSort: (
   );
 };
 
+const chipClass = (on: boolean) => `px-2 py-0.5 text-xs ${on
+  ? 'bg-orange-400 dark:bg-orange-700 text-white'
+  : 'bg-btns-400 dark:bg-dark-500 text-gray-300 line-through'}`;
+
+/** The styles to search, as toggle chips; at least one stays on. Changing them runs nothing. */
+const StyleChips: React.FC<{ store: BestStore }> = observer(({ store }) => {
+  const { styles } = store.inputs;
+  return (
+    <div className="flex rounded overflow-hidden border border-body-500 dark:border-dark-200" role="group" aria-label="Styles">
+      {BEST_STYLES.map((s) => {
+        const on = styles.includes(s);
+        return (
+          <button
+            key={s}
+            type="button"
+            className={chipClass(on)}
+            aria-pressed={on}
+            disabled={on && styles.length === 1}
+            onClick={() => store.setStyles(on ? styles.filter((x) => x !== s) : BEST_STYLES.filter((x) => x === s || styles.includes(x)))}
+          >
+            {styleName(s)}
+          </button>
+        );
+      })}
+    </div>
+  );
+});
+
 const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ store, pools }) => {
   const [outcomes, setOutcomes] = useState<StyleOutcome[]>([]);
   // the runKey the shown results were searched with; results go stale when the inputs or the monster change
@@ -167,6 +196,7 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
       title={monster ? `Best setups vs ${monsterLabel(monster)}` : 'Best setups'}
       actions={(
         <>
+          <StyleChips store={store} />
           {stale && !running && (
             <span className="text-xs text-orange-700 dark:text-orange-300">Inputs changed — results are out of date</span>
           )}
