@@ -5,6 +5,7 @@ import Potion from '@/enums/Potion';
 import { Prayer, PrayerMap } from '@/enums/Prayer';
 import { PlayerSkills } from '@/types/Player';
 import { PotionMap } from '@/utils';
+import { availableEquipment, getCanonicalItemId } from '@/lib/Equipment';
 import {
   BEST_STYLES, BestInputs, BestStyle, CombatConditions, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS, PrayerUnlocks,
 } from '@/best/types';
@@ -30,6 +31,7 @@ const defaultInputs = (): BestInputs => ({
   styles: [...BEST_STYLES],
   topN: 5,
   prayerOverrides: {},
+  excludedItemIds: [],
 });
 
 const POTION_GROUPS = ['melee', 'ranged', 'magic'] as const;
@@ -47,6 +49,12 @@ const mergeTyped = <T extends object>(base: T, raw: unknown, valid: (k: keyof T,
 };
 
 const isNum = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+
+let itemIds: Set<number> | null = null;
+const knownItemIds = () => {
+  if (!itemIds) itemIds = new Set(availableEquipment.map((e) => e.id));
+  return itemIds;
+};
 
 /** Saved state with defaults for anything missing or invalid, like readFilters does for bulk filters */
 const readSaved = (raw: unknown): SavedBest => {
@@ -74,6 +82,10 @@ const readSaved = (raw: unknown): SavedBest => {
     }
   }
 
+  const excludedItemIds = Array.isArray(i.excludedItemIds)
+    ? [...new Set((i.excludedItemIds as unknown[]).filter((x): x is number => isNum(x) && knownItemIds().has(x as number)))]
+    : [];
+
   const m = r.monster;
   const monster = isRecord(m) && isRecord(m.monster) && isNum(m.monster.id) && typeof m.monster.name === 'string'
     ? m as unknown as BulkMonster
@@ -91,6 +103,7 @@ const readSaved = (raw: unknown): SavedBest => {
       styles: styles.length > 0 ? styles : base.styles,
       topN: typeof i.topN === 'number' && Number.isInteger(i.topN) && i.topN > 0 ? i.topN : base.topN,
       prayerOverrides,
+      excludedItemIds,
     },
     monster,
   };
@@ -190,14 +203,39 @@ export class BestStore implements TargetHolder {
     this.save();
   }
 
+  /** Leaves the item (as its canonical item) out of the search */
+  excludeItem(id: number) {
+    const canonical = getCanonicalItemId(id);
+    const ids = this.inputs.excludedItemIds ?? [];
+    if (ids.includes(canonical)) return;
+    this.inputs.excludedItemIds = [...ids, canonical];
+    this.save();
+  }
+
+  includeItem(id: number) {
+    const canonical = getCanonicalItemId(id);
+    this.inputs.excludedItemIds = (this.inputs.excludedItemIds ?? []).filter((x) => x !== canonical);
+    this.save();
+  }
+
+  clearExcluded() {
+    this.inputs.excludedItemIds = [];
+    this.save();
+  }
+
   /** Changes whenever anything that affects the result changes; null while there is nothing to run against */
   get runKey(): string | null {
     if (!this.monster) return null;
-    const { potions, prayerOverrides = {}, ...rest } = toJS(this.inputs);
+    const {
+      potions, prayerOverrides = {}, excludedItemIds = [], ...rest
+    } = toJS(this.inputs);
     // fixed order for the potion and prayer groups, so the order they were set in doesn't matter
     const sortedPotions = POTION_GROUPS.map((g) => [g, potions[g] ?? null]);
     const sortedPrayers = PRAYER_GROUPS.map((g) => [g, prayerOverrides[g] ?? null]);
-    return JSON.stringify({ inputs: { ...rest, potions: sortedPotions, prayerOverrides: sortedPrayers }, monster: toJS(this.monster.monster) });
+    const inputs = {
+      ...rest, potions: sortedPotions, prayerOverrides: sortedPrayers, excludedItemIds: [...excludedItemIds].sort((a, b) => a - b),
+    };
+    return JSON.stringify({ inputs, monster: toJS(this.monster.monster) });
   }
 
   private save() {

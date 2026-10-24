@@ -2,7 +2,7 @@
  * Runs the best setup search for every chosen style. Main thread only (basePlayer imports '@/state'); worker code
  * must not import this file.
  */
-import { availableEquipment } from '@/lib/Equipment';
+import { availableEquipment, getCanonicalItemId } from '@/lib/Equipment';
 import { EquipmentPiece, Player } from '@/types/Player';
 import { basePlayer } from '@/best/lib/basePlayer';
 import {
@@ -40,10 +40,19 @@ export const COMBINATION_CAP = 20000;
 // descent is quick per job, so its jobs travel in batches; exhaustive jobs go one per payload to spread over the workers
 const DESCENT_JOBS_PER_PAYLOAD = 8;
 
-let pool: EquipmentPiece[] | null = null;
+// the pool without exclusions, kept for the most recent exclusion list like the workers do
+let fullPool: EquipmentPiece[] | null = null;
+let pool: EquipmentPiece[] = [];
+let poolKey: string | null = null;
 let itemsById: Map<number, EquipmentPiece> | null = null;
-const getPool = () => {
-  if (!pool) pool = bestPool();
+const getPool = (excluded: number[]) => {
+  const key = [...excluded].sort((a, b) => a - b).join(',');
+  if (key !== poolKey) {
+    if (!fullPool) fullPool = bestPool();
+    const leftOut = new Set(excluded);
+    pool = leftOut.size === 0 ? fullPool : fullPool.filter((e) => !leftOut.has(e.id));
+    poolKey = key;
+  }
   return pool;
 };
 const itemById = (id: number) => {
@@ -132,8 +141,10 @@ export const runBestSetup = async (
   const target = monster.monster;
 
   try {
+    // the workers leave the same items out of their pools
+    const excluded = (inputs.excludedItemIds ?? []).map(getCanonicalItemId);
     const plans: StylePlan[] = inputs.styles.map((style) => ({
-      style, base: basePlayer(inputs, style), jobs: weaponJobs(getPool(), style, target),
+      style, base: basePlayer(inputs, style), jobs: weaponJobs(getPool(excluded), style, target),
     }));
 
     // progress counts jobs: one per effect test, one per searched job and phase
@@ -155,7 +166,7 @@ export const runBestSetup = async (
     // phase 0: shared effects per style, from the best damaging one-handed and two-handed jobs
     const refs = plans.map((plan) => referenceGroups(plan.jobs));
     const effectPayloads = plans.flatMap((plan, i) => refs[i].map((jobs): BestPayload => ({
-      kind: 'effects', base: plan.base, monster: target, jobs,
+      kind: 'effects', base: plan.base, monster: target, jobs, excluded,
     })));
     total = effectPayloads.length + plans.reduce((n, plan) => n + plan.jobs.length + Math.min(topK * JOBS_PER_WEAPON, plan.jobs.length), 0);
     const effectResults = await searchRun(effectPayloads);
@@ -169,7 +180,7 @@ export const runBestSetup = async (
     // phase 1: descent over every job
     const descentChunks = plans.map((plan) => chunk(plan.jobs, DESCENT_JOBS_PER_PAYLOAD));
     const descentResults = await searchRun(plans.flatMap((plan, i) => descentChunks[i].map((jobs): BestPayload => ({
-      kind: 'search', base: plan.base, monster: target, jobs, mode: 'descent', topN, cap, effects: styleEffectIds[i],
+      kind: 'search', base: plan.base, monster: target, jobs, mode: 'descent', topN, cap, effects: styleEffectIds[i], excluded,
     }))));
     at = 0;
     const topJobs = plans.map((plan, i) => {
@@ -185,7 +196,7 @@ export const runBestSetup = async (
 
     // phase 2: exhaustive over the top weapons' top jobs, each with its own full activity test: the shared effects come from another weapon and can miss what matters for this one (an effect that needs the weapon to hurt the monster)
     const exhaustiveResults = await searchRun(plans.flatMap((plan, i) => topJobs[i].map((job): BestPayload => ({
-      kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap,
+      kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap, excluded,
     }))));
     // phase 2 may have been empty
     onProgress(done, total);

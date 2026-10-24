@@ -251,6 +251,19 @@ describe('runBestSetup', () => {
     expect(o.rows[0].dps).toBeGreaterThan(Math.max(...others));
   }, 60000);
 
+  test('excluded items never appear in the results', async () => {
+    // every salve, (e), (ei), (i) and plain: otherwise the next salve down takes the neck
+    const salves = pool.filter((e) => e.name.startsWith('Salve amulet')).map((e) => e.id);
+    expect(salves.length).toBeGreaterThanOrEqual(3);
+    const { deps, calls } = fakeDeps();
+    const [o] = await runBestSetup({ ...inputs(['slash']), excludedItemIds: salves }, vorkath, deps, () => {}, opts);
+
+    expect(o.setups.length).toBeGreaterThan(0);
+    o.setups.forEach((s) => expect(s.player.equipment.neck?.name ?? '').not.toMatch(/^Salve amulet/));
+    // the workers get the exclusions with every payload
+    calls.flat().forEach((p) => expect(p.excluded).toEqual(salves));
+  }, 60000);
+
   test('a new run cancels the previous one', async () => {
     const { deps, searchCancels } = fakeDeps(synthetic);
     const first = runBestSetup(inputs(['slash'], 1), vorkath, deps, () => {}, opts);

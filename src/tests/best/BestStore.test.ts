@@ -6,6 +6,8 @@ import { monsterFromSearch } from '@/bulk/lib/presetIO';
 import { getMonsters } from '@/lib/Monsters';
 import Potion from '@/enums/Potion';
 import { Prayer } from '@/enums/Prayer';
+import { getCanonicalItemId } from '@/lib/Equipment';
+import { findEquipment } from '@/tests/utils/TestUtils';
 import { BestInputs } from '@/best/types';
 import TargetSync from '@/bulk/state/TargetSync';
 import { GlobalState } from '@/state';
@@ -162,6 +164,36 @@ describe('BestStore', () => {
     expect(a.runKey).toBe(auto);
   });
 
+  test('excludeItem stores canonical ids once; includeItem and clearExcluded undo it; runKey ignores the order', async () => {
+    const storage = new MemoryStorage();
+    const a = new BestStore(storage);
+    await a.load();
+    a.setTarget(abyssal());
+    const none = a.runKey;
+    const whip = findEquipment('Abyssal whip').id;
+    const scythe = findEquipment('Scythe of Vitur', 'Charged').id;
+    a.excludeItem(whip);
+    a.excludeItem(whip);
+    a.excludeItem(scythe);
+    expect(a.inputs.excludedItemIds).toEqual([whip, scythe].map(getCanonicalItemId));
+    expect(a.runKey).not.toBe(none);
+    await flush();
+    expect(savedInputs(storage).excludedItemIds).toEqual(a.inputs.excludedItemIds);
+
+    const b = new BestStore(new MemoryStorage());
+    await b.load();
+    b.setTarget(abyssal());
+    b.excludeItem(scythe);
+    b.excludeItem(whip);
+    expect(b.runKey).toBe(a.runKey);
+
+    a.includeItem(whip);
+    expect(a.inputs.excludedItemIds).toEqual([getCanonicalItemId(scythe)]);
+    a.clearExcluded();
+    expect(a.inputs.excludedItemIds).toEqual([]);
+    expect(a.runKey).toBe(none);
+  });
+
   test('setTarget before load leaves storage untouched and load keeps the saved state', async () => {
     const storage = new MemoryStorage();
     const first = new BestStore(storage);
@@ -255,6 +287,8 @@ describe('BestStore', () => {
           prayerOverrides: {
             ranged: [Prayer.HAWK_EYE], melee: [Prayer.AUGURY], other: [], magic: [9999],
           },
+          // a known item, a duplicate, an unknown id, a non-number
+          excludedItemIds: [4151, 4151, -5, 'x'],
         },
         monster: { id: 'x' },
       });
@@ -275,6 +309,7 @@ describe('BestStore', () => {
       expect(store.inputs.topN).toBe(5);
       expect(store.inputs.potions).toEqual({ melee: [Potion.SUPER_COMBAT] });
       expect(store.inputs.prayerOverrides).toEqual({ ranged: [Prayer.HAWK_EYE] });
+      expect(store.inputs.excludedItemIds).toEqual([4151]);
       expect(store.monster).toBeNull();
     });
 

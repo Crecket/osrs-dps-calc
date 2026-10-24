@@ -39,6 +39,8 @@ export interface BestInputs {
   topN: number;
   /** Per prayer group: the prayers to use instead of the best usable ones; a missing group is Auto, [] is no prayer */
   prayerOverrides?: Partial<Record<'melee' | 'ranged' | 'magic', Prayer[]>>;
+  /** Canonical ids of items the search must not use */
+  excludedItemIds?: number[];
 }
 
 // not on slayer task: upstream defaults to on, which would make the slayer helm win every boss
