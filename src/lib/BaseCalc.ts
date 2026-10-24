@@ -447,7 +447,7 @@ export default class BaseCalc {
   }
 
   protected isWearingBloodMoonSet(): boolean {
-    return this.wearingAll(['Dual macuahuitl', 'Blood moon helm', 'Blood moon chestplate', 'Blood moon tassets']);
+    return this.wearingAll(['Dual macuahuitl', 'Blood Moon helm', 'Blood Moon chestplate', 'Blood Moon tassets']);
   }
 
   /**
