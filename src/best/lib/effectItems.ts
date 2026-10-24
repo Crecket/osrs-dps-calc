@@ -1,6 +1,6 @@
 import { getCanonicalItem } from '@/lib/Equipment';
 import { EquipmentCategory } from '@/enums/EquipmentCategory';
-import { EquipmentPiece } from '@/types/Player';
+import { EquipmentPiece, PlayerEquipment } from '@/types/Player';
 
 /**
  * Items whose effect is more than their bonuses: the calc engine (src/lib) branches on their name, a name substring,
@@ -374,3 +374,49 @@ export const isEffectItem = (piece: EquipmentPiece): boolean => {
   const { name, category } = getCanonicalItem(piece);
   return hasNamedEffect(piece) || EFFECT_CATEGORIES.has(category) || SHARED_TYPE_PATTERNS.some((p) => p.test(name));
 };
+
+/** A set whose effect needs every piece worn together; the weapon comes from the job, so only gear slots are listed. */
+export interface GearSet {
+  name: string;
+  pieces: Partial<Record<Exclude<keyof PlayerEquipment, 'weapon'>, string>>;
+}
+
+const voidSet = (name: string, helm: string, elite: boolean): GearSet => ({
+  name,
+  pieces: {
+    head: helm,
+    body: elite ? 'Elite void top' : 'Void knight top',
+    legs: elite ? 'Elite void robe' : 'Void knight robe',
+    hands: 'Void knight gloves',
+  },
+});
+
+const barrowsSet = (name: string, head: string, body: string, legs: string, damned: boolean): GearSet => ({
+  name,
+  pieces: {
+    head, body, legs, ...(damned ? { neck: 'Amulet of the Damned' } : {}),
+  },
+});
+
+/**
+ * Set effects the search tests as a whole: greedy single-slot swaps can't find them, and a piece can do nothing on its
+ * own. Names are canonical item names, as the engine checks them.
+ */
+export const SETS: readonly GearSet[] = [
+  voidSet('Void melee', 'Void melee helm', false),
+  voidSet('Elite void melee', 'Void melee helm', true),
+  voidSet('Void ranged', 'Void ranger helm', false),
+  voidSet('Elite void ranged', 'Void ranger helm', true),
+  voidSet('Void magic', 'Void mage helm', false),
+  voidSet('Elite void magic', 'Void mage helm', true),
+  { name: 'Inquisitor', pieces: { head: "Inquisitor's great helm", body: "Inquisitor's hauberk", legs: "Inquisitor's plateskirt" } },
+  { name: 'Obsidian', pieces: { head: 'Obsidian helmet', body: 'Obsidian platebody', legs: 'Obsidian platelegs' } },
+  { name: 'Crystal', pieces: { head: 'Crystal helm', body: 'Crystal body', legs: 'Crystal legs' } },
+  { name: 'Blood Moon', pieces: { head: 'Blood Moon helm', body: 'Blood Moon chestplate', legs: 'Blood Moon tassets' } },
+  { name: 'Virtus', pieces: { head: 'Virtus mask', body: 'Virtus robe top', legs: 'Virtus robe bottom' } },
+  barrowsSet('Dharok', "Dharok's helm", "Dharok's platebody", "Dharok's platelegs", false),
+  barrowsSet('Verac', "Verac's helm", "Verac's brassard", "Verac's plateskirt", false),
+  barrowsSet('Torag', "Torag's helm", "Torag's platebody", "Torag's platelegs", true),
+  barrowsSet('Karil', "Karil's coif", "Karil's leathertop", "Karil's leatherskirt", true),
+  barrowsSet('Ahrim', "Ahrim's hood", "Ahrim's robetop", "Ahrim's robeskirt", true),
+];
