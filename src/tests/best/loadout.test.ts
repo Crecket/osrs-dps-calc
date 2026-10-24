@@ -72,4 +72,11 @@ describe('basePlayer', () => {
     expect(p.buffs.potions).toEqual([Potion.SUPER_RANGING]);
     expect(p.boosts.hp).toBe(-49);
   });
+
+  test('current HP above Hitpoints counts as full HP', () => {
+    const p = basePlayer({
+      ...inputs, skills: { ...inputs.skills, hp: 70 }, conditions: { ...DEFAULT_CONDITIONS, currentHp: 99 },
+    }, 'ranged');
+    expect(p.boosts.hp).toBe(0);
+  });
 });

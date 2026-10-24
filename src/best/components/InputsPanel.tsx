@@ -162,7 +162,8 @@ const InputsPanel: React.FC = observer(() => {
           />
           <NumberField
             label="Current HP"
-            value={conditions.currentHp}
+            // the search treats a current HP above Hitpoints as full HP, so show it that way
+            value={conditions.currentHp === null ? null : Math.min(conditions.currentHp, skills.hp)}
             min={1}
             max={skills.hp}
             allowEmpty

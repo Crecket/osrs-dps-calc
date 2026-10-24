@@ -15,6 +15,7 @@ import { TaskPool } from '@/bulk/worker/TaskPool';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import createBulkWorker from '@/bulk/worker/createBulkWorker';
 import { BulkStore } from '@/bulk/state/BulkStore';
+import { notifyPresetsChanged } from '@/bulk/state/presetChannel';
 import { newId } from '@/bulk/lib/presetIO';
 import { defaultSort, selectRows, SortState } from '@/bulk/lib/table';
 import { monsterLabel } from '@/bulk/lib/format';
@@ -32,16 +33,24 @@ const isCancelled = (e: unknown) => e instanceof Error && e.message === 'cancell
  */
 const addToBulkPreset = async (setup: BulkSetup) => {
   const bulk = new BulkStore();
+  // load always leaves an active preset
   await bulk.load();
-  if (!bulk.persists) {
+  const preset = bulk.active;
+  if (!bulk.persists() || !preset) {
     toast.error('The bulk tool\'s presets could not be read, so the setup was not added');
     return;
   }
-  if (!bulk.active) bulk.createPreset('Best setups');
-  const preset = bulk.active!;
   const result = bulk.addSetups([{ id: newId(), name: setup.name, player: toJS(setup.player) }]);
-  if (result.added > 0) toast.success(`Added to ${preset.name}`);
-  else toast.info(`That setup is already in ${preset.name}`);
+  if (result.added === 0) {
+    toast.info(`That setup is already in ${preset.name}`);
+    return;
+  }
+  if (!await bulk.whenSaved()) {
+    toast.error('Could not save the bulk tool\'s presets');
+    return;
+  }
+  notifyPresetsChanged();
+  toast.success(`Added to ${preset.name}. Reload any open bulk tool tab to see it.`);
 };
 
 interface Pools {
@@ -110,6 +119,12 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
   const [stopped, setStopped] = useState(false);
   const [sort, setSort] = useState<SortState>(defaultSort('normal'));
   const runToken = useRef(0);
+  // the debounced restart after an input change, until it starts
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelPending = () => {
+    if (pending.current) clearTimeout(pending.current);
+    pending.current = null;
+  };
 
   const run = useCallback(async () => {
     runToken.current += 1;
@@ -141,12 +156,30 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
     }
   }, [store, pools]);
 
-  // rerun whenever an input or the monster changes, batched so that typing a level runs once
-  useEffect(() => reaction(() => store.runKey, run, { fireImmediately: true, delay: 300 }), [store, run]);
+  // run now, then again whenever an input or the monster changes, debounced so that typing a level runs once; the
+  // debounce is our own timer rather than the reaction's delay so that Stop can cancel it
+  useEffect(() => {
+    run();
+    const dispose = reaction(() => store.runKey, () => {
+      cancelPending();
+      pending.current = setTimeout(() => {
+        pending.current = null;
+        run();
+      }, 300);
+    });
+    return () => {
+      dispose();
+      cancelPending();
+    };
+  }, [store, run]);
 
   const stop = () => {
+    cancelPending();
+    // the stopped run's result, should it still arrive, is ignored
+    runToken.current += 1;
     pools.search.cancel();
     pools.rows.cancel();
+    setRunning(false);
     setStopped(true);
   };
 

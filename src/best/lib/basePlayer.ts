@@ -26,7 +26,7 @@ export const basePlayer = (inputs: BestInputs, style: BestStyle): Player => {
     soulreaperStacks: conditions.soulreaperStacks,
   };
   player.boosts = { ...player.boosts, ...potionBoosts(potions, player.skills) };
-  // the engine reads current HP as skill + boost
-  if (conditions.currentHp !== null) player.boosts.hp = conditions.currentHp - player.skills.hp;
+  // the engine reads current HP as skill + boost; a current HP above Hitpoints (left over from a higher level) is full HP
+  if (conditions.currentHp !== null) player.boosts.hp = Math.min(conditions.currentHp, player.skills.hp) - player.skills.hp;
   return player;
 };

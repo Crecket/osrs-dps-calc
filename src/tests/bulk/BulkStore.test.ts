@@ -109,6 +109,34 @@ describe('BulkStore', () => {
     expect(store.warnings.join(' ')).toContain('could not be read');
   });
 
+  test('whenSaved tells whether the latest change was written', async () => {
+    const storage = new MemoryStorage();
+    const store = new BulkStore(storage);
+    await store.load();
+    expect(store.persists()).toBe(true);
+    store.renamePreset(store.active!.id, 'Renamed');
+    await expect(store.whenSaved()).resolves.toBe(true);
+    expect(saved(storage).presets[0].name).toBe('Renamed');
+
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    storage.setItem = async () => { throw new Error('quota exceeded'); };
+    store.renamePreset(store.active!.id, 'Again');
+    await expect(store.whenSaved()).resolves.toBe(false);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+
+    // after a failed read nothing is saved at all
+    const unread = new MemoryStorage();
+    unread.getItem = async () => { throw new Error('IndexedDB unavailable'); };
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const readOnly = new BulkStore(unread);
+    await readOnly.load();
+    warn.mockRestore();
+    expect(readOnly.persists()).toBe(false);
+    readOnly.renamePreset(readOnly.active!.id, 'Lost');
+    await expect(readOnly.whenSaved()).resolves.toBe(false);
+  });
+
   test('one broken preset does not block loading the others', async () => {
     const storage = new MemoryStorage();
     const good = new BulkStore(storage);

@@ -11,6 +11,7 @@ import type { BulkPreset } from '@/bulk/types';
 // in-memory storage for both the best and the bulk store; a key in mockFailing makes reads of it throw
 const mockData = new Map<string, unknown>();
 const mockFailing = new Set<string>();
+const mockFailingWrites = new Set<string>();
 jest.mock('localforage', () => ({
   __esModule: true,
   default: {
@@ -19,6 +20,7 @@ jest.mock('localforage', () => ({
       return mockData.get(key) ?? null;
     },
     setItem: async (key: string, value: unknown) => {
+      if (mockFailingWrites.has(key)) throw new Error('write failed');
       mockData.set(key, JSON.parse(JSON.stringify(value)));
       return value;
     },
@@ -45,6 +47,9 @@ const { STORAGE_KEY } = require('@/bulk/state/BulkStore') as typeof import('@/bu
 const { monsterFromSearch } = require('@/bulk/lib/presetIO') as typeof import('@/bulk/lib/presetIO');
 const { getMonsters } = require('@/lib/Monsters') as typeof import('@/lib/Monsters');
 const { generateEmptyPlayer } = require('@/state') as typeof import('@/state');
+const { TaskPool } = require('@/bulk/worker/TaskPool') as typeof import('@/bulk/worker/TaskPool');
+const { BulkPool } = require('@/bulk/worker/BulkPool') as typeof import('@/bulk/worker/BulkPool');
+const { PRESETS_CHANNEL } = require('@/bulk/state/presetChannel') as typeof import('@/bulk/state/presetChannel');
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -73,6 +78,20 @@ const mount = async () => {
   return { container, unmount: () => act(() => root.unmount()) };
 };
 
+// jsdom has no BroadcastChannel; record what is posted
+const posted: [string, unknown][] = [];
+class FakeChannel {
+  constructor(public name: string) {}
+
+  postMessage(m: unknown) { posted.push([this.name, m]); }
+
+  // eslint-disable-next-line class-methods-use-this
+  close() {}
+}
+
+const button = (container: HTMLElement, text: string) => [...container.querySelectorAll('button')]
+  .find((b) => b.textContent?.includes(text));
+
 const setNumber = (input: HTMLInputElement, value: string) => act(() => {
   // React tracks the value itself, so set it through the native setter for the change to register
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
@@ -85,11 +104,18 @@ describe('BestPage', () => {
     jest.spyOn(console, 'debug').mockImplementation(() => {});
     mockData.clear();
     mockFailing.clear();
+    mockFailingWrites.clear();
+    mockRun.mockReset();
+    posted.length = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).BroadcastChannel = FakeChannel;
     mockData.set(BEST_STORAGE_KEY, { monster: monsterFromSearch(getMonsters().find((m) => m.id === 415)!) });
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (globalThis as any).BroadcastChannel;
   });
 
   test('runs once the saved state is loaded, and adds a result to the bulk preset', async () => {
@@ -108,12 +134,69 @@ describe('BestPage', () => {
     const active = saved.presets.find((p) => p.id === saved.activeId)!;
     expect(active.setups.map((s) => s.name)).toContain('Whip');
     expect(active.setups.find((s) => s.name === 'Whip')!.id).not.toBe('best-slash-0');
-    expect(mockToast.success).toHaveBeenCalledWith(`Added to ${active.name}`);
+    expect(mockToast.success).toHaveBeenCalledWith(`Added to ${active.name}. Reload any open bulk tool tab to see it.`);
+    // open bulk tool tabs reload their presets
+    expect(posted).toEqual([[PRESETS_CHANNEL, 'changed']]);
 
     // the same setup again is a duplicate
     await act(async () => add.click());
     await wait(10);
     expect(mockToast.info).toHaveBeenCalledWith(`That setup is already in ${active.name}`);
+    await unmount();
+  });
+
+  test('a failed save of the bulk presets is an error, not a success', async () => {
+    mockRun.mockResolvedValue([outcome('Whip')]);
+    mockFailingWrites.add(STORAGE_KEY);
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const { container, unmount } = await mount();
+    await wait(10);
+    await act(async () => button(container, 'Add to bulk preset')!.click());
+    await wait(10);
+    expect(mockToast.success).not.toHaveBeenCalled();
+    expect(mockToast.error).toHaveBeenCalledWith('Could not save the bulk tool\'s presets');
+    expect(posted).toEqual([]);
+    expect(error).toHaveBeenCalled();
+    await unmount();
+  });
+
+  test('Stop cancels the run and a pending restart, and ignores the stopped run\'s result', async () => {
+    let resolveFirst: (o: StyleOutcome[]) => void = () => {};
+    mockRun.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
+    const searchCancel = jest.spyOn(TaskPool.prototype, 'cancel');
+    const rowsCancel = jest.spyOn(BulkPool.prototype, 'cancel');
+    const { container, unmount } = await mount();
+    await wait(10);
+    expect(mockRun).toHaveBeenCalledTimes(1);
+
+    // an input change waits for the debounce; Stop comes first
+    await setNumber(container.querySelector<HTMLInputElement>('input[type=number]')!, '80');
+    await act(async () => button(container, 'Stop')!.click());
+    expect(searchCancel).toHaveBeenCalled();
+    expect(rowsCancel).toHaveBeenCalled();
+    expect(container.textContent).toContain('Search stopped');
+
+    await act(async () => resolveFirst([outcome('Late')]));
+    await wait(400);
+    expect(mockRun).toHaveBeenCalledTimes(1);
+    expect(container.textContent).not.toContain('Late');
+    await unmount();
+  });
+
+  test('an older run that resolves late doesn\'t replace the newer results', async () => {
+    let resolveFirst: (o: StyleOutcome[]) => void = () => {};
+    mockRun.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
+    mockRun.mockImplementationOnce(async () => [outcome('New')]);
+    const { container, unmount } = await mount();
+    await wait(10);
+    await setNumber(container.querySelector<HTMLInputElement>('input[type=number]')!, '80');
+    await wait(400);
+    expect(container.textContent).toContain('New');
+
+    await act(async () => resolveFirst([outcome('Old')]));
+    await wait(10);
+    expect(container.textContent).toContain('New');
+    expect(container.textContent).not.toContain('Old');
     await unmount();
   });
 

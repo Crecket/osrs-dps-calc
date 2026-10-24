@@ -8,6 +8,7 @@ import { reaction, toJS } from 'mobx';
 import { toast } from 'react-toastify';
 import { IconFileExport, IconPlayerStop } from '@tabler/icons-react';
 import { BulkStore, BulkStoreContext } from '@/bulk/state/BulkStore';
+import { onPresetsChanged } from '@/bulk/state/presetChannel';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import createBulkWorker from '@/bulk/worker/createBulkWorker';
 import {
@@ -200,7 +201,12 @@ const BulkPage: React.FC = observer(() => {
 
   useEffect(() => {
     store.load().catch(console.error);
-    return () => pool.shutdown();
+    // another page (the best setup page) added setups: read them, so the next save here doesn't drop them
+    const stopListening = onPresetsChanged(() => store.load().catch(console.error));
+    return () => {
+      stopListening();
+      pool.shutdown();
+    };
   }, [store, pool]);
 
   return (

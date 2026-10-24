@@ -40,9 +40,16 @@ export class BulkStore implements TargetHolder {
   // set when saved presets couldn't be read, so we never overwrite them with an empty list
   private readFailed = false;
 
+  // the latest save: true once it is written, false if it failed or saving is off
+  private lastSave: Promise<boolean> = Promise.resolve(true);
+
   constructor(storage: PresetStorage = localforage) {
     this.storage = storage;
-    makeAutoObservable<BulkStore, 'storage' | 'readFailed'>(this, { storage: false, readFailed: false }, { autoBind: true });
+    makeAutoObservable<BulkStore, 'storage' | 'readFailed' | 'lastSave'>(
+      this,
+      { storage: false, readFailed: false, lastSave: false },
+      { autoBind: true },
+    );
   }
 
   get active(): BulkPreset | null {
@@ -62,9 +69,14 @@ export class BulkStore implements TargetHolder {
     return !!this.active;
   }
 
-  /** False when saved presets couldn't be read, so changes are kept in memory only */
-  get persists(): boolean {
+  /** False when saved presets couldn't be read, so changes are kept in memory only. A method: readFailed isn't observable. */
+  persists(): boolean {
     return !this.readFailed;
+  }
+
+  /** Resolves when the latest change has been written: true, or false if it couldn't be. */
+  whenSaved(): Promise<boolean> {
+    return this.lastSave;
   }
 
   setTarget(m: BulkMonster) {
@@ -267,11 +279,15 @@ export class BulkStore implements TargetHolder {
   }
 
   private save() {
-    if (this.readFailed) return;
+    if (this.readFailed) {
+      this.lastSave = Promise.resolve(false);
+      return;
+    }
     // toJS only converts observables, so convert the observable fields rather than a plain wrapper object
     const data: SavedPresets = { presets: toJS(this.presets), activeId: this.activeId };
-    this.storage.setItem(STORAGE_KEY, data).catch((e) => {
+    this.lastSave = this.storage.setItem(STORAGE_KEY, data).then(() => true, (e) => {
       console.error('[BulkStore] Could not save presets', e);
+      return false;
     });
   }
 }
