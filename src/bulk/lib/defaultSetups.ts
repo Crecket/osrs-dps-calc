@@ -134,23 +134,13 @@ const findStyle = (d: DefaultSetup) => {
     .find((s) => s.name === d.style.name && (!d.style.stance || s.stance === d.style.stance));
 };
 
-const BLOOD_FURY = 24780;
-const SALVE_EI = 12018;
-
 const variant = (d: DefaultSetup, suffix: string, slots: Slots): DefaultSetup => ({
   ...d, name: `${d.name} ${suffix}`, slots: { ...d.slots, ...slots },
 });
-const isMelee = (d: DefaultSetup) => ['stab', 'slash', 'crush'].includes(findStyle(d)?.type || '');
 
 const DEFAULTS: DefaultSetup[] = BASE_DEFAULTS
   // every slash setup also comes with the Bellator ring (slash accuracy) in place of the Ultor ring (strength)
-  .flatMap((d) => (findStyle(d)?.type === 'slash' ? [d, variant(d, 'bellator', { ring: BELLATOR_RING })] : [d]))
-  // and every setup with the other necks worth comparing: blood fury for melee, salve (ei) against undead
-  .flatMap((d) => [
-    d,
-    ...(isMelee(d) ? [variant(d, 'blood fury', { neck: BLOOD_FURY })] : []),
-    variant(d, 'salve(ei)', { neck: SALVE_EI }),
-  ]);
+  .flatMap((d) => (findStyle(d)?.type === 'slash' ? [d, variant(d, 'bellator', { ring: BELLATOR_RING })] : [d]));
 
 export const DEFAULT_SETUP_NAMES = DEFAULTS.map((d) => d.name);
 

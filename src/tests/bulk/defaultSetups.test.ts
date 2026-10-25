@@ -90,12 +90,12 @@ describe('defaultSetups', () => {
     expect([bloodMoon.equipment.head?.name, bloodMoon.equipment.body?.name, bloodMoon.equipment.legs?.name])
       .toEqual(['Blood Moon helm', 'Blood Moon chestplate', 'Blood Moon tassets']);
 
-    expect(byName('Max scythe bellator blood fury').equipment.neck?.id).toBe(24780);
-    expect(byName('Max scythe bellator blood fury').equipment.ring?.id).toBe(28316);
-    expect(byName('Max fang salve(ei)').equipment.neck?.id).toBe(12018);
-    expect(byName('Max range salve(ei)').equipment.neck?.id).toBe(12018);
-    expect(byName('Max harm fire surge salve(ei)').equipment.neck?.id).toBe(12018);
-    expect(names).not.toContain('Max range blood fury');
+    // no blood fury or salve(ei) neck variants
+    expect(names.filter((n) => n.endsWith(' blood fury') || n.endsWith(' salve(ei)'))).toEqual([]);
+    expect(names).toHaveLength(74);
+    for (const kept of ['Max scythe torva/oathplate bellator', 'Max ayak', 'Max harm fire surge', 'Max range void blowpipe']) {
+      expect(names).toContain(kept);
+    }
 
     const lance = byName('Max lance swipe oathplate');
     expect(lance.style.type).toBe('slash');

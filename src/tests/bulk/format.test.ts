@@ -119,7 +119,7 @@ describe('sortSetups', () => {
 
     expect(keys).toEqual([...keys].sort((a, b) => a.localeCompare(b)));
     expect(sorted.slice(0, 2).map((x) => x.name)).toEqual(['Max tentacle', 'Max tentacle bellator']);
-    expect(sorted.at(-1)?.name).toBe('Max shadow salve(ei)');
+    expect(sorted.at(-1)?.name).toBe('Max shadow');
   });
 
   test('does not change the original order', () => {
