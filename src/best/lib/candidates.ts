@@ -25,8 +25,9 @@ export interface WeaponJob {
 }
 
 const EXCLUDED_VERSIONS = new Set(['Uncharged', 'Inactive', 'Deadman Mode', 'Cosmetic', 'Broken']);
-// Deadman copies are often listed under their own name with no Deadman version, e.g. "Armadyl godsword (Deadman)"
-const EXCLUDED_NAME = /\(unobtainable item\)|\(beta\)|\(deadman( mode)?\)/i;
+// Deadman copies are often listed under their own name with no Deadman version, e.g. "Armadyl godsword (Deadman)";
+// historical items (the pre-Prifddinas Crystal bow and shield) no longer exist
+const EXCLUDED_NAME = /\(unobtainable item\)|\(beta\)|\(historical\)|\(deadman( mode)?\)/i;
 const EXCLUDED_ITEM_IDS = new Set([
   21433, // Wilderness champion amulet: +100 to every attack from a past event, not obtainable in normal play
   // minigame-only ammo: Barbarian Assault's Bullet, Field, Blunt and Barbed arrow (upstream lets bows fire them)

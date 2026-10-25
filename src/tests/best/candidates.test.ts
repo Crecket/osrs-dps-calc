@@ -33,6 +33,11 @@ describe('bestPool', () => {
     expect(pool.map((e) => e.id)).not.toContain(findEquipment('Wilderness champion amulet').id);
   });
 
+  test('drops historical items, which no longer exist in the game', () => {
+    expect(pool.filter((e) => /\(historical\)/.test(e.name))).toEqual([]);
+    expect(pool.some((e) => e.name === 'Crystal bow')).toBe(true);
+  });
+
   test('drops Deadman-named copies, which upstream lists without a Deadman version', () => {
     expect(pool.filter((e) => /\(deadman( mode)?\)/i.test(e.name))).toEqual([]);
     const ids = pool.map((e) => e.id);
