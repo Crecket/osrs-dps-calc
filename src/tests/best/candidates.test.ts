@@ -69,6 +69,9 @@ describe('bestPool', () => {
       findEquipment('Dark bow (bh)'),
       findEquipment('Abyssal dagger (bh)', 'Unpoisoned'),
       findEquipment("Corrupted vesta's chainbody (bh)", 'Activated'),
+      findEquipment("Koriff's coif", 'Normal'),
+      findEquipment("Maoma's great helm", 'Normal'),
+      findEquipment("Saika's veil", 'Normal'),
     ].forEach((e) => expect([e.name, ids.has(e.id)]).toEqual([e.name, false]));
     expect(pool.filter((e) => isPvpOnly(e))).toEqual([]);
     expect(pool.filter((e) => /\(bh\)|vesta's|statius's|morrigan's|zuriel's/i.test(e.name))).toEqual([]);
