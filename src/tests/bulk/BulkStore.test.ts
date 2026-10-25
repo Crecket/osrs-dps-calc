@@ -170,6 +170,21 @@ describe('BulkStore', () => {
     expect(store.active?.monster).toBeNull();
   });
 
+  test('clearSetups removes every setup from the active preset and saves', async () => {
+    const storage = new MemoryStorage();
+    const store = new BulkStore(storage);
+    await store.load();
+    expect(store.active!.setups.length).toBeGreaterThan(0);
+
+    store.clearSetups();
+    await store.whenSaved();
+
+    expect(store.active!.setups).toEqual([]);
+    const reloaded = new BulkStore(storage);
+    await reloaded.load();
+    expect(reloaded.active!.setups).toEqual([]);
+  });
+
   test('identical warnings are shown once', async () => {
     const store = new BulkStore(new MemoryStorage());
     await store.load();

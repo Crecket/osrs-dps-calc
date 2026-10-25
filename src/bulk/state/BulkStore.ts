@@ -203,6 +203,13 @@ export class BulkStore implements TargetHolder {
     this.touch(this.active);
   }
 
+  /** Removes every setup from the active preset. */
+  clearSetups() {
+    if (!this.active || this.active.setups.length === 0) return;
+    this.active.setups = [];
+    this.touch(this.active);
+  }
+
   /**
    * Adds a blank setup to build in the setup editor. Unlike addSetups, this skips the duplicate check: two blank setups
    * are two setups still being built.

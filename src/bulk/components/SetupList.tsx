@@ -116,6 +116,23 @@ const SetupList: React.FC = observer(() => {
           </button>
           <button type="button" className={buttonClass} onClick={importFromCalculator}>Add all calculator loadouts</button>
           <button type="button" className={buttonClass} onClick={() => notifyAdded(store.addDefaultSetups())}>Add max setups</button>
+          <button
+            type="button"
+            className={`${buttonClass} !bg-red-400 dark:!bg-red-700`}
+            disabled={setups.length === 0}
+            onClick={() => {
+              // eslint-disable-next-line no-alert -- a plain confirm before deleting everything
+              if (!window.confirm(`Delete all ${setups.length} setups in this preset? This can't be undone.`)) return;
+              closeEditor();
+              store.clearSetups();
+            }}
+          >
+            <span className="flex items-center gap-1">
+              <IconTrash size={16} />
+              {' '}
+              Clear
+            </span>
+          </button>
         </>
       )}
     >
