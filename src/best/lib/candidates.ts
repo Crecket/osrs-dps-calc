@@ -43,6 +43,9 @@ const GAUNTLET_ONLY = /^(Corrupted|Crystal) (halberd|bow|staff|helm|body|legs) \
 // not real gear: wrapped gloves are a gift-wrapped copy, Nightmare Zone (nz) items can't leave the Nightmare Zone
 const NOT_REAL = /\((wrapped|nz)\)/;
 
+// left out for now: every Corrupted item (Gauntlet, PvP and Deadman copies, Corrupted Scythe of Vitur)
+const CORRUPTED = /^Corrupted /;
+
 /**
  * PvP-only gear: Bounty Hunter copies (bh), which only work on Bounty Hunter worlds, and the Vesta's, Statius's, Morrigan's and Zuriel's gear in every variant (plain, (bh), Corrupted, Deadman, blighted), which comes from LMS, Deadman and Bounty Hunter and works only in PvP areas.
  */
@@ -50,7 +53,7 @@ export const isPvpOnly = (item: EquipmentPiece): boolean => /\(bh\)/.test(item.n
 
 /**
  * The items the search may use: canonical items, without uncharged, inactive, broken, Deadman, cosmetic, unobtainable,
- * minigame-only, PvP-only, not real or excluded ones.
+ * minigame-only, PvP-only, not real, Corrupted or excluded ones.
  */
 export const bestPool = (items: EquipmentPiece[] = availableEquipment): EquipmentPiece[] => items.filter((e) => getCanonicalItemId(e.id) === e.id
   && !EXCLUDED_VERSIONS.has(e.version)
@@ -58,6 +61,7 @@ export const bestPool = (items: EquipmentPiece[] = availableEquipment): Equipmen
   && !EXCLUDED_ITEM_IDS.has(e.id)
   && !GAUNTLET_ONLY.test(e.name)
   && !NOT_REAL.test(e.name)
+  && !CORRUPTED.test(e.name)
   && !isPvpOnly(e)
   // data artefacts held in the weapon slot: greegrees, Gnomeball (-1), crates and Christmas dinner (0)
   && !(e.slot === 'weapon' && e.speed <= 1));

@@ -77,6 +77,11 @@ describe('bestPool', () => {
     expect(ids.has(findEquipment('Abyssal dagger', 'Unpoisoned').id)).toBe(true);
   });
 
+  test('drops every Corrupted item but keeps the Keris partisan of corruption', () => {
+    expect(pool.filter((e) => /^Corrupted /.test(e.name))).toEqual([]);
+    expect(pool.some((e) => e.name === 'Keris partisan of corruption')).toBe(true);
+  });
+
   test('drops gear that is not real: wrapped gloves and Nightmare Zone (nz) copies', () => {
     const ids = new Set(pool.map((e) => e.id));
     expect(ids.has(findEquipment('Barrows gloves (wrapped)').id)).toBe(false);
