@@ -62,11 +62,12 @@ const { PRESETS_CHANNEL } = require('@/bulk/state/presetChannel') as typeof impo
 
 const wait = (ms: number) => act(() => new Promise<void>((r) => { setTimeout(r, ms); }));
 
-const outcome = (name: string): StyleOutcome => ({
+// results show no setup names, so tests tell outcomes apart by their DPS
+const outcome = (name: string, dps = 7.5): StyleOutcome => ({
   style: 'slash',
   setups: [{ id: 'best-slash-0', name, player: generateEmptyPlayer(name) }],
   rows: [{
-    setupId: 'best-slash-0', monsterId: 'm', maxHit: 40, accuracy: 0.8, dps: 7.5, ttk: 30, spec: null, issues: [],
+    setupId: 'best-slash-0', monsterId: 'm', maxHit: 40, accuracy: 0.8, dps, ttk: 30, spec: null, issues: [],
   }],
   approximate: false,
   message: null,
@@ -141,7 +142,7 @@ describe('BestPage', () => {
     await wait(10);
     expect(mockRun).toHaveBeenCalledTimes(1);
     expect(mockRun.mock.calls[0][0].skills.atk).toBe(80);
-    expect(container.textContent).toContain('Whip');
+    expect(container.textContent).toContain('7.500');
     await wait(400);
     expect(mockRun).toHaveBeenCalledTimes(1);
     await unmount();
@@ -159,7 +160,7 @@ describe('BestPage', () => {
     await setNumber(attack, '80');
     await wait(400);
     expect(mockRun).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain('Whip');
+    expect(container.textContent).toContain('7.500');
     expect(container.textContent).toContain('Inputs changed since this search');
 
     // back to the searched inputs: the results are current again
@@ -174,7 +175,7 @@ describe('BestPage', () => {
     await act(async () => find(container).click());
     await wait(10);
     expect(container.textContent).toContain('Slash');
-    expect(container.textContent).toContain('Whip');
+    expect(container.textContent).toContain('7.500');
     expect(container.textContent).toContain('7.500');
 
     const add = button(container, 'Add to bulk preset')!;
@@ -237,18 +238,18 @@ describe('BestPage', () => {
   test('an older run that resolves late doesn\'t replace the newer results', async () => {
     let resolveFirst: (o: StyleOutcome[]) => void = () => {};
     mockRun.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
-    mockRun.mockImplementationOnce(async () => [outcome('New')]);
+    mockRun.mockImplementationOnce(async () => [outcome('New', 8)]);
     const { container, unmount } = await mount();
     await act(async () => find(container).click());
     await act(async () => button(container, 'Stop')!.click());
     await act(async () => find(container).click());
     await wait(10);
-    expect(container.textContent).toContain('New');
+    expect(container.textContent).toContain('8.000');
 
-    await act(async () => resolveFirst([outcome('Old')]));
+    await act(async () => resolveFirst([outcome('Old', 6)]));
     await wait(10);
-    expect(container.textContent).toContain('New');
-    expect(container.textContent).not.toContain('Old');
+    expect(container.textContent).toContain('8.000');
+    expect(container.textContent).not.toContain('6.000');
     await unmount();
   });
 
@@ -410,11 +411,14 @@ describe('BestPage', () => {
     await act(async () => find(container).click());
     await wait(10);
 
+    // DPS and Max hit come first, right after the rank; no setup names, only the style
+    expect([...container.querySelectorAll('thead th')].slice(0, 4).map((th) => th.textContent)).toEqual(['#', 'DPS', 'Max hit', 'Style']);
     const bodyRows = () => [...container.querySelectorAll('tbody tr')];
     expect(bodyRows()).toHaveLength(2);
+    expect([...bodyRows()[0].children].slice(1, 3).map((td) => td.textContent)).toEqual(['7.500', '40']);
     // the best is marked with a trophy, still numbered for screen readers
     expect(bodyRows()[0].querySelector('[data-tooltip-content="Best"]')!.textContent).toBe('1');
-    expect(bodyRows()[1].textContent).toContain('Rapier');
+    expect(bodyRows()[1].querySelector(`img[alt="${rapier.name}"]`)).not.toBeNull();
     expect(bodyRows()[1].firstElementChild!.textContent).toBe('2');
 
     const more = button(container, '1 more')!;

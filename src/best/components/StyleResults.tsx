@@ -118,6 +118,8 @@ const StyleResults: React.FC<{
             hasRun
             highlightId={best?.setupId}
             alternatives={alternatives}
+            leadColumns={['dps', 'maxHit']}
+            hideNames
             itemHint=". Right-click to exclude"
             onItemContextMenu={(slot, item) => onExclude(item, slot === 'weapon' ? cosmeticVariants(item, outcome.variants[item.id] ?? []) : [])}
             rowAction={(id) => {

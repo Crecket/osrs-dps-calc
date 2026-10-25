@@ -56,6 +56,10 @@ interface BulkTableProps {
    * and the slots that differ marked
    */
   alternatives?: Map<string, { label: string; slots: (keyof PlayerEquipment)[] }>;
+  /** Value columns to show first, right after the rank, in this order */
+  leadColumns?: SortKey[];
+  /** Leave out setup names: the column only shows the attack style or spell, and an alternative's label */
+  hideNames?: boolean;
 }
 
 const rowClass = (highlighted: boolean, alternative: boolean) => {
@@ -67,11 +71,13 @@ const rowClass = (highlighted: boolean, alternative: boolean) => {
 // observer, so renaming a setup re-renders rows without the parent having to
 const BulkTable: React.FC<BulkTableProps> = observer(({
   rows, setups, mode, sort, onSort, hasRun, overrides = {}, filtered = new Map(), stale = new Set(), rowAction, onItemContextMenu,
-  itemHint, highlightId, alternatives,
+  itemHint, highlightId, alternatives, leadColumns = [], hideNames,
 }) => {
   // not memoized: preset arrays are mutated in place, so their identity can't be used as a dependency
   const setupsById = new Map(setups.map((s) => [s.id, s]));
-  const columns = mode === 'spec' ? SPEC_COLUMNS : NORMAL_COLUMNS;
+  const allColumns = mode === 'spec' ? SPEC_COLUMNS : NORMAL_COLUMNS;
+  const lead = leadColumns.flatMap((k) => allColumns.filter((c) => c.key === k));
+  const columns = allColumns.filter((c) => !leadColumns.includes(c.key));
   let rank = 0;
 
   const clickHeader = (key: SortKey) => {
@@ -81,6 +87,15 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
       onSort({ key, dir: firstClickDir(key) });
     }
   };
+
+  const header = (c: { key: SortKey; label: string }) => (
+    <th key={c.key} className="px-2 py-1.5 text-right whitespace-nowrap">
+      <button type="button" className="inline-flex items-center gap-0.5 hover:text-orange-200" onClick={() => clickHeader(c.key)}>
+        {c.label}
+        {sort.key === c.key && (sort.dir === 'asc' ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />)}
+      </button>
+    </th>
+  );
 
   if (rows.length === 0) {
     return (
@@ -98,17 +113,11 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
       <thead>
         <tr className="bg-btns-400 dark:bg-dark-500 text-white font-serif text-left">
           <th className="px-2 py-1.5 w-10 text-center">#</th>
-          <th className="px-2 py-1.5">Setup</th>
+          {lead.map(header)}
+          <th className="px-2 py-1.5">{hideNames ? 'Style' : 'Setup'}</th>
           <th className="px-2 py-1.5">Gear</th>
           <th className="px-2 py-1.5">Buffs</th>
-          {columns.map((c) => (
-            <th key={c.key} className="px-2 py-1.5 text-right whitespace-nowrap">
-              <button type="button" className="inline-flex items-center gap-0.5 hover:text-orange-200" onClick={() => clickHeader(c.key)}>
-                {c.label}
-                {sort.key === c.key && (sort.dir === 'asc' ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />)}
-              </button>
-            </th>
-          ))}
+          {columns.map(header)}
           <th className="px-2 py-1.5 w-8" aria-label="Warnings" />
           {rowAction && <th className="px-2 py-1.5" aria-label="Actions" />}
         </tr>
@@ -122,6 +131,32 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
           const alternative = alternatives?.get(r.setupId);
           const highlighted = r.setupId === highlightId;
           if (!reason && !alternative) rank += 1;
+
+          // a failed row shows its error once, in the first group of value cells
+          const values = (cols: typeof columns, showError: boolean) => {
+            if (cols.length === 0) return null;
+            if (r.error) {
+              return (
+                <td colSpan={cols.length} className="px-2 py-1 text-right text-red-400">
+                  {showError && (
+                    <span className="inline-flex items-center gap-1">
+                      <IconX size={16} />
+                      {r.error}
+                    </span>
+                  )}
+                </td>
+              );
+            }
+            return cols.map((c) => (
+              <td
+                key={c.key}
+                className={`px-2 py-1 text-right tabular-nums ${sort.key === c.key ? 'font-bold' : ''} ${isStale ? 'text-gray-400 italic' : ''}`}
+                title={isStale ? 'Recalculating' : undefined}
+              >
+                {formatValue(r, c.key)}
+              </td>
+            ));
+          };
 
           const warnings = [...r.issues];
           if (r.spec?.partial) warnings.push('Spec only partially supported');
@@ -140,6 +175,7 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
                   </span>
                 ) : (!alternative && (reason ? '—' : rank))}
               </td>
+              {values(lead, true)}
               <td className="px-2 py-1 whitespace-nowrap">
                 {alternative ? (
                   <span className="inline-flex items-center gap-1 pl-2 text-xs">
@@ -148,8 +184,8 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
                   </span>
                 ) : (
                   <>
-                    <span className="font-semibold">{setup.name}</span>
-                    <StyleLabel player={setup.player} className="ml-1 align-middle" />
+                    {!hideNames && <span className="font-semibold mr-1">{setup.name}</span>}
+                    <StyleLabel player={setup.player} className="align-middle" />
                   </>
                 )}
                 {reason && <span className="ml-2 text-xs italic">{reason}</span>}
@@ -164,22 +200,7 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
                 />
               </td>
               <td className="px-2 py-1 whitespace-nowrap" aria-label="Prayers and potions"><BuffIcons player={setup.player} /></td>
-              {r.error ? (
-                <td colSpan={columns.length} className="px-2 py-1 text-right text-red-400">
-                  <span className="inline-flex items-center gap-1">
-                    <IconX size={16} />
-                    {r.error}
-                  </span>
-                </td>
-              ) : columns.map((c) => (
-                <td
-                  key={c.key}
-                  className={`px-2 py-1 text-right tabular-nums ${sort.key === c.key ? 'font-bold' : ''} ${isStale ? 'text-gray-400 italic' : ''}`}
-                  title={isStale ? 'Recalculating' : undefined}
-                >
-                  {formatValue(r, c.key)}
-                </td>
-              ))}
+              {values(columns, lead.length === 0)}
               <td className="px-2 py-1 text-center" aria-label={warnings.length > 0 ? 'Warnings' : 'No warnings'}>
                 {warnings.length > 0 && (
                   <span data-tooltip-id="tooltip-warning" data-tooltip-content={warnings.join(' • ')}>
