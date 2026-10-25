@@ -7,6 +7,7 @@ import rangedIcon from '@/public/img/bonuses/ranged.png';
 import magicIcon from '@/public/img/bonuses/magic.png';
 import { inputClass } from '@/bulk/components/Panel';
 import { BestStyle } from '@/best/types';
+import { Switch } from '@headlessui/react';
 
 export const styleName = (s: BestStyle) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -36,19 +37,21 @@ export const Section: React.FC<React.PropsWithChildren<{ title: string; classNam
  * Children place themselves in the two columns, e.g. a FieldLabel and a control. `wide` fits longer labels.
  */
 export const FieldGrid: React.FC<React.PropsWithChildren<{ wide?: boolean }>> = ({ wide, children }) => (
-  <div className={`grid ${wide ? 'grid-cols-[9.5rem_minmax(0,1fr)]' : 'grid-cols-[7rem_minmax(0,1fr)]'} gap-x-3 gap-y-1.5 items-center`}>{children}</div>
+  <div className={`grid ${wide ? 'grid-cols-[11rem_minmax(0,1fr)]' : 'grid-cols-[7rem_minmax(0,1fr)]'} gap-x-3 gap-y-1.5 items-center`}>{children}</div>
+);
+
+// the icon's space is kept without an icon, so every label's text starts at the same place
+const LabelContent: React.FC<{ label: string; icon?: StaticImageData }> = ({ label, icon }) => (
+  <>
+    <span className="w-[18px] h-[18px] shrink-0 flex items-center justify-center">
+      {icon && <img className="max-w-full max-h-full object-contain" src={icon.src} alt="" />}
+    </span>
+    <span>{label}</span>
+  </>
 );
 
 export const FieldLabel: React.FC<{ htmlFor?: string; label: string; icon?: StaticImageData }> = ({ htmlFor, label, icon }) => {
-  // the icon's space is kept without an icon, so every label's text starts where a checkbox label's does
-  const content = (
-    <>
-      <span className="w-4 shrink-0 flex justify-center">
-        {icon && <img className="max-w-4 max-h-4 object-contain" src={icon.src} alt="" />}
-      </span>
-      <span>{label}</span>
-    </>
-  );
+  const content = <LabelContent label={label} icon={icon} />;
   return htmlFor
     ? <label htmlFor={htmlFor} className="flex items-center gap-2 text-sm">{content}</label>
     : <span className="flex items-center gap-2 text-sm">{content}</span>;
@@ -101,12 +104,22 @@ export const NumberField: React.FC<{
   );
 };
 
-export const Check: React.FC<{ label: string; checked: boolean; onChange: (v: boolean) => void }> = ({ label, checked, onChange }) => {
-  const id = useId();
-  return (
-    <label htmlFor={id} className="flex items-center gap-2 min-h-8 text-sm cursor-pointer">
-      <input id={id} type="checkbox" className="w-4 h-4 accent-orange-400 cursor-pointer" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      {label}
-    </label>
-  );
-};
+/** A row in a FieldGrid: the label, then the calculator's toggle switch (same look as its Toggle). */
+export const Check: React.FC<{ label: string; checked: boolean; onChange: (v: boolean) => void; icon?: StaticImageData }> = ({
+  label, checked, onChange, icon,
+}) => (
+  <Switch.Group>
+    <Switch.Label className="flex items-center gap-2 text-sm cursor-pointer">
+      <LabelContent label={label} icon={icon} />
+    </Switch.Label>
+    <div className="h-8 flex items-center">
+      <Switch
+        checked={checked}
+        onChange={onChange}
+        className={`${checked ? 'bg-green-500 dark:bg-green-400' : 'bg-gray-400'} relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${focusRing}`}
+      >
+        <span className={`${checked ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`} />
+      </Switch>
+    </div>
+  </Switch.Group>
+);

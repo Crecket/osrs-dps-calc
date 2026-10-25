@@ -10,6 +10,11 @@ import hitpointsIcon from '@/public/img/bonuses/hitpoints.png';
 import prayerIcon from '@/public/img/tabs/prayer.png';
 import miningIcon from '@/public/img/bonuses/mining.png';
 import herbloreIcon from '@/public/img/bonuses/herblore.png';
+import slayerIcon from '@/public/img/misc/slayer.webp';
+import skullIcon from '@/public/img/misc/skull.webp';
+import forinthrySurgeIcon from '@/public/img/misc/forinthry_surge.webp';
+import diaryIcon from '@/public/img/misc/diary.png';
+import soulreaperIcon from '@/public/img/misc/soulreaper_axe.png';
 import { PotionMap } from '@/utils';
 import { PlayerSkills } from '@/types/Player';
 import { BestStyle, CombatConditions } from '@/best/types';
@@ -35,13 +40,15 @@ const SKILLS: [keyof PlayerSkills, string, number, StaticImageData][] = [
   ['herblore', 'Herblore', 1, herbloreIcon],
 ];
 
-const CONDITIONS: [keyof Omit<CombatConditions, 'soulreaperStacks' | 'currentHp'>, string][] = [
-  ['onSlayerTask', 'On slayer task'],
-  ['inWilderness', 'In the Wilderness'],
-  ['chargeSpell', 'Charge active'],
-  ['markOfDarknessSpell', 'Mark of Darkness active'],
-  ['forinthrySurge', 'Forinthry Surge active'],
-  ['kandarinDiary', 'Kandarin hard diary'],
+// the calculator's icons where it has one; it has none for Charge and Mark of Darkness
+// shown in two columns of three, the first ending with Soulreaper stacks and the second with Current HP
+const CONDITIONS: [keyof Omit<CombatConditions, 'soulreaperStacks' | 'currentHp'>, string, StaticImageData?][] = [
+  ['onSlayerTask', 'On slayer task', slayerIcon],
+  ['inWilderness', 'In the Wilderness', skullIcon],
+  ['kandarinDiary', 'Kandarin hard diary', diaryIcon],
+  ['forinthrySurge', 'Forinthry Surge', forinthrySurgeIcon],
+  ['chargeSpell', 'Charge'],
+  ['markOfDarknessSpell', 'Mark of Darkness'],
 ];
 
 // prayers and potions are picked per combat type, in matching rows
@@ -119,33 +126,36 @@ const InputsPanel: React.FC = observer(() => {
         </div>
 
         <Section title="Conditions" className={`sm:col-span-2 ${divider}`}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-0.5">
-            {CONDITIONS.map(([k, label]) => (
-              <Check key={k} label={label} checked={conditions[k]} onChange={(v) => store.setConditions({ [k]: v })} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5">
+            {[CONDITIONS.slice(0, 3), CONDITIONS.slice(3)].map((column, i) => (
+              <FieldGrid wide key={column[0][0]}>
+                {column.map(([k, label, icon]) => (
+                  <Check key={k} label={label} icon={icon} checked={conditions[k]} onChange={(v) => store.setConditions({ [k]: v })} />
+                ))}
+                {i === 0 ? (
+                  <NumberField
+                    label="Soulreaper stacks"
+                    icon={soulreaperIcon}
+                    value={conditions.soulreaperStacks}
+                    min={0}
+                    max={5}
+                    onChange={(v) => v !== null && store.setConditions({ soulreaperStacks: v })}
+                  />
+                ) : (
+                  <NumberField
+                    label="Current HP"
+                    icon={hitpointsIcon}
+                    // the search treats a current HP above Hitpoints as full HP, so show it that way
+                    value={conditions.currentHp === null ? null : Math.min(conditions.currentHp, skills.hp)}
+                    min={1}
+                    max={skills.hp}
+                    allowEmpty
+                    placeholder="Max"
+                    onChange={(v) => store.setConditions({ currentHp: v })}
+                  />
+                )}
+              </FieldGrid>
             ))}
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5 mt-1">
-            <FieldGrid wide>
-              <NumberField
-                label="Soulreaper stacks"
-                value={conditions.soulreaperStacks}
-                min={0}
-                max={5}
-                onChange={(v) => v !== null && store.setConditions({ soulreaperStacks: v })}
-              />
-            </FieldGrid>
-            <FieldGrid wide>
-              <NumberField
-                label="Current HP"
-                // the search treats a current HP above Hitpoints as full HP, so show it that way
-                value={conditions.currentHp === null ? null : Math.min(conditions.currentHp, skills.hp)}
-                min={1}
-                max={skills.hp}
-                allowEmpty
-                placeholder="Max"
-                onChange={(v) => store.setConditions({ currentHp: v })}
-              />
-            </FieldGrid>
           </div>
         </Section>
 
