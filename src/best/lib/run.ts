@@ -94,7 +94,9 @@ const setupName = (job: WeaponJob, variants: number[] = []) => {
   if (job.spellName !== null) name += ` + ${job.spellName}`;
   if (job.ammoId !== null) name += ` + ${itemById(job.ammoId).name}`;
   if (job.dartId !== null) name += ` + ${itemById(job.dartId).name}`;
-  if (variants.length > 0) name += ` — or ${variants.map((id) => itemById(id).name).join(', ')}`;
+  // a long list (the other godswords and their ornament kits next to the Armadyl godsword) is cut short
+  const names = variants.map((id) => itemById(id).name);
+  if (names.length > 0) name += ` — or ${names.length > 3 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(', ')}`;
   return name;
 };
 
