@@ -365,6 +365,7 @@ describe('BestPage', () => {
 
   test('before the first run, points at the button', async () => {
     const { container, unmount } = await mount();
+    expect(container.querySelector('[role="note"]')!.textContent).toContain('Experimental');
     expect(container.textContent).toContain('Click Find best setup to search.');
     await unmount();
   });
