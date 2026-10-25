@@ -28,8 +28,11 @@ jest.mock('localforage', () => ({
   },
 }));
 
-const mockRun = jest.fn<(inputs: BestInputs) => Promise<StyleOutcome[]>>();
-jest.mock('@/best/lib/run', () => ({ runBestSetup: (inputs: BestInputs) => mockRun(inputs) }));
+type Progress = (done: number, total: number, phase: string) => void;
+const mockRun = jest.fn<(inputs: BestInputs, onProgress: Progress) => Promise<StyleOutcome[]>>();
+jest.mock('@/best/lib/run', () => ({
+  runBestSetup: (inputs: BestInputs, _monster: unknown, _deps: unknown, onProgress: Progress) => mockRun(inputs, onProgress),
+}));
 
 const mockToast = { success: jest.fn(), info: jest.fn(), error: jest.fn() };
 jest.mock('react-toastify', () => ({ toast: mockToast, ToastContainer: () => null }));
@@ -92,8 +95,9 @@ class FakeChannel {
   close() {}
 }
 
+// by its text, or an icon button by its label
 const button = (container: HTMLElement, text: string) => [...container.querySelectorAll('button')]
-  .find((b) => b.textContent?.includes(text));
+  .find((b) => b.textContent?.includes(text) || b.getAttribute('aria-label') === text);
 
 const setNumber = (input: HTMLInputElement, value: string) => act(() => {
   // React tracks the value itself, so set it through the native setter for the change to register
@@ -148,7 +152,7 @@ describe('BestPage', () => {
     const { container, unmount } = await mount();
     await act(async () => find(container).click());
     await wait(10);
-    expect(container.textContent).not.toContain('out of date');
+    expect(container.textContent).not.toContain('Inputs changed since this search');
 
     const attack = container.querySelector<HTMLInputElement>('input[type=number]')!;
     const before = attack.value;
@@ -156,11 +160,11 @@ describe('BestPage', () => {
     await wait(400);
     expect(mockRun).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain('Whip');
-    expect(container.textContent).toContain('Inputs changed — results are out of date');
+    expect(container.textContent).toContain('Inputs changed since this search');
 
     // back to the searched inputs: the results are current again
     await setNumber(attack, before);
-    expect(container.textContent).not.toContain('out of date');
+    expect(container.textContent).not.toContain('Inputs changed since this search');
     await unmount();
   });
 
@@ -252,7 +256,8 @@ describe('BestPage', () => {
     const { container, unmount } = await mount();
     const selects = () => [...container.querySelectorAll('select')].filter((sel) => sel.options[0].text.startsWith('Auto'));
     const melee = () => selects()[0];
-    const prayerLevel = [...container.querySelectorAll('label')].find((l) => l.textContent === 'Prayer')!.querySelector('input')!;
+    const prayerLabel = [...container.querySelectorAll('label')].find((l) => l.textContent === 'Prayer')!;
+    const prayerLevel = container.querySelector<HTMLInputElement>(`[id="${prayerLabel.htmlFor}"]`)!;
     expect(selects().map((sel) => container.querySelector(`label[for="${sel.id}"]`)!.textContent)).toEqual(['Melee', 'Ranged', 'Magic']);
     expect(selects().map((sel) => sel.options[0].text)).toEqual(['Auto (Zeal)', 'Auto (Rigour)', 'Auto (Augury)']);
     const checkboxLabels = [...container.querySelectorAll('input[type=checkbox]')].map((c) => c.closest('label')!.textContent);
@@ -277,7 +282,7 @@ describe('BestPage', () => {
 
     // an override the levels no longer allow falls back to Auto, with one line
     await setNumber(prayerLevel, '10');
-    expect(container.textContent).toContain('Superhuman Strength needs 13 Prayer — using Auto');
+    expect(container.textContent).toContain('Superhuman Strength needs 13 Prayer, so Auto is used');
     expect(melee().value).toBe('auto');
     await unmount();
   });
@@ -293,7 +298,7 @@ describe('BestPage', () => {
     await wait(400);
     expect(chip('Magic').getAttribute('aria-pressed')).toBe('false');
     expect(mockRun).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain('Inputs changed — results are out of date');
+    expect(container.textContent).toContain('Inputs changed since this search');
 
     // the last style can't be turned off
     for (const n of ['Stab', 'Slash', 'Crush', 'Ranged']) {
@@ -322,9 +327,9 @@ describe('BestPage', () => {
     await wait(10);
     expect(event.defaultPrevented).toBe(true);
     expect((mockData.get(BEST_STORAGE_KEY) as { inputs: BestInputs }).inputs.excludedItemIds).toEqual([torture.id]);
-    expect(mockToast.info).toHaveBeenCalledWith(`Excluded ${torture.name} — click Find best setup to update`);
+    expect(mockToast.info).toHaveBeenCalledWith(`Excluded ${torture.name}. Click Find best setup to update the results.`);
     expect(mockRun).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain('Inputs changed — results are out of date');
+    expect(container.textContent).toContain('Inputs changed since this search');
 
     // the Excluded items chip, and its remove button
     const remove = container.querySelector<HTMLButtonElement>(`button[aria-label="Include ${torture.name} again"]`)!;
@@ -352,8 +357,101 @@ describe('BestPage', () => {
     await act(async () => { cell.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); });
     await wait(10);
     expect((mockData.get(BEST_STORAGE_KEY) as { inputs: BestInputs }).inputs.excludedItemIds).toEqual([scythe.id, holy.id, sanguine.id]);
-    expect(mockToast.info).toHaveBeenCalledWith(`Excluded ${scythe.name}, ${holy.name} and ${sanguine.name} — click Find best setup to update`);
+    expect(mockToast.info).toHaveBeenCalledWith(`Excluded ${scythe.name}, ${holy.name} and ${sanguine.name}. Click Find best setup to update the results.`);
     expect(mockRun).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  test('before the first run, explains what the button does', async () => {
+    const { container, unmount } = await mount();
+    expect(container.textContent).toContain('Ready when you are');
+    expect(container.textContent).toContain('nothing runs until you click it');
+    await unmount();
+  });
+
+  test('while running, shows the phase and percentage; a failed search says so where the results go', async () => {
+    let fail: (e: Error) => void = () => {};
+    mockRun.mockImplementationOnce((_inputs, onProgress) => new Promise((_resolve, reject) => {
+      onProgress(30, 120, 'descent');
+      fail = reject;
+    }));
+    const { container, unmount } = await mount();
+    await act(async () => find(container).click());
+    expect(container.textContent).toContain('Trying every weapon');
+    expect(container.textContent).toContain('25%');
+
+    await act(async () => fail(new Error('worker crashed')));
+    await wait(10);
+    expect(container.textContent).toContain('The search failed: worker crashed. Click Find best setup to try again.');
+    expect(container.textContent).not.toContain('Trying every weapon');
+    await unmount();
+  });
+
+  test('the best DPS setup is marked; each weapon ranks once, its other setups fold under it', async () => {
+    const [whip, rapier] = ['Abyssal whip', 'Ghrazi rapier'].map((name) => availableEquipment.find((e) => e.name === name)!);
+    const [ultor, berserker] = ['Ultor ring', 'Berserker ring (i)'].map((name) => availableEquipment.find((e) => e.name === name)!);
+    const setup = (id: string, name: string, weapon: typeof whip, ring: typeof whip) => {
+      const player = generateEmptyPlayer(name);
+      player.equipment.weapon = weapon;
+      player.equipment.ring = ring;
+      return { id, name, player };
+    };
+    const row = (setupId: string, dps: number) => ({
+      setupId, monsterId: 'm', maxHit: 40, accuracy: 0.8, dps, ttk: 30, spec: null, issues: [],
+    });
+    mockRun.mockResolvedValue([{
+      style: 'slash',
+      setups: [setup('best-slash-0', 'Whip', whip, ultor), setup('best-slash-1', 'Whip', whip, berserker), setup('best-slash-2', 'Rapier', rapier, ultor)],
+      rows: [row('best-slash-0', 7.5), row('best-slash-1', 7.4), row('best-slash-2', 7.0)],
+      approximate: false,
+      message: null,
+      variants: {},
+    }]);
+    const { container, unmount } = await mount();
+    await act(async () => find(container).click());
+    await wait(10);
+
+    const bodyRows = () => [...container.querySelectorAll('tbody tr')];
+    expect(bodyRows()).toHaveLength(2);
+    // the best is marked with a trophy, still numbered for screen readers
+    expect(bodyRows()[0].querySelector('[data-tooltip-content="Best"]')!.textContent).toBe('1');
+    expect(bodyRows()[1].textContent).toContain('Rapier');
+    expect(bodyRows()[1].firstElementChild!.textContent).toBe('2');
+
+    const more = button(container, '1 more')!;
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    await act(async () => more.click());
+    expect(bodyRows()).toHaveLength(3);
+    // the alternative sits under its weapon's row, unranked, named by what it swaps in
+    expect(bodyRows()[1].textContent).toContain(`With ${berserker.name}`);
+    expect(bodyRows()[1].firstElementChild!.textContent).toBe('');
+    expect(bodyRows()[2].firstElementChild!.textContent).toBe('2');
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    // every row can be added to the bulk tool; an alternative is named by what sets it apart
+    const adds = container.querySelectorAll<HTMLButtonElement>('button[aria-label="Add to bulk preset"]');
+    expect(adds).toHaveLength(3);
+    await act(async () => adds[1].click());
+    await wait(10);
+    const saved = mockData.get(STORAGE_KEY) as { presets: BulkPreset[]; activeId: string };
+    expect(saved.presets.find((p) => p.id === saved.activeId)!.setups.map((x) => x.name)).toContain(`Whip with ${berserker.name}`);
+    await unmount();
+  });
+
+  test('several styles get a summary of each style\'s best, the strongest marked', async () => {
+    const magic = { ...outcome('Shadow'), style: 'magic' as const };
+    magic.rows = [{ ...magic.rows[0], setupId: 'best-magic-0', dps: 9 }];
+    magic.setups = [{ ...magic.setups[0], id: 'best-magic-0' }];
+    mockRun.mockResolvedValue([outcome('Whip'), magic]);
+    const { container, unmount } = await mount();
+    await act(async () => find(container).click());
+    await wait(10);
+    const cards = [...container.querySelector('nav[aria-label="Best per style"]')!.querySelectorAll('a')];
+    expect(cards.map((a) => a.getAttribute('href'))).toEqual(['#best-slash', '#best-magic']);
+    expect(cards[0].textContent).toContain('7.500');
+    expect(cards[0].textContent).not.toContain('Best');
+    expect(cards[1].textContent).toContain('9.000');
+    expect(cards[1].textContent).toContain('Best');
+    expect(container.querySelector('#best-magic')).not.toBeNull();
     await unmount();
   });
 
