@@ -260,7 +260,8 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
 const BestPage: React.FC = observer(() => {
   const [store] = useState(() => new BestStore());
   const [pools] = useState<Pools>(() => ({
-    search: new TaskPool<BestPayload, BestResult>({ createWorker: createBestWorker }),
+    // a search chunk can take seconds, so Stop and a new run don't wait for it
+    search: new TaskPool<BestPayload, BestResult>({ createWorker: createBestWorker, terminateOnCancel: true }),
     rows: new BulkPool({ createWorker: createBulkWorker }),
   }));
 

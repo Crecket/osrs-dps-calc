@@ -77,10 +77,31 @@ describe('TaskPool', () => {
     expect(reported).toBe(0);
   });
 
-  test('cancel() terminates busy workers, and the next run spawns new ones', async () => {
+  test('by default cancel() lets busy workers finish their stale chunk instead of terminating them', async () => {
+    // the bulk page cancels on every edit; respawning workers (and their data loading) each time would be slow
+    const workers: FakeWorker[] = [];
+    const pool = new TaskPool<number[], number>({
+      size: 1,
+      createWorker: () => {
+        const w = new FakeWorker({ delay: () => 5 });
+        workers.push(w);
+        return w;
+      },
+    });
+
+    const first = pool.run([[1]], () => {});
+    const second = pool.run([[2]], () => {});
+    await expect(first).rejects.toThrow('cancelled');
+    await expect(second).resolves.toEqual([4]);
+    expect(workers.length).toBe(1);
+    expect(workers[0].terminated).toBe(false);
+  });
+
+  test('with terminateOnCancel, cancel() terminates busy workers, and the next run spawns new ones', async () => {
     const workers: FakeWorker[] = [];
     const pool = new TaskPool<number[], number>({
       size: 2,
+      terminateOnCancel: true,
       createWorker: () => {
         const w = new FakeWorker({ delay: () => 5 });
         workers.push(w);

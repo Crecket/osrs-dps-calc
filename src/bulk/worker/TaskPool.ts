@@ -60,6 +60,8 @@ export class TaskPool<P, R> {
 
   private createWorker: () => WorkerLike;
 
+  private terminateOnCancel: boolean;
+
   private workers: PoolWorker[] = [];
 
   private current: Run<P, R> | null = null;
@@ -68,9 +70,12 @@ export class TaskPool<P, R> {
 
   /**
    * @param opts.progressInterval minimum ms between progress reports (the finished run is always reported)
+   * @param opts.terminateOnCancel terminate workers busy with a cancelled run's chunk instead of letting them finish it;
+   * worth it for long chunks, while short ones finish sooner than a new worker starts
    */
-  constructor(opts: { createWorker: () => WorkerLike; size?: number; progressInterval?: number }) {
+  constructor(opts: { createWorker: () => WorkerLike; size?: number; progressInterval?: number; terminateOnCancel?: boolean }) {
     this.createWorker = opts.createWorker;
+    this.terminateOnCancel = opts.terminateOnCancel ?? false;
     this.size = opts.size ?? defaultPoolSize();
     this.progressInterval = opts.progressInterval ?? 100;
   }
@@ -102,10 +107,11 @@ export class TaskPool<P, R> {
     if (this.current) {
       const { reject } = this.current;
       this.current = null;
-      // a busy worker would finish its stale chunk before taking new work; ensureWorkers spawns replacements on the next run
-      const busy = this.workers.filter((w) => w.runId !== null);
-      busy.forEach((w) => w.worker.terminate());
-      this.workers = this.workers.filter((w) => w.runId === null);
+      if (this.terminateOnCancel) {
+        // a busy worker would finish its stale chunk before taking new work; ensureWorkers spawns replacements on the next run
+        this.workers.filter((w) => w.runId !== null).forEach((w) => w.worker.terminate());
+        this.workers = this.workers.filter((w) => w.runId === null);
+      }
       reject(new Error('cancelled'));
     }
   }
