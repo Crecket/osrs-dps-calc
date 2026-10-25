@@ -61,11 +61,24 @@ export const bestPool = (items: EquipmentPiece[] = availableEquipment): Equipmen
   // data artefacts held in the weapon slot: greegrees, Gnomeball (-1), crates and Christmas dinner (0)
   && !(e.slot === 'weapon' && e.speed <= 1));
 
+/** What gear is scored on: the job's style, or 'rangedStrength' for ranged weapons that hit with the melee strength bonus. */
+export type ScoreKind = BestStyle | 'rangedStrength';
+
+// ranged weapons whose max hit uses the melee strength bonus instead of ranged strength (getPlayerMaxRangedHit's scalesWithStr)
+const RANGED_WITH_STRENGTH = new Set(['Eclipse atlatl', "Hunter's spear"]);
+
+/** How gear is scored for `weapon` attacking with `style`. */
+export const scoreKind = (weapon: EquipmentPiece, style: BestStyle): ScoreKind => (
+  style === 'ranged' && RANGED_WITH_STRENGTH.has(weapon.name) ? 'rangedStrength' : style
+);
+
 /** The two numbers an item contributes to `style` through its bonuses. */
-export const styleScore = (item: EquipmentPiece, style: BestStyle): [attack: number, strength: number] => {
+export const styleScore = (item: EquipmentPiece, style: ScoreKind): [attack: number, strength: number] => {
   switch (style) {
     case 'ranged':
       return [item.offensive.ranged, item.bonuses.ranged_str];
+    case 'rangedStrength':
+      return [item.offensive.ranged, item.bonuses.str];
     case 'magic':
       return [item.offensive.magic, item.bonuses.magic_str];
     default:
@@ -87,10 +100,10 @@ const paretoBy = (items: EquipmentPiece[], score: (item: EquipmentPiece) => numb
   }));
 };
 
-export const paretoFront = (items: EquipmentPiece[], style: BestStyle): EquipmentPiece[] => paretoBy(items, (e) => styleScore(e, style));
+export const paretoFront = (items: EquipmentPiece[], style: ScoreKind): EquipmentPiece[] => paretoBy(items, (e) => styleScore(e, style));
 
 /** Per-slot candidates: the dominance-pruned plain items and every effect item (Task 4 decides which effects matter). */
-export const slotCandidates = (pool: EquipmentPiece[], style: BestStyle, slot: GearSlot): { plain: EquipmentPiece[]; effect: EquipmentPiece[] } => {
+export const slotCandidates = (pool: EquipmentPiece[], style: ScoreKind, slot: GearSlot): { plain: EquipmentPiece[]; effect: EquipmentPiece[] } => {
   const items = pool.filter((e) => e.slot === slot);
   return {
     plain: paretoFront(items.filter((e) => !isEffectItem(e)), style),

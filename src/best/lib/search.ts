@@ -10,7 +10,7 @@ import { EquipmentPiece, Player, PlayerEquipment } from '@/types/Player';
 import { spells } from '@/types/Spell';
 import { preparePlayer } from '@/bulk/lib/compute';
 import {
-  GearSlot, paretoFront, slotCandidates, styleScore, WeaponJob,
+  GearSlot, paretoFront, ScoreKind, scoreKind, slotCandidates, styleScore, WeaponJob,
 } from '@/best/lib/candidates';
 import { SETS, WEAPON_LINKED } from '@/best/lib/effectItems';
 import { BestStyle } from '@/best/types';
@@ -109,10 +109,10 @@ export const evalDps = (base: Player, monster: Monster, job: WeaponJob, gear: Ge
   }
 };
 
-/** Memoises `make` per (pool array, style); pools are compared by identity. */
-const perPoolStyle = <T>(make: (pool: EquipmentPiece[], style: BestStyle) => T) => {
-  const cache = new WeakMap<EquipmentPiece[], Map<BestStyle, T>>();
-  return (pool: EquipmentPiece[], style: BestStyle): T => {
+/** Memoises `make` per (pool array, style or score kind); pools are compared by identity. */
+const perPoolStyle = <T>(make: (pool: EquipmentPiece[], style: ScoreKind) => T) => {
+  const cache = new WeakMap<EquipmentPiece[], Map<ScoreKind, T>>();
+  return (pool: EquipmentPiece[], style: ScoreKind): T => {
     let byStyle = cache.get(pool);
     if (!byStyle) {
       byStyle = new Map();
@@ -123,7 +123,7 @@ const perPoolStyle = <T>(make: (pool: EquipmentPiece[], style: BestStyle) => T) 
   };
 };
 
-// slotCandidates is slow (canonical lookups), and the same for every job of a style
+// slotCandidates is slow (canonical lookups), and the same for every job of a style (score kind)
 const candidatesFor = perPoolStyle((pool, style) => Object.fromEntries(GEAR_SLOTS
   .map((slot) => [slot, slotCandidates(pool, style, slot)])) as Record<GearSlot, ReturnType<typeof slotCandidates>>);
 
@@ -152,18 +152,21 @@ const firesNoAmmo = (job: WeaponJob) => job.style === 'ranged' && job.ammoId ===
 /** The plain candidates the job can use in `slot`: none in the ammo slot of a job that fires no ammo. */
 const usablePlain = (job: WeaponJob, slot: GearSlot, items: EquipmentPiece[]) => (slot === 'ammo' && firesNoAmmo(job) ? [] : items);
 
-const sumScore = (item: EquipmentPiece, style: BestStyle) => styleScore(item, style).reduce((a, b) => a + b);
+const sumScore = (item: EquipmentPiece, style: ScoreKind) => styleScore(item, style).reduce((a, b) => a + b);
 
 /** The item with the highest attack + strength; ties keep the first. */
-const strongestOf = (items: EquipmentPiece[], style: BestStyle): EquipmentPiece | undefined => items
+const strongestOf = (items: EquipmentPiece[], style: ScoreKind): EquipmentPiece | undefined => items
   .reduce<EquipmentPiece | undefined>((best, e) => (!best || sumScore(e, style) > sumScore(best, style) ? e : best), undefined);
 
-const baselineFrom = (job: WeaponJob, plain: SlotLists): Gear => Object.fromEntries(searchSlots(job)
-  .map((slot) => [slot, strongestOf(usablePlain(job, slot, plain[slot] ?? []), job.style)?.id ?? null]));
+/** How the job's gear is scored: on its style, except for ranged weapons that hit with melee strength. */
+const jobScore = (job: WeaponJob): ScoreKind => scoreKind(itemById(job.weaponId), job.style);
 
-/** Per slot the plain candidate with the highest attack + strength for the job's style; the shield stays empty for two-handers. */
+const baselineFrom = (job: WeaponJob, plain: SlotLists): Gear => Object.fromEntries(searchSlots(job)
+  .map((slot) => [slot, strongestOf(usablePlain(job, slot, plain[slot] ?? []), jobScore(job))?.id ?? null]));
+
+/** Per slot the plain candidate with the highest attack + strength for the job (jobScore); the shield stays empty for two-handers. */
 export const baselineGear = (pool: EquipmentPiece[], job: WeaponJob): Gear => {
-  const candidates = candidatesFor(pool, job.style);
+  const candidates = candidatesFor(pool, jobScore(job));
   return baselineFrom(job, Object.fromEntries(GEAR_SLOTS.map((slot) => [slot, candidates[slot].plain])));
 };
 
@@ -243,7 +246,7 @@ const resolveSets = perPoolStyle((pool, style): ResolvedSet[] => SETS.flatMap((s
 /** Sets whose pieces, worn together in `baseline`, beat the same pieces as plain twins. */
 export const activeSets = (base: Player, monster: Monster, job: WeaponJob, baseline: Gear, pool: EquipmentPiece[]): ResolvedSet[] => {
   const slots = new Set(searchSlots(job));
-  return resolveSets(pool, job.style).filter((set) => {
+  return resolveSets(pool, jobScore(job)).filter((set) => {
     const entries = Object.entries(set.pieces) as [GearSlot, EquipmentPiece][];
     if (entries.some(([slot]) => !slots.has(slot))) return false;
     const real = evalDps(base, monster, job, { ...baseline, ...Object.fromEntries(entries.map(([slot, p]) => [slot, p.id])) });
@@ -283,8 +286,9 @@ export const searchWeapon = (
   opts: { mode: 'descent' | 'exhaustive'; topN: number; cap: number; effects?: SlotLists },
 ): SearchResult[] => {
   const { style } = job;
+  const kind = jobScore(job);
   const slots = searchSlots(job);
-  const candidates = candidatesFor(pool, style);
+  const candidates = candidatesFor(pool, kind);
   const baseline = baselineGear(pool, job);
   let active = opts.effects ?? activeEffects(base, monster, job, baseline, effectCandidates(pool, style));
   if (opts.effects) {
@@ -302,9 +306,9 @@ export const searchWeapon = (
   slots.forEach((slot) => {
     const activeIds = new Set((active[slot] ?? []).map((e) => e.id));
     // empty is a (0, 0) plain item that wins ties: it beats items with nothing positive, and loses to items with nothing negative
-    plain[slot] = paretoFront(usablePlain(job, slot, [...candidates[slot].plain, ...candidates[slot].effect.filter((e) => !activeIds.has(e.id))]), style)
-      .filter((e) => styleScore(e, style).some((v) => v > 0));
-    const emptyDominated = plain[slot]!.some((e) => styleScore(e, style).every((v) => v >= 0));
+    plain[slot] = paretoFront(usablePlain(job, slot, [...candidates[slot].plain, ...candidates[slot].effect.filter((e) => !activeIds.has(e.id))]), kind)
+      .filter((e) => styleScore(e, kind).some((v) => v > 0));
+    const emptyDominated = plain[slot]!.some((e) => styleScore(e, kind).every((v) => v >= 0));
     const ids = [
       ...plain[slot]!.map((e) => e.id),
       ...(active[slot] ?? []).map((e) => e.id),

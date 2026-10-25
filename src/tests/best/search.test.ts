@@ -246,6 +246,23 @@ describe('searchWeapon', () => {
     });
   });
 
+  test('the Eclipse atlatl, which hits with melee strength, gets melee strength gear', () => {
+    const base = basePlayer(inputs, 'ranged');
+    const job = jobFor('ranged', 'Eclipse atlatl', '', 'Rapid');
+    const [best] = searchWeapon(base, abyssal, job, pool, { mode: 'exhaustive', topN: 1, cap: 20000 });
+    // a hand-picked melee strength setup: what the search finds must be at least as good
+    const hand: Gear = {
+      ...best.gear,
+      head: poolItem('Torva full helm').id,
+      body: poolItem('Torva platebody').id,
+      legs: poolItem('Torva platelegs').id,
+      neck: poolItem('Amulet of rancour').id,
+      hands: poolItem('Ferocious gloves').id,
+      ring: poolItem('Ultor ring').id,
+    };
+    expect(best.dps).toBeGreaterThanOrEqual(evalDps(base, abyssal, job, hand));
+  });
+
   test('topN 0 returns nothing', () => {
     const base = basePlayer(inputs, 'slash');
     expect(searchWeapon(base, vorkath, scytheJob, pool, {
