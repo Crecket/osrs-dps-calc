@@ -1,16 +1,41 @@
 import React, { PropsWithChildren } from 'react';
 
-const Panel: React.FC<PropsWithChildren<{ title: React.ReactNode; actions?: React.ReactNode; className?: string }>> = ({
-  title, actions, className, children,
-}) => (
-  <div className={`sm:rounded shadow-lg bg-tile dark:bg-dark-300 text-black dark:text-white flex flex-col ${className || ''}`}>
+interface PanelProps {
+  title: React.ReactNode;
+  actions?: React.ReactNode;
+  className?: string;
+  // keeps the header, and `belowHeader` under it, in view while the panel scrolls past (from the sm breakpoint up)
+  stickyHeader?: boolean;
+  belowHeader?: React.ReactNode;
+}
+
+const Panel: React.FC<PropsWithChildren<PanelProps>> = ({
+  title, actions, className, stickyHeader, belowHeader, children,
+}) => {
+  const header = (
     <div className="px-4 py-2.5 border-b-body-400 bg-body-100 dark:bg-dark-400 dark:border-b-dark-200 border-b sm:rounded-t flex flex-wrap gap-2 justify-between items-center">
       <h2 className="font-serif text-lg tracking-tight font-bold flex items-center gap-2">{title}</h2>
       {actions && <div className="flex flex-wrap gap-2 items-center text-sm">{actions}</div>}
     </div>
-    {children}
-  </div>
-);
+  );
+  return (
+    <div className={`sm:rounded shadow-lg bg-tile dark:bg-dark-300 text-black dark:text-white flex flex-col ${className || ''}`}>
+      {stickyHeader ? (
+        // under dropdowns (z-10 and up) of the panels above it, which can open over this one
+        <div className="sm:sticky top-0 z-[5] bg-tile dark:bg-dark-300 sm:rounded-t">
+          {header}
+          {belowHeader}
+        </div>
+      ) : (
+        <>
+          {header}
+          {belowHeader}
+        </>
+      )}
+      {children}
+    </div>
+  );
+};
 
 export const buttonClass = 'transition-colors border border-body-500 bg-btns-400 text-white dark:bg-dark-500 dark:border-dark-200 px-2.5 py-1 rounded text-sm hover:bg-btns-300 dark:hover:bg-dark-400 disabled:opacity-50 disabled:cursor-not-allowed';
 

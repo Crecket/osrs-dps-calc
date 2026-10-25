@@ -1,7 +1,7 @@
 import React from 'react';
 import { observer } from 'mobx-react-lite';
 import {
-  IconAlertTriangle, IconChevronDown, IconChevronUp, IconX,
+  IconAlertTriangle, IconChevronDown, IconChevronUp, IconCornerDownRight, IconTrophy, IconX,
 } from '@tabler/icons-react';
 import GearCells from '@/bulk/components/GearCells';
 import BuffIcons from '@/bulk/components/BuffIcons';
@@ -47,11 +47,27 @@ interface BulkTableProps {
   rowAction?: (setupId: string) => React.ReactNode;
   /** A right-click on a worn item in a row's gear cells */
   onItemContextMenu?: (slot: keyof PlayerEquipment, item: EquipmentPiece) => void;
+  /** Added to every worn item's tooltip, e.g. how to use the right-click */
+  itemHint?: string;
+  /** A row to pick out as the best, e.g. the highest DPS */
+  highlightId?: string;
+  /**
+   * Rows shown as alternatives of the ranked row above them: no rank of their own, the label in place of the setup name,
+   * and the slots that differ marked
+   */
+  alternatives?: Map<string, { label: string; slots: (keyof PlayerEquipment)[] }>;
 }
+
+const rowClass = (highlighted: boolean, alternative: boolean) => {
+  if (highlighted) return 'bg-orange-100 dark:bg-orange-500/30';
+  if (alternative) return 'bg-body-100/70 dark:bg-dark-500/60 text-gray-600 dark:text-gray-300';
+  return 'odd:bg-body-100/40 dark:odd:bg-dark-400/40';
+};
 
 // observer, so renaming a setup re-renders rows without the parent having to
 const BulkTable: React.FC<BulkTableProps> = observer(({
   rows, setups, mode, sort, onSort, hasRun, overrides = {}, filtered = new Map(), stale = new Set(), rowAction, onItemContextMenu,
+  itemHint, highlightId, alternatives,
 }) => {
   // not memoized: preset arrays are mutated in place, so their identity can't be used as a dependency
   const setupsById = new Map(setups.map((s) => [s.id, s]));
@@ -103,7 +119,9 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
           if (!setup) return null;
           const reason = filtered.get(r.setupId);
           const isStale = stale.has(r.setupId);
-          if (!reason) rank += 1;
+          const alternative = alternatives?.get(r.setupId);
+          const highlighted = r.setupId === highlightId;
+          if (!reason && !alternative) rank += 1;
 
           const warnings = [...r.issues];
           if (r.spec?.partial) warnings.push('Spec only partially supported');
@@ -111,15 +129,40 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
           return (
             <tr
               key={r.setupId}
-              className={`border-b border-body-200 dark:border-dark-400 odd:bg-body-100/40 dark:odd:bg-dark-400/40 ${reason ? 'opacity-40' : ''}`}
+              className={`border-b border-body-200 dark:border-dark-400 ${rowClass(highlighted, !!alternative)} ${reason ? 'opacity-40' : ''}`}
             >
-              <td className="px-2 py-1 text-center text-gray-500 dark:text-gray-300">{reason ? '—' : rank}</td>
+              {/* the highlight's accent bar sits on the first cell: not every browser draws a row's own box-shadow */}
+              <td className={`px-2 py-1 text-center text-gray-500 dark:text-gray-300 ${highlighted ? 'shadow-[inset_3px_0_0_theme(colors.orange.300)]' : ''}`}>
+                {highlighted && !reason && !alternative ? (
+                  <span className="inline-flex items-center justify-center text-orange-400 dark:text-orange-300" data-tooltip-id="tooltip" data-tooltip-content="Best">
+                    <IconTrophy size={16} aria-hidden />
+                    <span className="sr-only">{rank}</span>
+                  </span>
+                ) : (!alternative && (reason ? '—' : rank))}
+              </td>
               <td className="px-2 py-1 whitespace-nowrap">
-                <span className="font-semibold">{setup.name}</span>
-                <StyleLabel player={setup.player} className="ml-1 align-middle" />
+                {alternative ? (
+                  <span className="inline-flex items-center gap-1 pl-2 text-xs">
+                    <IconCornerDownRight size={14} aria-hidden className="shrink-0 text-gray-400" />
+                    {alternative.label}
+                  </span>
+                ) : (
+                  <>
+                    <span className="font-semibold">{setup.name}</span>
+                    <StyleLabel player={setup.player} className="ml-1 align-middle" />
+                  </>
+                )}
                 {reason && <span className="ml-2 text-xs italic">{reason}</span>}
               </td>
-              <td className="px-2 py-1" aria-label="Gear"><GearCells player={setup.player} marked={overriddenSlots(setup.player, overrides)} onItemContextMenu={onItemContextMenu} /></td>
+              <td className="px-2 py-1" aria-label="Gear">
+                <GearCells
+                  player={setup.player}
+                  marked={alternative ? alternative.slots : overriddenSlots(setup.player, overrides)}
+                  markedNote={alternative ? ' (differs from the ranked setup above)' : undefined}
+                  onItemContextMenu={onItemContextMenu}
+                  itemHint={itemHint}
+                />
+              </td>
               <td className="px-2 py-1 whitespace-nowrap" aria-label="Prayers and potions"><BuffIcons player={setup.player} /></td>
               {r.error ? (
                 <td colSpan={columns.length} className="px-2 py-1 text-right text-red-400">
