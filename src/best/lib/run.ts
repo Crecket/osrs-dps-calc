@@ -24,6 +24,8 @@ export interface StyleOutcome {
   approximate: boolean;
   /** Why there are no setups, e.g. 'No usable magic setup found' */
   message: string | null;
+  /** Per weapon id, the weapons that calculate exactly like it here (cosmetic variants) and were left out of the results */
+  variants: Record<number, number[]>;
 }
 
 export interface BestRunDeps {
@@ -87,12 +89,50 @@ export const unionEffects = (all: EffectIds[]): EffectIds => {
   return union;
 };
 
-const setupName = (job: WeaponJob) => {
+const setupName = (job: WeaponJob, variants: number[] = []) => {
   let name = `${itemById(job.weaponId).name} (${job.combatStyle.name})`;
   if (job.spellName !== null) name += ` + ${job.spellName}`;
   if (job.ammoId !== null) name += ` + ${itemById(job.ammoId).name}`;
   if (job.dartId !== null) name += ` + ${itemById(job.dartId).name}`;
+  if (variants.length > 0) name += ` — or ${variants.map((id) => itemById(id).name).join(', ')}`;
   return name;
+};
+
+// everything the engine reads off a weapon besides its name
+const weaponStats = (id: number) => {
+  const w = itemById(id);
+  return JSON.stringify([w.offensive, w.defensive, w.bonuses, w.speed, w.category, w.isTwoHanded]);
+};
+
+// a job without its weapon: stance, ammo, spell and dart
+const jobExtras = (job: WeaponJob) => JSON.stringify([job.combatStyle.name, job.ammoId, job.spellName, job.dartId]);
+
+/**
+ * Weapons that calculate exactly like a lower-id weapon against this monster: the same stats, the same jobs and the
+ * same `dps` (phase 1) in every job, so the engine treats their names the same here. Cosmetic variants (Holy and
+ * Sanguine Scythe of Vitur next to the Scythe of Vitur) would otherwise take several exhaustive slots and show as
+ * identical rows. Weapons without damage are left apart. Maps each variant's id to the id it is a variant of.
+ */
+export const weaponVariants = (jobs: WeaponJob[], dps: (job: WeaponJob) => number): Map<number, number> => {
+  const byWeapon = new Map<number, Map<string, number>>();
+  jobs.forEach((job) => {
+    const weaponDps = byWeapon.get(job.weaponId) ?? new Map<string, number>();
+    weaponDps.set(jobExtras(job), dps(job));
+    byWeapon.set(job.weaponId, weaponDps);
+  });
+  // weapons that don't hurt the monster never show, so they stay apart
+  const same = (a: Map<string, number>, b: Map<string, number>) => a.size === b.size
+    && [...a.values()].some((v) => v > 0)
+    && [...a].every(([key, v]) => b.has(key) && Math.abs(b.get(key)! - v) <= 1e-9);
+
+  const variantOf = new Map<number, number>();
+  const bases: number[] = [];
+  [...byWeapon.keys()].sort((a, b) => a - b).forEach((id) => {
+    const base = bases.find((b) => weaponStats(b) === weaponStats(id) && same(byWeapon.get(b)!, byWeapon.get(id)!));
+    if (base === undefined) bases.push(id);
+    else variantOf.set(id, base);
+  });
+  return variantOf;
 };
 
 /**
@@ -183,13 +223,21 @@ export const runBestSetup = async (
       kind: 'search', base: plan.base, monster: target, jobs, mode: 'descent', topN, cap, effects: styleEffectIds[i], excluded,
     }))));
     at = 0;
+    // per style, each weapon with the cosmetic variants that calculate like it; only the weapon itself goes on
+    const variants: Record<number, number[]>[] = [];
     const topJobs = plans.map((plan, i) => {
       const results = descentResults.slice(at, at + descentChunks[i].length)
         .flatMap((r) => (r.kind === 'search' ? r.results : []));
       at += descentChunks[i].length;
       const bestDps = new Map<string, number>();
       results.forEach((r) => bestDps.set(jobKey(r.job), Math.max(r.dps, bestDps.get(jobKey(r.job)) ?? 0)));
-      return topWeaponJobs(plan.jobs, (job) => bestDps.get(jobKey(job)) ?? 0, topK);
+      const dps = (job: WeaponJob) => bestDps.get(jobKey(job)) ?? 0;
+      const variantOf = weaponVariants(plan.jobs, dps);
+      variants[i] = {};
+      variantOf.forEach((base, id) => {
+        variants[i][base] = [...(variants[i][base] ?? []), id];
+      });
+      return topWeaponJobs(plan.jobs.filter((job) => !variantOf.has(job.weaponId)), dps, topK);
     });
     // jobs with no damage skip phase 2
     total = done + topJobs.reduce((n, jobs) => n + jobs.length, 0);
@@ -219,7 +267,7 @@ export const runBestSetup = async (
 
     const setups = plans.map((plan, i) => picked[i].map((r, n): BulkSetup => ({
       id: `best-${plan.style}-${n}`,
-      name: setupName(r.job),
+      name: setupName(r.job, variants[i][r.job.weaponId]),
       player: buildPlayer(plan.base, r.job, r.gear),
     })));
     const rows = await deps.rows.run(setups.flat(), [monster], () => {});
@@ -240,6 +288,7 @@ export const runBestSetup = async (
         rows: pairs.map((p) => p.row),
         approximate: picked[i].some((r) => r.approximate),
         message: pairs.length === 0 ? `No usable ${plan.style} setup found` : null,
+        variants: variants[i],
       };
     });
   } finally {

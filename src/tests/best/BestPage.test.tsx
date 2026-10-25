@@ -67,6 +67,7 @@ const outcome = (name: string): StyleOutcome => ({
   }],
   approximate: false,
   message: null,
+  variants: {},
 });
 
 const mount = async () => {
@@ -330,6 +331,26 @@ describe('BestPage', () => {
     await act(async () => remove.click());
     await wait(10);
     expect((mockData.get(BEST_STORAGE_KEY) as { inputs: BestInputs }).inputs.excludedItemIds).toEqual([]);
+    expect(mockRun).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  test('right-clicking a weapon that stands for cosmetic variants excludes the variants too', async () => {
+    const [scythe, holy, sanguine] = ['Scythe of Vitur', 'Holy Scythe of Vitur', 'Sanguine Scythe of Vitur']
+      .map((name) => availableEquipment.find((e) => e.name === name && e.version === 'Charged')!);
+    const withWeapon = outcome('Scythe of Vitur (Chop) — or Holy Scythe of Vitur, Sanguine Scythe of Vitur');
+    withWeapon.setups[0].player.equipment.weapon = scythe;
+    withWeapon.variants = { [scythe.id]: [holy.id, sanguine.id] };
+    mockRun.mockResolvedValue([withWeapon]);
+    const { container, unmount } = await mount();
+    await act(async () => find(container).click());
+    await wait(10);
+
+    const cell = container.querySelector(`img[alt="${scythe.name}"]`)!.closest('div')!;
+    await act(async () => { cell.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); });
+    await wait(10);
+    expect((mockData.get(BEST_STORAGE_KEY) as { inputs: BestInputs }).inputs.excludedItemIds).toEqual([scythe.id, holy.id, sanguine.id]);
+    expect(mockToast.info).toHaveBeenCalledWith(`Excluded ${scythe.name}, ${holy.name} and ${sanguine.name} — click Find best setup to update`);
     expect(mockRun).toHaveBeenCalledTimes(1);
     await unmount();
   });

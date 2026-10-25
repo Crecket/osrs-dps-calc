@@ -3,7 +3,7 @@ import { availableEquipment } from '@/lib/Equipment';
 import { bestPool, WeaponJob, weaponJobs } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
 import {
-  BestRunDeps, JOBS_PER_WEAPON, referenceGroups, runBestSetup, unionEffects,
+  BestRunDeps, JOBS_PER_WEAPON, referenceGroups, runBestSetup, unionEffects, weaponVariants,
 } from '@/best/lib/run';
 import { searchWeapon } from '@/best/lib/search';
 import { BestPayload, BestResult, handleBestChunk } from '@/best/worker/protocol';
@@ -111,6 +111,30 @@ describe('unionEffects', () => {
   });
 });
 
+describe('weaponVariants', () => {
+  const scythe = availableEquipment.find((e) => e.name === 'Scythe of Vitur' && e.version === 'Charged')!.id;
+  const holy = availableEquipment.find((e) => e.name === 'Holy Scythe of Vitur' && e.version === 'Charged')!.id;
+  const sanguine = availableEquipment.find((e) => e.name === 'Sanguine Scythe of Vitur' && e.version === 'Charged')!.id;
+  const jobs = weaponJobs(pool, 'slash').filter((j) => [scythe, holy, sanguine].includes(j.weaponId));
+
+  test('weapons with the same stats and the same DPS in every job are variants of the lowest id', () => {
+    expect(new Set(jobs.map((j) => j.weaponId)).size).toBe(3);
+    const dps = (j: WeaponJob) => (j.combatStyle.name === 'Chop' ? 10 : 8);
+    expect(weaponVariants(jobs, dps)).toEqual(new Map([[holy, scythe], [sanguine, scythe]]));
+  });
+
+  test('a weapon whose DPS differs in one job is no variant', () => {
+    const dps = (j: WeaponJob) => (j.weaponId === holy && j.combatStyle.name === 'Reap' ? 7 : 10);
+    expect(weaponVariants(jobs, dps)).toEqual(new Map([[sanguine, scythe]]));
+  });
+
+  test('weapons with different stats are never variants', () => {
+    const rapier = weaponJobs(pool, 'stab').filter((j) => availableEquipment.find((e) => e.id === j.weaponId)!.name === 'Ghrazi rapier');
+    const fang = weaponJobs(pool, 'stab').filter((j) => availableEquipment.find((e) => e.id === j.weaponId)!.name === "Osmumten's fang");
+    expect(weaponVariants([...rapier, ...fang], () => 5).size).toBe(0);
+  });
+});
+
 describe('runBestSetup', () => {
   test('one outcome per style, top setups sorted by computeRow DPS', async () => {
     const { deps } = fakeDeps();
@@ -129,7 +153,8 @@ describe('runBestSetup', () => {
       expect(o.rows[i].dps).toBe(computeRow(setup, vorkath).dps);
       if (i > 0) expect(o.rows[i].dps).toBeLessThanOrEqual(o.rows[i - 1].dps);
       const { equipment, style } = setup.player;
-      expect(setup.name).toBe(`${equipment.weapon!.name} (${style.name})`);
+      // cosmetic variants of the weapon follow its name
+      expect(setup.name.startsWith(`${equipment.weapon!.name} (${style.name})`)).toBe(true);
     });
     // every setup is built on the style's base player
     expect(o.setups[0].player.prayers).toEqual(basePlayer(inputs(['slash']), 'slash').prayers);
@@ -197,7 +222,7 @@ describe('runBestSetup', () => {
     const outcomes = await runBestSetup(inputs(['magic']), vorkath, deps, (done, total) => progress.push([done, total]), opts);
 
     expect(outcomes).toEqual([{
-      style: 'magic', setups: [], rows: [], approximate: false, message: 'No usable magic setup found',
+      style: 'magic', setups: [], rows: [], approximate: false, message: 'No usable magic setup found', variants: {},
     }]);
     // nothing worth an exhaustive search
     expect(calls.flat().some((p) => p.kind === 'search' && p.mode === 'exhaustive')).toBe(false);
@@ -249,6 +274,23 @@ describe('runBestSetup', () => {
     expect(others.length).toBeGreaterThan(0);
     expect(o.setups[0].player.equipment.weapon!.name).toMatch(/^(Arclight|Emberlight)$/);
     expect(o.rows[0].dps).toBeGreaterThan(Math.max(...others));
+  }, 60000);
+
+  test('cosmetic weapon variants collapse into the lowest id: one exhaustive search, one row, the variants named', async () => {
+    const scythes = availableEquipment.filter((e) => /^(Holy |Sanguine )?Scythe of Vitur$/.test(e.name) && e.version === 'Charged').map((e) => e.id);
+    expect(scythes).toHaveLength(3);
+    const { deps, calls } = fakeDeps();
+    const [o] = await runBestSetup(inputs(['slash']), vorkath, deps, () => {}, opts);
+
+    const exhaustive = calls.flat().flatMap((p) => (p.kind === 'search' && p.mode === 'exhaustive' ? p.jobs : []));
+    expect(exhaustive.filter((j) => scythes.includes(j.weaponId))).toHaveLength(1);
+    const names = o.setups.map((s) => s.player.equipment.weapon!.name);
+    expect(names).toContain('Scythe of Vitur');
+    expect(names.filter((n) => /Scythe of Vitur/.test(n)).every((n) => n === 'Scythe of Vitur')).toBe(true);
+    const setup = o.setups.find((s) => s.player.equipment.weapon!.name === 'Scythe of Vitur')!;
+    expect(setup.name).toContain('Holy Scythe of Vitur');
+    expect(setup.name).toContain('Sanguine Scythe of Vitur');
+    expect(o.variants[setup.player.equipment.weapon!.id]).toEqual(scythes.filter((id) => id !== setup.player.equipment.weapon!.id));
   }, 60000);
 
   test('excluded items never appear in the results', async () => {

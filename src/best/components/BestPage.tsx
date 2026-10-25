@@ -23,6 +23,7 @@ import { defaultSort, selectRows, SortState } from '@/bulk/lib/table';
 import { monsterLabel } from '@/bulk/lib/format';
 import { BulkSetup } from '@/bulk/types';
 import { EquipmentPiece } from '@/types/Player';
+import { availableEquipment } from '@/lib/Equipment';
 import TargetMonster from '@/bulk/components/TargetMonster';
 import BulkTable from '@/bulk/components/BulkTable';
 import Panel, { buttonClass } from '@/bulk/components/Panel';
@@ -66,7 +67,7 @@ const StyleResults: React.FC<{
   outcome: StyleOutcome;
   sort: SortState;
   onSort: (s: SortState) => void;
-  onExclude: (item: EquipmentPiece) => void;
+  onExclude: (item: EquipmentPiece, variants: number[]) => void;
 }> = ({
   outcome, sort, onSort, onExclude,
 }) => {
@@ -99,7 +100,8 @@ const StyleResults: React.FC<{
             sort={sort}
             onSort={onSort}
             hasRun
-            onItemContextMenu={(_, item) => onExclude(item)}
+            // a weapon stands for its cosmetic variants too, which the setup name lists
+            onItemContextMenu={(slot, item) => onExclude(item, slot === 'weapon' ? outcome.variants[item.id] ?? [] : [])}
             rowAction={(id) => {
               const setup = setupsById.get(id);
               return setup && (
@@ -194,10 +196,17 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
     setStopped(true);
   };
 
-  // a right-click on an item in a result leaves it out of the next search; nothing runs until the button is clicked
-  const exclude = (item: EquipmentPiece) => {
+  // a right-click on an item in a result leaves it (and the variants it stands for) out of the next search; nothing
+  // runs until the button is clicked
+  const exclude = (item: EquipmentPiece, variants: number[]) => {
+    const names = [item.name];
     store.excludeItem(item.id);
-    toast.info(`Excluded ${item.name} — click Find best setup to update`);
+    variants.forEach((id) => {
+      store.excludeItem(id);
+      names.push(availableEquipment.find((e) => e.id === id)?.name ?? String(id));
+    });
+    const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+    toast.info(`Excluded ${list} — click Find best setup to update`);
   };
 
   const { monster } = store;
