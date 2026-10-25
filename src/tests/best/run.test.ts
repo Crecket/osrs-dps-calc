@@ -145,7 +145,11 @@ describe('runBestSetup', () => {
     const [o] = outcomes;
     expect(o.message).toBeNull();
     expect(o.setups.length).toBeGreaterThan(0);
-    expect(o.setups.length).toBeLessThanOrEqual(3);
+    // up to topN per weapon, of the topK weapons
+    const perWeapon = new Map<number, number>();
+    o.setups.forEach((s) => perWeapon.set(s.player.equipment.weapon!.id, (perWeapon.get(s.player.equipment.weapon!.id) ?? 0) + 1));
+    expect(perWeapon.size).toBeLessThanOrEqual(2);
+    [...perWeapon.values()].forEach((n) => expect(n).toBeLessThanOrEqual(3));
     expect(o.rows.length).toBe(o.setups.length);
     o.setups.forEach((setup, i) => {
       expect(setup.id).toBe(`best-slash-${i}`);
@@ -166,8 +170,13 @@ describe('runBestSetup', () => {
 
   test('effects first, then descent over all jobs, then exhaustive over the top weapons', async () => {
     const { deps, calls } = fakeDeps(synthetic);
-    const outcomes = await runBestSetup(inputs(['ranged']), vorkath, deps, () => {}, { topK: 3 });
+    const phases: string[] = [];
+    const outcomes = await runBestSetup(inputs(['ranged']), vorkath, deps, (_d, _t, phase) => {
+      if (phases[phases.length - 1] !== phase) phases.push(phase);
+    }, { topK: 3 });
     const jobs = weaponJobs(pool, 'ranged');
+    // progress names its phase
+    expect(phases).toEqual(['effects', 'descent', 'exhaustive']);
 
     expect(calls.length).toBe(3);
     const [effects, descent, exhaustive] = calls;
@@ -205,6 +214,26 @@ describe('runBestSetup', () => {
 
     // only exhaustive results are shown
     expect(outcomes[0].approximate).toBe(false);
+  });
+
+  test('keeps up to topN results of every searched weapon, not just the best weapon\'s', async () => {
+    // every exhaustive job answers with four gear variations
+    const rings = pool.filter((e) => e.slot === 'ring').slice(0, 4).map((e) => e.id);
+    const many = (p: BestPayload): BestResult => {
+      const r = synthetic(p);
+      if (p.kind !== 'search' || p.mode !== 'exhaustive' || r.kind !== 'search') return r;
+      return {
+        kind: 'search',
+        results: p.jobs.flatMap((job) => [0, 1, 2, 3].map((n) => ({
+          job, gear: { ring: rings[n] }, dps: fakeDps(job) - n / 100, approximate: false,
+        }))),
+      };
+    };
+    const { deps } = fakeDeps(many);
+    const [o] = await runBestSetup(inputs(['ranged'], 2), vorkath, deps, () => {}, { topK: 3 });
+    const weapons = o.setups.map((s) => s.player.equipment.weapon!.id);
+    expect(new Set(weapons).size).toBe(3);
+    [...new Set(weapons)].forEach((w) => expect(weapons.filter((x) => x === w)).toHaveLength(2));
   });
 
   test('a style with only 0-DPS results has no setups and a message', async () => {
@@ -314,6 +343,7 @@ describe('runBestSetup', () => {
     await expect(first).rejects.toThrow('cancelled');
     expect(searchCancels()).toBeGreaterThan(0);
     const outcomes = await second;
-    expect(outcomes[0].setups.length).toBe(1);
+    // topN 1: one setup for each of the topK weapons
+    expect(outcomes[0].setups.length).toBe(2);
   });
 });

@@ -28,6 +28,9 @@ export interface StyleOutcome {
   variants: Record<number, number[]>;
 }
 
+/** The search's phases, in order, as reported with its progress */
+export type BestPhase = 'effects' | 'descent' | 'exhaustive';
+
 export interface BestRunDeps {
   search: Pick<TaskPool<BestPayload, BestResult>, 'run' | 'cancel'>;
   rows: Pick<BulkPool, 'run' | 'cancel'>;
@@ -157,14 +160,14 @@ interface StylePlan {
 }
 
 /**
- * The top `inputs.topN` setups per style against `monster`. Per style: (0) the effect activity test for the style's reference jobs (the best damaging one-handed and two-handed job by baseline DPS), shared as the style's effects; (1) coordinate descent over every weapon job with those effects; (2) an exhaustive search, with a full per-job activity test, of the best descent jobs of the `topK` best weapons. The shown setups are the best distinct phase-2 results, with their numbers from
+ * Per style, the top `inputs.topN` setups of each of the `topK` best weapons against `monster`, so one weapon's small gear changes don't crowd out the others. Per style: (0) the effect activity test for the style's reference jobs (the best damaging one-handed and two-handed job by baseline DPS), shared as the style's effects; (1) coordinate descent over every weapon job with those effects; (2) an exhaustive search, with a full per-job activity test, of the best descent jobs of the `topK` best weapons. The shown setups are the best distinct phase-2 results, with their numbers from
  * computeRow. Each phase runs every style's payloads in one pool run. A new call cancels the previous one, whose promise rejects with Error('cancelled').
  */
 export const runBestSetup = async (
   inputs: BestInputs,
   monster: BulkMonster,
   deps: BestRunDeps,
-  onProgress: (done: number, total: number) => void,
+  onProgress: (done: number, total: number, phase: BestPhase) => void,
   opts: { topK?: number; cap?: number } = {},
 ): Promise<StyleOutcome[]> => {
   if (runningDeps) {
@@ -193,12 +196,12 @@ export const runBestSetup = async (
     const units = (p: BestPayload) => (p.kind === 'effects' ? 1 : p.jobs.length);
     let done = 0;
     let total = 0;
-    const searchRun = async (payloads: BestPayload[]) => {
+    const searchRun = async (payloads: BestPayload[], phase: BestPhase) => {
       const before = done;
       const phaseUnits = payloads.reduce((n, p) => n + units(p), 0);
       // the pool counts finished payloads (one result each); scale that to jobs
       const results = await deps.search.run(payloads, (p) => {
-        if (token === currentRun && p.total > 0) onProgress(before + Math.round((p.done / p.total) * phaseUnits), total);
+        if (token === currentRun && p.total > 0) onProgress(before + Math.round((p.done / p.total) * phaseUnits), total, phase);
       });
       check();
       done = before + phaseUnits;
@@ -211,7 +214,7 @@ export const runBestSetup = async (
       kind: 'effects', base: plan.base, monster: target, jobs, excluded,
     })));
     total = effectPayloads.length + plans.reduce((n, plan) => n + plan.jobs.length + Math.min(topK * JOBS_PER_WEAPON, plan.jobs.length), 0);
-    const effectResults = await searchRun(effectPayloads);
+    const effectResults = await searchRun(effectPayloads, 'effects');
     let at = 0;
     const styleEffectIds = refs.map((r) => {
       const res = effectResults.slice(at, at + r.length);
@@ -223,7 +226,7 @@ export const runBestSetup = async (
     const descentChunks = plans.map((plan) => chunk(plan.jobs, DESCENT_JOBS_PER_PAYLOAD));
     const descentResults = await searchRun(plans.flatMap((plan, i) => descentChunks[i].map((jobs): BestPayload => ({
       kind: 'search', base: plan.base, monster: target, jobs, mode: 'descent', topN, cap, effects: styleEffectIds[i], excluded,
-    }))));
+    }))), 'descent');
     at = 0;
     // per style, each weapon with the cosmetic variants that calculate like it; only the weapon itself goes on
     const variants: Record<number, number[]>[] = [];
@@ -247,24 +250,27 @@ export const runBestSetup = async (
     // phase 2: exhaustive over the top weapons' top jobs, each with its own full activity test: the shared effects come from another weapon and can miss what matters for this one (an effect that needs the weapon to hurt the monster)
     const exhaustiveResults = await searchRun(plans.flatMap((plan, i) => topJobs[i].map((job): BestPayload => ({
       kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap, excluded,
-    }))));
+    }))), 'exhaustive');
     // phase 2 may have been empty
-    onProgress(done, total);
+    onProgress(done, total, 'exhaustive');
     at = 0;
     const picked: SearchResult[][] = plans.map((_, i) => {
       const results = exhaustiveResults.slice(at, at + topJobs[i].length)
         .flatMap((r) => (r.kind === 'search' ? r.results : []));
       at += topJobs[i].length;
       const seen = new Set<string>();
+      // up to topN per weapon, so the page can show each weapon's best with its runners-up
+      const perWeapon = new Map<number, number>();
       return results.filter((r) => r.dps > 0)
         .sort((a, b) => b.dps - a.dps)
         .filter((r) => {
           const key = jobKey(r.job) + JSON.stringify(r.gear);
-          if (seen.has(key)) return false;
+          const count = perWeapon.get(r.job.weaponId) ?? 0;
+          if (seen.has(key) || count >= topN) return false;
           seen.add(key);
+          perWeapon.set(r.job.weaponId, count + 1);
           return true;
-        })
-        .slice(0, topN);
+        });
     });
 
     const setups = plans.map((plan, i) => picked[i].map((r, n): BulkSetup => ({
