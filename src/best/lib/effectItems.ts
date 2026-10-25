@@ -369,6 +369,16 @@ export const hasNamedEffect = (piece: EquipmentPiece): boolean => {
   return EFFECT_ITEM_NAMES.has(name) || EFFECT_NAME_PATTERNS.some((p) => p.test(name));
 };
 
+/**
+ * Which of the engine's name checks the item (or its canonical form) matches: its listed name and each name pattern.
+ * Items with the same signature (one name in several versions, or the tiers of a pattern like Seeking arrows) are
+ * treated alike by those checks and differ only in their bonuses.
+ */
+export const effectSignature = (piece: EquipmentPiece): string => {
+  const { name } = getCanonicalItem(piece);
+  return JSON.stringify([EFFECT_ITEM_NAMES.has(name) ? name : null, EFFECT_NAME_PATTERNS.map((p) => p.test(name))]);
+};
+
 /** True when the item (or its canonical form) has an effect the optimizer cannot read off its bonuses. */
 export const isEffectItem = (piece: EquipmentPiece): boolean => {
   const { name, category } = getCanonicalItem(piece);

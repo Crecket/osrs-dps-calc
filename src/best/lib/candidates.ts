@@ -9,7 +9,7 @@ import { EquipmentPiece, PlayerEquipment } from '@/types/Player';
 import { CombatStyleStance, PlayerCombatStyle } from '@/types/PlayerCombatStyle';
 import { isBindSpell, spells } from '@/types/Spell';
 import { getCombatStylesForCategory } from '@/utils';
-import { hasNamedEffect, isEffectItem } from '@/best/lib/effectItems';
+import { effectSignature, hasNamedEffect, isEffectItem } from '@/best/lib/effectItems';
 import { BestStyle } from '@/best/types';
 
 export type GearSlot = Exclude<keyof PlayerEquipment, 'weapon'>;
@@ -213,13 +213,19 @@ const ammoKind = (ammo: EquipmentPiece) => {
   return 'other';
 };
 
-/** Ammo the engine names is always kept; the rest is dominance-pruned among ammo of the same kind. */
+/** Dominance-pruned within each group of `items` with the same `key`. */
+const paretoWithin = (items: EquipmentPiece[], key: (a: EquipmentPiece) => string) => [...new Set(items.map(key))]
+  .flatMap((k) => paretoFront(items.filter((a) => key(a) === k), 'ranged'));
+
+/**
+ * Plain ammo is dominance-pruned among ammo of the same kind, ammo the engine names among ammo matching the same name
+ * checks (the Silver bolts versions, the Seeking arrow tiers), since those checks can't tell them apart.
+ */
 const ammoCandidates = (valid: EquipmentPiece[]): number[] => {
+  const named = valid.filter(hasNamedEffect);
   const plain = valid.filter((a) => !hasNamedEffect(a));
-  return [
-    ...[...new Set(plain.map(ammoKind))].flatMap((kind) => paretoFront(plain.filter((a) => ammoKind(a) === kind), 'ranged')),
-    ...valid.filter(hasNamedEffect),
-  ].map((a) => a.id).sort((a, b) => a - b);
+  return [...paretoWithin(plain, ammoKind), ...paretoWithin(named, (a) => `${ammoKind(a)} ${effectSignature(a)}`)]
+    .map((a) => a.id).sort((a, b) => a - b);
 };
 
 const requiresAmmo = (weapon: EquipmentPiece) => ammoApplicability(weapon.id, undefined) !== AmmoApplicability.ALLOWED;

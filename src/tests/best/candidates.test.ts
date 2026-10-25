@@ -270,6 +270,17 @@ describe('weaponJobs', () => {
     expect(ammoNames('Rune crossbow').has('Silver bolts')).toBe(true);
   });
 
+  test('named ammo the engine can\'t tell apart is pruned among itself', () => {
+    const jobs = weaponJobs(pool, 'ranged');
+    const ammoOf = (weapon: string) => jobs.filter((j) => j.weaponId === findEquipment(weapon).id && j.combatStyle.name === 'Rapid')
+      .map((j) => pool.find((e) => e.id === j.ammoId)!.name);
+    // the four Silver bolts versions have the same name and stats
+    expect(ammoOf('Rune crossbow').filter((n) => n === 'Silver bolts')).toHaveLength(1);
+    // Seeking arrows share one name check; Seeking broad arrows also have their own
+    const seeking = ammoOf('Twisted bow').filter((n) => n.startsWith('Seeking')).sort();
+    expect(seeking).toEqual(['Seeking broad arrows', 'Seeking dragon arrow']);
+  });
+
   test('magic jobs only for weapons that autocast, have built-in magic or magic strength', () => {
     const ids = new Set(weaponJobs(pool, 'magic').map((j) => j.weaponId));
     ['Dragon dagger', 'Keris', 'Abyssal dagger'].forEach((name) => {
