@@ -45,6 +45,15 @@ describe('bestPrayers', () => {
 describe('prayer choices', () => {
   const pure = { ...DEFAULT_UNLOCKS, prayerLevel: 31 };
 
+  test('low prayer levels: a partial or mixed melee pair, Sharp Eye, Mystic Will and Mystic Lore', () => {
+    const at = (prayerLevel: number) => ({ ...DEFAULT_UNLOCKS, prayerLevel });
+    expect(bestPrayers('slash', at(5), 1)).toEqual([Prayer.BURST_OF_STRENGTH]);
+    expect(bestPrayers('slash', at(15), 1)).toEqual([Prayer.SUPERHUMAN_STRENGTH, Prayer.CLARITY_OF_THOUGHT]);
+    expect(bestPrayers('ranged', at(8), 1)).toEqual([Prayer.SHARP_EYE]);
+    expect(bestPrayers('magic', at(9), 1)).toEqual([Prayer.MYSTIC_WILL]);
+    expect(bestPrayers('magic', at(27), 1)).toEqual([Prayer.MYSTIC_LORE]);
+  });
+
   test('a level 31 pure gets Ultimate Strength + Improved Reflexes on Auto', () => {
     expect(bestPrayers('slash', pure, 1)).toEqual([Prayer.ULTIMATE_STRENGTH, Prayer.IMPROVED_REFLEXES]);
     expect(stylePrayers('slash', pure, 1)).toEqual([Prayer.ULTIMATE_STRENGTH, Prayer.IMPROVED_REFLEXES]);

@@ -68,6 +68,13 @@ describe('handleBestChunk', () => {
     });
   });
 
+  test('an effect id outside the worker\'s pool throws instead of being dropped', () => {
+    const salve = pool.find((e) => e.name === 'Salve amulet(ei)')!.id;
+    expect(() => handleBestChunk({
+      kind: 'search', base, monster: vorkath, jobs: [scytheJob], mode: 'descent', topN: 1, cap: 1000, effects: { neck: [salve] }, excluded: [salve],
+    })).toThrow(`Unknown item id ${salve}`);
+  });
+
   test('effects with no damaging job are empty', () => {
     // melee can't hurt Zulrah
     const zulrah = prepareMonster(getTestMonster('Zulrah', 'Serpentine'));
