@@ -15,6 +15,8 @@ import skullIcon from '@/public/img/misc/skull.webp';
 import forinthrySurgeIcon from '@/public/img/misc/forinthry_surge.webp';
 import diaryIcon from '@/public/img/misc/diary.png';
 import soulreaperIcon from '@/public/img/misc/soulreaper_axe.png';
+import chargeIcon from '@/public/img/misc/charge.png';
+import markOfDarknessIcon from '@/public/img/misc/mark_of_darkness.png';
 import { PotionMap } from '@/utils';
 import { PlayerSkills } from '@/types/Player';
 import { BestStyle, CombatConditions } from '@/best/types';
@@ -40,15 +42,15 @@ const SKILLS: [keyof PlayerSkills, string, number, StaticImageData][] = [
   ['herblore', 'Herblore', 1, herbloreIcon],
 ];
 
-// the calculator's icons where it has one; it has none for Charge and Mark of Darkness
+// the calculator's icons, and the wiki's spell icons for Charge and Mark of Darkness
 // shown in two columns of three, the first ending with Soulreaper stacks and the second with Current HP
-const CONDITIONS: [keyof Omit<CombatConditions, 'soulreaperStacks' | 'currentHp'>, string, StaticImageData?][] = [
+const CONDITIONS: [keyof Omit<CombatConditions, 'soulreaperStacks' | 'currentHp'>, string, StaticImageData][] = [
   ['onSlayerTask', 'On slayer task', slayerIcon],
   ['inWilderness', 'In the Wilderness', skullIcon],
   ['kandarinDiary', 'Kandarin hard diary', diaryIcon],
   ['forinthrySurge', 'Forinthry Surge', forinthrySurgeIcon],
-  ['chargeSpell', 'Charge'],
-  ['markOfDarknessSpell', 'Mark of Darkness'],
+  ['chargeSpell', 'Charge', chargeIcon],
+  ['markOfDarknessSpell', 'Mark of Darkness', markOfDarknessIcon],
 ];
 
 // prayers and potions are picked per combat type, in matching rows
