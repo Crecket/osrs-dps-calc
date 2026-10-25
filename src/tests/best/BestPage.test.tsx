@@ -362,10 +362,9 @@ describe('BestPage', () => {
     await unmount();
   });
 
-  test('before the first run, explains what the button does', async () => {
+  test('before the first run, points at the button', async () => {
     const { container, unmount } = await mount();
-    expect(container.textContent).toContain('Ready when you are');
-    expect(container.textContent).toContain('nothing runs until you click it');
+    expect(container.textContent).toContain('Click Find best setup to search.');
     await unmount();
   });
 

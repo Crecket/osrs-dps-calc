@@ -3,7 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { toJS } from 'mobx';
 import { toast } from 'react-toastify';
 import {
-  IconAlertTriangle, IconClick, IconInfoCircle, IconPlayerStop, IconSearch, IconTrophy,
+  IconAlertTriangle, IconClick, IconInfoCircle, IconPlayerStop, IconSearch,
 } from '@tabler/icons-react';
 import { BestStore } from '@/best/state/BestStore';
 import { BestPhase, runBestSetup, StyleOutcome } from '@/best/lib/run';
@@ -79,19 +79,9 @@ const StatusLine: React.FC<React.PropsWithChildren<{ tone: 'info' | 'warn' | 'er
 
 /** What the page does before the first search. */
 const Intro: React.FC<{ hasMonster: boolean }> = ({ hasMonster }) => (
-  <div className="px-4 py-8 flex flex-col items-center text-center gap-3">
-    <IconTrophy size={32} className="text-orange-400 dark:text-orange-300" aria-hidden />
-    <h3 className="font-serif font-bold text-lg">{hasMonster ? 'Ready when you are' : 'Pick a monster to search against'}</h3>
-    <p className="max-w-prose text-sm text-gray-600 dark:text-gray-300">
-      {hasMonster
-        ? 'Find best setup tries every weapon against this monster with your levels, prayers and potions, then every gear combination for the strongest ones. It takes about 15 to 20 seconds, and nothing runs until you click it.'
-        : 'Choose a monster in the monster panel, set your levels, prayers and potions, then click Find best setup.'}
-    </p>
-    <ul className="text-xs text-gray-500 dark:text-gray-300 flex flex-col gap-1">
-      <li>Each style shows its best setup for each of its top weapons.</li>
-      <li>Right-click an item in a result to leave it out of the next search.</li>
-    </ul>
-  </div>
+  <p className="px-4 py-8 text-center text-sm text-gray-600 dark:text-gray-300">
+    {hasMonster ? 'Click Find best setup to search.' : 'Pick a monster to search against.'}
+  </p>
 );
 
 const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ store, pools }) => {
