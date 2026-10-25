@@ -169,6 +169,32 @@ describe('BestPage', () => {
     await unmount();
   });
 
+  test('going back to inputs searched before shows their results again without a new search', async () => {
+    mockRun.mockResolvedValueOnce([outcome('First', 7.5)]).mockResolvedValueOnce([outcome('Second', 8)]);
+    const { container, unmount } = await mount();
+    await act(async () => find(container).click());
+    await wait(10);
+    const attack = container.querySelector<HTMLInputElement>('input[type=number]')!;
+    const before = attack.value;
+    await setNumber(attack, '80');
+    await act(async () => find(container).click());
+    await wait(10);
+    expect(container.textContent).toContain('8.000');
+
+    await setNumber(attack, before);
+    await wait(10);
+    expect(container.textContent).toContain('7.500');
+    expect(container.textContent).not.toContain('Inputs changed since this search');
+    await setNumber(attack, '80');
+    await wait(10);
+    expect(container.textContent).toContain('8.000');
+    // the button on cached inputs doesn't search again either
+    await act(async () => find(container).click());
+    await wait(10);
+    expect(mockRun).toHaveBeenCalledTimes(2);
+    await unmount();
+  });
+
   test('adds a result to the bulk preset', async () => {
     mockRun.mockResolvedValue([outcome('Whip')]);
     const { container, unmount } = await mount();

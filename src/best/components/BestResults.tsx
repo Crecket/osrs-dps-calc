@@ -1,4 +1,6 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, {
+  useCallback, useEffect, useRef, useState,
+} from 'react';
 import { observer } from 'mobx-react-lite';
 import { toJS } from 'mobx';
 import { toast } from 'react-toastify';
@@ -8,6 +10,7 @@ import {
 import { BestStore } from '@/best/state/BestStore';
 import { BestPhase, runBestSetup, StyleOutcome } from '@/best/lib/run';
 import { BestPayload, BestResult } from '@/best/worker/protocol';
+import { ResultCache } from '@/best/lib/resultCache';
 import { TaskPool } from '@/bulk/worker/TaskPool';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import { defaultSort, SortState } from '@/bulk/lib/table';
@@ -94,11 +97,24 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortState>(defaultSort('normal'));
   const runToken = useRef(0);
+  // finished searches of this visit, so going back to inputs searched before shows their results without a new search
+  const [cache] = useState(() => new ResultCache<StyleOutcome[]>());
+
+  const showCached = useCallback((runKey: string) => {
+    const cached = cache.get(runKey);
+    if (!cached) return false;
+    setOutcomes(cached);
+    setResultKey(runKey);
+    setError(null);
+    setStopped(false);
+    return true;
+  }, [cache]);
 
   // the only way a search starts: the Find best setup button
   const run = useCallback(async () => {
     const { monster, runKey } = store;
     if (!store.loaded || runKey === null || !monster) return;
+    if (showCached(runKey)) return;
     runToken.current += 1;
     const token = runToken.current;
     setStopped(false);
@@ -110,6 +126,7 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
       const result = await runBestSetup(toJS(store.inputs), toJS(monster), pools, (done, total, phase) => {
         if (token === runToken.current) setProgress({ done, total, phase });
       });
+      cache.set(runKey, result);
       if (token === runToken.current) {
         setOutcomes(result);
         setResultKey(runKey);
@@ -119,7 +136,13 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
     } finally {
       if (token === runToken.current) setRunning(false);
     }
-  }, [store, pools]);
+  }, [store, pools, cache, showCached]);
+
+  // inputs changed back to ones searched before: show those results again (no search runs)
+  const { runKey } = store;
+  useEffect(() => {
+    if (runKey !== null && !running) showCached(runKey);
+  }, [runKey, running, showCached]);
 
   const stop = () => {
     // the stopped run's result, should it still arrive, is ignored
