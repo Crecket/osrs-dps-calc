@@ -335,12 +335,14 @@ describe('BestPage', () => {
     await unmount();
   });
 
-  test('right-clicking a weapon that stands for cosmetic variants excludes the variants too', async () => {
+  test('right-clicking a weapon that stands for cosmetic variants excludes those copies too', async () => {
     const [scythe, holy, sanguine] = ['Scythe of Vitur', 'Holy Scythe of Vitur', 'Sanguine Scythe of Vitur']
       .map((name) => availableEquipment.find((e) => e.name === name && e.version === 'Charged')!);
     const withWeapon = outcome('Scythe of Vitur (Chop) — or Holy Scythe of Vitur, Sanguine Scythe of Vitur');
     withWeapon.setups[0].player.equipment.weapon = scythe;
-    withWeapon.variants = { [scythe.id]: [holy.id, sanguine.id] };
+    // a weapon that only calculates the same isn't a copy, so it stays
+    const rapier = availableEquipment.find((e) => e.name === 'Ghrazi rapier')!;
+    withWeapon.variants = { [scythe.id]: [holy.id, sanguine.id, rapier.id] };
     mockRun.mockResolvedValue([withWeapon]);
     const { container, unmount } = await mount();
     await act(async () => find(container).click());

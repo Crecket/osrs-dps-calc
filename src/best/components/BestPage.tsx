@@ -63,6 +63,13 @@ interface Pools {
   rows: BulkPool;
 }
 
+/**
+ * The variants a weapon's row stands for that are copies of it (Holy Scythe of Vitur, Armadyl godsword (or)): their
+ * names contain its name. Other weapons that only calculate the same here (the other godswords) are items of their own.
+ */
+const cosmeticVariants = (weapon: EquipmentPiece, variants: number[]) => variants.filter((id) => availableEquipment
+  .find((e) => e.id === id)?.name.toLowerCase().includes(weapon.name.toLowerCase()));
+
 const StyleResults: React.FC<{
   outcome: StyleOutcome;
   sort: SortState;
@@ -100,8 +107,7 @@ const StyleResults: React.FC<{
             sort={sort}
             onSort={onSort}
             hasRun
-            // a weapon stands for its cosmetic variants too, which the setup name lists
-            onItemContextMenu={(slot, item) => onExclude(item, slot === 'weapon' ? outcome.variants[item.id] ?? [] : [])}
+            onItemContextMenu={(slot, item) => onExclude(item, slot === 'weapon' ? cosmeticVariants(item, outcome.variants[item.id] ?? []) : [])}
             rowAction={(id) => {
               const setup = setupsById.get(id);
               return setup && (
