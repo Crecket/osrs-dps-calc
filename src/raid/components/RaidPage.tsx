@@ -59,7 +59,8 @@ const RaidPage: React.FC = observer(() => {
   useEffect(() => {
     store.load().catch(console.error);
     cache.load().then(() => setCacheLoaded(true)).catch(console.error);
-    fetchPrices().then((p) => {
+    // the saved snapshot, however old: new prices would move items between price tiers and redo cached searches
+    fetchPrices(undefined, Date.now(), Infinity).then((p) => {
       setPrices(p);
       setPricesState(p ? 'ok' : 'missing');
     }).catch(() => setPricesState('missing'));
@@ -105,6 +106,14 @@ const RaidPage: React.FC = observer(() => {
     // not after a failure or a stop, so it doesn't retry by itself
     if (ready && !running && !error && !stopped && needed === 0 && !blockReason && (store.stale || !store.result)) run();
   }, [ready, running, error, stopped, needed, blockReason, runKey, store, run]);
+
+  const refreshPrices = () => {
+    setPricesState('loading');
+    fetchPrices(undefined, Date.now(), 0).then((p) => {
+      setPrices(p);
+      setPricesState(p ? 'ok' : 'missing');
+    }).catch(() => setPricesState('missing'));
+  };
 
   const stop = () => {
     runToken.current += 1;
@@ -154,6 +163,17 @@ const RaidPage: React.FC = observer(() => {
                 </button>
               ) : (
                 <>
+                  {prices?.at !== undefined && (
+                    <button
+                      type="button"
+                      className={`text-xs underline text-gray-500 dark:text-gray-300 hover:text-orange-400 rounded ${focusRing}`}
+                      data-tooltip-id="tooltip"
+                      data-tooltip-content="New prices can change which searches the next run needs"
+                      onClick={refreshPrices}
+                    >
+                      {`Prices from ${new Date(prices.at).toLocaleString()} · refresh`}
+                    </button>
+                  )}
                   {!blockReason && needed > 0 && (
                     <span className="text-xs text-gray-500 dark:text-gray-300">{`${needed} search${needed === 1 ? '' : 'es'} to run`}</span>
                   )}

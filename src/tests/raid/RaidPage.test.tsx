@@ -112,10 +112,26 @@ describe('RaidPage', () => {
     const { container, unmount } = await mount();
     await act(async () => button(container, 'Find raid gear')!.click());
     await wait(20);
-    await change(container.querySelector<HTMLInputElement>('#raid-budget')!, '4b');
+    const budget = container.querySelector<HTMLInputElement>('#raid-budget')!;
+    await change(budget, '4b');
+    await act(async () => budget.dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
     await wait(20);
     expect(container.textContent).toContain('Inputs changed');
     expect(mockRunRaid).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  test('the budget field keeps what is typed and saves on blur', async () => {
+    const { container, unmount } = await mount();
+    const field = container.querySelector<HTMLInputElement>('#raid-budget')!;
+    await change(field, '1.5');
+    expect(field.value).toBe('1.5');
+    await change(field, '1.5b');
+    expect(field.value).toBe('1.5b');
+    await act(async () => field.dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
+    await wait(20);
+    expect((mockData.get('dps-raid-state') as { settings: RaidSettings }).settings.budget).toBe(1_500_000_000);
+    expect(field.value).toBe('1.5b');
     await unmount();
   });
 

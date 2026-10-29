@@ -68,6 +68,19 @@ describe('fetchPrices', () => {
     expect(cached?.byId.get(1)).toBe(10);
   });
 
+  test('a snapshot is kept however old when asked to', async () => {
+    localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify({ at: 0, mapping, latest }));
+    const otherFetch = (async (url: string) => ({
+      ok: true,
+      json: async () => (String(url).endsWith('/mapping') ? mapping : { data: { 1: { high: 99, low: 1 } } }),
+    })) as unknown as typeof fetch;
+    const kept = await fetchPrices(otherFetch, 10 * 60 * 60 * 1000, Infinity);
+    expect(kept?.byId.get(1)).toBe(10);
+    expect(kept?.at).toBe(0);
+    const fresh = await fetchPrices(otherFetch, 10 * 60 * 60 * 1000, 0);
+    expect(fresh?.byId.get(1)).toBe(99);
+  });
+
   test('fetch failure gives null and keeps cached prices', async () => {
     expect(await fetchPrices(failingFetch, 1000)).toBeNull();
     localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify({ at: 0, mapping, latest }));

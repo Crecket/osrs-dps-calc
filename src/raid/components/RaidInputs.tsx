@@ -22,12 +22,17 @@ const MAGIC: [MagicOption, string][] = [
 
 const SUPPLIES: [keyof Supplies, string][] = [['brews', 'Brews'], ['restores', 'Restores'], ['reserved', 'Other reserved']];
 
-/** A GP field that takes "100m" or "4.5b" and reports only valid amounts */
+/** A GP field that takes "100m" or "4.5b"; it saves on blur or Enter, so a half-typed amount never counts */
 const BudgetField: React.FC = observer(() => {
   const store = useRaidStore();
   const { budget } = store.settings;
   const [text, setText] = useState(formatGp(budget));
   useEffect(() => setText(formatGp(budget)), [budget]);
+  const commit = () => {
+    const gp = parseGp(text);
+    if (gp !== null) store.setBudget(gp);
+    setText(formatGp(gp ?? budget));
+  };
   return (
     <>
       <FieldLabel htmlFor="raid-budget" label="Budget" />
@@ -36,12 +41,11 @@ const BudgetField: React.FC = observer(() => {
         className={`${fieldClass} w-28`}
         value={text}
         placeholder="e.g. 100m or 4b"
-        onChange={(e) => {
-          setText(e.target.value);
-          const gp = parseGp(e.target.value);
-          if (gp !== null) store.setBudget(gp);
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
         }}
-        onBlur={() => setText(formatGp(budget))}
       />
     </>
   );

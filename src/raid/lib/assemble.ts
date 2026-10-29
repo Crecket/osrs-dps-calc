@@ -162,8 +162,10 @@ export const assembleLoadout = (input: AssembleInput): RaidPlan => {
     };
   };
   type Result = ReturnType<typeof finish>;
-  const better = (a: Result, b: Result | null) => !b || a.total < b.total - MIN_GAIN
-    || (Math.abs(a.total - b.total) <= MIN_GAIN && a.cost < b.cost);
+  // a forced start can begin above the budget; such plans never win
+  const cap = Math.max(budget, requiredCost);
+  const better = (a: Result, b: Result | null) => a.cost <= cap && (!b || a.total < b.total - MIN_GAIN
+    || (Math.abs(a.total - b.total) <= MIN_GAIN && a.cost < b.cost));
 
   const runBoth = (start: Mask, banned: Mask | null) => {
     const a = finish(greedy(start, banned, true));

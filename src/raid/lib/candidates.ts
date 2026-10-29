@@ -39,17 +39,21 @@ export const RAID_TOP_K = 3;
 
 /**
  * Exclusion lists for the price tiers (the budget, a quarter of it, owned and free items only): the pool's items that
- * cost more than the tier, plus `excluded`. Sorted, duplicates removed.
+ * cost more than the tier, except required ones, plus `excluded`. Sorted, duplicates removed.
  */
 export const tierExclusions = (
   budget: number,
   priceOf: (id: number) => number,
   excluded: number[],
   pool: EquipmentPiece[],
+  requiredIds: number[] = [],
 ): number[][] => {
   const seen = new Set<string>();
+  // required items are bought anyway, so every tier may use them
+  const required = new Set(requiredIds);
   return [budget, budget / 4, 0].flatMap((cap) => {
-    const ids = [...new Set([...excluded, ...pool.filter((e) => priceOf(e.id) > cap).map((e) => e.id)])].sort((a, b) => a - b);
+    const above = pool.filter((e) => !required.has(e.id) && priceOf(e.id) > cap).map((e) => e.id);
+    const ids = [...new Set([...excluded, ...above])].sort((a, b) => a - b);
     const key = ids.join(',');
     if (seen.has(key)) return [];
     seen.add(key);

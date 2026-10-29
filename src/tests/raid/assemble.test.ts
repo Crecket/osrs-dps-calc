@@ -133,6 +133,19 @@ describe('assembleLoadout', () => {
     expect(plan.main?.itemIds).toEqual([2]);
   });
 
+  test('a forced key item never pushes the plan over budget', () => {
+    const prices: Record<number, number> = { 7: 50, 1: 80 };
+    const plan = assembleLoadout(input({
+      phases: phases(1),
+      priceOf: (id) => prices[id] ?? 0,
+      budget: 100,
+      requiredIds: [7],
+      candidates: [cand('p0', [9], 5), cand('p0', [1], 10)],
+    }));
+    expect(plan.cost).toBeLessThanOrEqual(100);
+    expect(plan.itemIds).not.toContain(1);
+  });
+
   test('stays fast', () => {
     let seed = 1;
     const rand = () => {

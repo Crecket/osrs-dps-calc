@@ -28,6 +28,7 @@ import {
 export const BOOK_OF_THE_DEAD = 25818;
 // worn slots besides ammo, which a second ammo shares through the quiver
 const WORN_SLOTS = 11;
+const MAX_REPLANS = 5;
 
 export interface RaidSettings {
   raidId: string;
@@ -148,7 +149,7 @@ const prepare = (settings: RaidSettings, prices: Prices | null) => {
   const owned = new Set(settings.ownedIds.map(getCanonicalItemId));
   const priceOf = (id: number) => itemPrice(id, prices, owned);
   const excluded = settings.excludedIds.map(getCanonicalItemId);
-  const tiers = tierExclusions(settings.budget, priceOf, excluded, pool);
+  const tiers = tierExclusions(settings.budget, priceOf, excluded, pool, requiredItems(settings));
   return {
     phases, priceOf, tiers, base: raidBaseInputs(settings),
   };
@@ -174,19 +175,30 @@ export const runRaid = async (
   } = prepare(settings, prices);
   const candidates = await raidCandidates(phases, base, tiers, deps, onProgress, cache, search);
   const extraDps = settings.magic === 'thralls' ? THRALL_DPS : 0;
-  const plan = assembleLoadout({
+  const assemble = (maxItems: number) => assembleLoadout({
     phases: phases.map((p) => ({ key: p.phase.key, hp: p.monster.monster.skills.hp })),
     candidates,
     priceOf,
     budget: settings.budget,
     requiredIds: requiredItems(settings),
-    maxItems: WORN_SLOTS + freeSwitchSlots(settings.supplies, settings.magic),
+    maxItems,
     extraDps,
   });
+  const lay = (plan: RaidPlan) => layoutLoadout(plan.itemIds, plan.main?.setup ?? null, settings.supplies, settings.magic);
+  // the item limit assumes all worn slots are filled; when the main setup wears fewer, switches overflow, so plan again
+  // with fewer items
+  let maxItems = WORN_SLOTS + freeSwitchSlots(settings.supplies, settings.magic);
+  let plan = assemble(maxItems);
+  let layout = lay(plan);
+  for (let i = 0; i < MAX_REPLANS && layout.overflow > 0 && maxItems > 0; i++) {
+    maxItems = Math.max(0, Math.min(maxItems, plan.itemIds.length) - layout.overflow);
+    plan = assemble(maxItems);
+    layout = lay(plan);
+  }
   const hpByKey = new Map(phases.map((p) => [p.phase.key, p.monster.monster.skills.hp]));
   return {
     plan,
-    layout: layoutLoadout(plan.itemIds, plan.main?.setup ?? null, settings.supplies, settings.magic),
+    layout,
     phases: phases.map((p) => ({
       key: p.phase.key,
       label: p.phase.label,

@@ -76,6 +76,41 @@ describe('runRaid', () => {
     expect(first[0].seconds).toBeCloseTo(result.phases[0].hp / 10.625);
   });
 
+  test('re-plans with fewer items when switches overflow the inventory', async () => {
+    const whip = availableEquipment.find((e) => e.id === 4151)!;
+    const lash = getCombatStylesForCategory(whip.category)[0];
+    // the Guardian's phases use the Twisted bow setup, every other phase a whip setup: 6 items, 3 worn
+    mockSearch.mockImplementation(async (...args: unknown[]) => {
+      const { monster } = args[1] as { monster: { id: number } };
+      const inputs = raidBaseInputs(defaultSettings());
+      const ranged = monster.id === 16659;
+      const player = ranged
+        ? buildPlayer(basePlayer(inputs, 'ranged'), {
+          style: 'ranged', weaponId: 20997, combatStyle: rapid, ammoId: 11212, spellName: null, dartId: null,
+        }, { head: 27235 })
+        : buildPlayer(basePlayer(inputs, 'slash'), {
+          style: 'slash', weaponId: 4151, combatStyle: lash, ammoId: null, spellName: null, dartId: null,
+        }, { head: 10828, hands: 7462 });
+      return [{
+        style: ranged ? 'ranged' : 'slash',
+        setups: [{ id: 's', name: 's', player }],
+        rows: [{ setupId: 's', dps: 10 } as BulkRow],
+        approximate: false,
+        message: null,
+        variants: {},
+      }];
+    });
+    const cache = new SearchCache(memoryStorage());
+    // no room for switches: 20 brews + 6 restores + 1 reserved + rune pouch
+    const settings = {
+      ...defaultSettings(), magic: 'standard' as const, counts: {}, supplies: { brews: 20, restores: 6, reserved: 1 },
+    };
+    const zeroSpecs = Object.fromEntries(['guardian:0', 'guardian:1', 'bork:0', 'dreadnoth:0', 'xarth:0', 'ocellus:0', 'ocellus:1', 'ocellus:2']
+      .map((k) => [k, { elderMaul: 0, dwh: 0, tonalztic: 0 }]));
+    const result = await runRaid({ ...settings, counts: zeroSpecs }, null, deps, () => {}, cache, search);
+    expect(result.layout.overflow).toBe(0);
+  });
+
   test('a cheap change re-plans from the cache without searching', async () => {
     const cache = new SearchCache(memoryStorage());
     const settings = defaultSettings();

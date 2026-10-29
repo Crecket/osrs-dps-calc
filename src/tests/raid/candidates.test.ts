@@ -84,6 +84,10 @@ describe('tierExclusions', () => {
     expect(tierExclusions(400, (id) => prices[id], [1], [a, b, c])).toEqual([[1, 3], [1, 2, 3]]);
   });
 
+  test('required items are never excluded', () => {
+    expect(tierExclusions(400, (id) => prices[id], [], [a, b, c], [3])).toEqual([[], [2]]);
+  });
+
   test('owned items never excluded', () => {
     expect(tierExclusions(400, (id) => (id === 3 ? 0 : prices[id]), [], [a, b, c])).toEqual([[], [2]]);
   });

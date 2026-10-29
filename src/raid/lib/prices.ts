@@ -8,6 +8,8 @@ const MAX_AGE = 60 * 60 * 1000;
 export type PriceTable = Map<number, number>;
 
 export interface Prices {
+  /** When the prices were fetched (ms since epoch) */
+  at?: number;
   byId: PriceTable;
   /** Lower-cased item name -> price */
   byName: Map<string, number>;
@@ -40,10 +42,15 @@ const readCache = (): { at: number; mapping: Mapping; latest: Latest } | null =>
   }
 };
 
-/** Wiki prices, from a cache younger than an hour or fetched; a failed fetch falls back to an older cache, else null */
-export const fetchPrices = async (fetchFn: typeof fetch = fetch, now = Date.now()): Promise<Prices | null> => {
+const withAt = (p: Prices, at: number): Prices => ({ ...p, at });
+
+/**
+ * Wiki prices, from a cache younger than `maxAge` or fetched; a failed fetch falls back to an older cache, else null.
+ * The page keeps its snapshot (maxAge Infinity) so searches keyed on price tiers stay cached until prices are refreshed.
+ */
+export const fetchPrices = async (fetchFn: typeof fetch = fetch, now = Date.now(), maxAge = MAX_AGE): Promise<Prices | null> => {
   const cached = readCache();
-  if (cached && now - cached.at < MAX_AGE) return parsePrices(cached.mapping, cached.latest);
+  if (cached && now - cached.at < maxAge) return withAt(parsePrices(cached.mapping, cached.latest), cached.at);
   try {
     const get = async (path: string) => {
       const res = await fetchFn(`${API}/${path}`);
@@ -56,10 +63,10 @@ export const fetchPrices = async (fetchFn: typeof fetch = fetch, now = Date.now(
     } catch {
       // storage full or blocked: the prices still work for this page load
     }
-    return parsePrices(mapping, latest);
+    return withAt(parsePrices(mapping, latest), now);
   } catch (e) {
     console.warn('[raid] Could not fetch prices', e);
-    return cached ? parsePrices(cached.mapping, cached.latest) : null;
+    return cached ? withAt(parsePrices(cached.mapping, cached.latest), cached.at) : null;
   }
 };
 
