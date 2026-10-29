@@ -30,9 +30,14 @@ const fracturedArchive: RaidDef = {
         {
           id: 'bork',
           name: 'Bork',
-          phases: [{
-            key: 'bork:0', label: 'Bork', monsterId: 16640, version: '', defaults: specs(2, 0),
-          }],
+          phases: [
+            {
+              key: 'bork:0', label: 'Bork', monsterId: 16640, version: '', defaults: specs(2, 0),
+            },
+            {
+              key: 'bork:1', label: 'The Smorks', monsterId: 16641, version: '', defaults: specs(2, 4),
+            },
+          ],
         },
         {
           id: 'ezekiel',

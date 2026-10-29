@@ -25,7 +25,8 @@ describe('raid definitions', () => {
 
   test('defence reductions applied', () => {
     const phases = routePhases(fa, fa.defaultRoute, { 'bork:0': { elderMaul: 1 } }, []);
-    expect(phases).toHaveLength(8);
+    expect(phases).toHaveLength(9);
+    expect(phases.find((p) => p.phase.key === 'bork:1')?.monster.monster.name).toBe('The Smorks');
     const bork = phases.find((p) => p.phase.key === 'bork:0')!;
     expect(bork.monster.monster.inputs.defenceReductions.elderMaul).toBe(1);
     const flying = phases.find((p) => p.phase.key === 'guardian:0')!;
@@ -47,6 +48,8 @@ describe('raid definitions', () => {
       'guardian:0': 156,
       'guardian:1': 156,
       'bork:0': 180,
+      'bork:1': 1,
+      'bork:1': 1,
       // the list says 120; the engine's data floors Ezekiel at 78 (60% of 130)
       'ezekiel:0': 78,
       'moia:0': 117,

@@ -105,7 +105,7 @@ describe('runRaid', () => {
     const settings = {
       ...defaultSettings(), magic: 'standard' as const, counts: {}, supplies: { brews: 20, restores: 6, reserved: 1 },
     };
-    const zeroSpecs = Object.fromEntries(['guardian:0', 'guardian:1', 'bork:0', 'dreadnoth:0', 'xarth:0', 'ocellus:0', 'ocellus:1', 'ocellus:2']
+    const zeroSpecs = Object.fromEntries(['guardian:0', 'guardian:1', 'bork:0', 'bork:1', 'dreadnoth:0', 'xarth:0', 'ocellus:0', 'ocellus:1', 'ocellus:2']
       .map((k) => [k, { elderMaul: 0, dwh: 0, tonalztic: 0 }]));
     const result = await runRaid({ ...settings, counts: zeroSpecs }, null, deps, () => {}, cache, search);
     expect(result.layout.overflow).toBe(0);
