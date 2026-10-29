@@ -33,6 +33,8 @@ export interface AssembleInput {
 /** One per phase, or per part of a phase with parts (sharing the phase's key) */
 export interface PhasePick {
   key: string;
+  /** The HP this pick has to deal: the phase's, or its part's share */
+  hp: number;
   candidate: Candidate | null;
   seconds: number;
 }
@@ -60,6 +62,31 @@ interface Indexed {
 const fits = (inner: Mask, outer: Mask) => inner.every((w, i) => (w & ~outer[i]) === 0);
 const union = (a: Mask, b: Mask) => a.map((w, i) => w | b[i]);
 const has = (m: Mask, bit: number) => (m[bit >>> 5] & (1 << (bit & 31))) !== 0;
+
+/** The picks' items in order of first use, then the required ones */
+export const orderedItems = (picks: PhasePick[], requiredIds: number[]): number[] => {
+  const ordered: number[] = [];
+  picks.forEach((p) => p.candidate?.itemIds.forEach((id) => {
+    if (!ordered.includes(id)) ordered.push(id);
+  }));
+  requiredIds.forEach((id) => {
+    if (!ordered.includes(id)) ordered.push(id);
+  });
+  return ordered;
+};
+
+/** The setup (by its items) used for the most seconds, worn between fights */
+export const mainSetup = (picks: PhasePick[]): Candidate | null => {
+  const timeBySetup = new Map<string, { candidate: Candidate; seconds: number }>();
+  picks.forEach((p) => {
+    if (!p.candidate) return;
+    const key = [...p.candidate.itemIds].sort((a, b) => a - b).join(',');
+    const entry = timeBySetup.get(key) ?? { candidate: p.candidate, seconds: 0 };
+    entry.seconds += p.seconds;
+    timeBySetup.set(key, entry);
+  });
+  return [...timeBySetup.values()].sort((a, b) => b.seconds - a.seconds)[0]?.candidate ?? null;
+};
 
 export const assembleLoadout = (input: AssembleInput): RaidPlan => {
   const {
@@ -214,32 +241,15 @@ export const assembleLoadout = (input: AssembleInput): RaidPlan => {
     if (!improved) break;
   }
 
-  // items in order of first use, then the required ones
-  const ordered: number[] = [];
-  best.picks.forEach((p) => p?.candidate.itemIds.forEach((id) => {
-    if (!ordered.includes(id)) ordered.push(id);
+  const picks = phases.map((p, i) => ({
+    key: p.key, hp: p.hp, candidate: best.picks[i]?.candidate ?? null, seconds: best.seconds[i],
   }));
-  input.requiredIds.forEach((id) => {
-    if (!ordered.includes(id)) ordered.push(id);
-  });
-
-  // main: the setup (by its items) used for the most seconds
-  const timeBySetup = new Map<string, { candidate: Candidate; seconds: number }>();
-  best.picks.forEach((p, i) => {
-    if (!p) return;
-    const key = [...p.candidate.itemIds].sort((a, b) => a - b).join(',');
-    const entry = timeBySetup.get(key) ?? { candidate: p.candidate, seconds: 0 };
-    entry.seconds += best.seconds[i];
-    timeBySetup.set(key, entry);
-  });
-  const main = [...timeBySetup.values()].sort((a, b) => b.seconds - a.seconds)[0]?.candidate ?? null;
-
   return {
-    itemIds: ordered,
+    itemIds: orderedItems(picks, input.requiredIds),
     cost: best.cost,
     totalSeconds: best.total,
-    picks: phases.map((p, i) => ({ key: p.key, candidate: best.picks[i]?.candidate ?? null, seconds: best.seconds[i] })),
+    picks,
     overBudget: requiredCost > budget,
-    main,
+    main: mainSetup(picks),
   };
 };

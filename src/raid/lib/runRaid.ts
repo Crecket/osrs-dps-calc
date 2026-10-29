@@ -5,10 +5,11 @@
 import { getCanonicalItemId } from '@/lib/Equipment';
 import { BestRunDeps, runBestSetup } from '@/best/lib/run';
 import { bestPool } from '@/best/lib/candidates';
+import { basePlayer } from '@/best/lib/basePlayer';
 import {
   BestInputs, BEST_STYLES, BestStyle, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS,
 } from '@/best/types';
-import { EquipmentPiece } from '@/types/Player';
+import { EquipmentPiece, Player } from '@/types/Player';
 import { Spellbook } from '@/types/Spell';
 import {
   DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS, DefenceCounts, MagicOption, PhasePart, Route,
@@ -22,6 +23,7 @@ import {
 import { SearchCache } from '@/raid/lib/searchCache';
 import { SpecRank, specRanking } from '@/raid/lib/specs';
 import { assembleLoadout, RaidPlan, THRALL_DPS } from '@/raid/lib/assemble';
+import { dpsRater, upgradeLoadout } from '@/raid/lib/upgrade';
 import {
   freeSwitchSlots, Layout, layoutLoadout, Supplies,
 } from '@/raid/lib/layout';
@@ -162,7 +164,7 @@ const prepare = (settings: RaidSettings, prices: Prices | null) => {
   const excluded = settings.excludedIds.map(getCanonicalItemId);
   const tiers = tierExclusions(settings.budget, priceOf, excluded, pool, requiredItems(settings));
   return {
-    phases, priceOf, tiers, base: raidBaseInputs(settings),
+    phases, priceOf, tiers, base: raidBaseInputs(settings), pool,
   };
 };
 
@@ -182,31 +184,55 @@ export const runRaid = async (
   search: typeof runBestSetup = runBestSetup,
 ): Promise<RaidResult> => {
   const {
-    phases, priceOf, tiers, base,
+    phases, priceOf, tiers, base, pool: items,
   } = prepare(settings, prices);
   const candidates = await raidCandidates(phases, base, tiers, deps, onProgress, cache, search);
   const extraDps = settings.magic === 'thralls' ? THRALL_DPS : 0;
-  const assemble = (maxItems: number) => assembleLoadout({
-    phases: phases.map((p) => ({ key: p.phase.key, hp: p.monster.monster.skills.hp, parts: p.phase.parts })),
+  const requiredIds = requiredItems(settings);
+  const excluded = new Set(settings.excludedIds.map(getCanonicalItemId));
+  const players = new Map<BestStyle, Player>();
+  const playerFor = (style: BestStyle) => {
+    if (!players.has(style)) players.set(style, basePlayer(base, style));
+    return players.get(style)!;
+  };
+  const rate = dpsRater(deps, cache);
+  // whole setups first, then better items slot by slot with the budget and slots left
+  const assemble = async (maxItems: number) => upgradeLoadout({
+    plan: assembleLoadout({
+      phases: phases.map((p) => ({ key: p.phase.key, hp: p.monster.monster.skills.hp, parts: p.phase.parts })),
+      candidates,
+      priceOf,
+      budget: settings.budget,
+      requiredIds,
+      maxItems,
+      extraDps,
+    }),
+    monsters: new Map(phases.map((p) => [p.phase.key, p.monster])),
     candidates,
+    pool: items,
     priceOf,
     budget: settings.budget,
-    requiredIds: requiredItems(settings),
     maxItems,
+    requiredIds,
+    excluded,
     extraDps,
-  });
+    playerFor,
+  }, rate);
   const lay = (plan: RaidPlan) => layoutLoadout(plan.itemIds, plan.main?.setup ?? null, settings.supplies, settings.magic);
   // the item limit assumes all worn slots are filled; when the main setup wears fewer, switches overflow, so plan again
   // with fewer items
   let maxItems = WORN_SLOTS + freeSwitchSlots(settings.supplies, settings.magic);
-  let plan = assemble(maxItems);
+  let plan = await assemble(maxItems);
   let layout = lay(plan);
   for (let i = 0; i < MAX_REPLANS && layout.overflow > 0 && maxItems > 0; i++) {
     maxItems = Math.max(0, Math.min(maxItems, plan.itemIds.length) - layout.overflow);
-    plan = assemble(maxItems);
+    // eslint-disable-next-line no-await-in-loop
+    plan = await assemble(maxItems);
     layout = lay(plan);
   }
-  const specs = await specRanking(phases, candidates, settings.excludedIds.map(getCanonicalItemId), deps, cache);
+  // the upgraded setups count as candidates for the weapon cells and the spec ranking
+  const all = [...candidates, ...plan.picks.flatMap((p) => (p.candidate ? [p.candidate] : []))];
+  const specs = await specRanking(phases, all, [...excluded], deps, cache);
   const hpByKey = new Map(phases.map((p) => [p.phase.key, p.monster.monster.skills.hp]));
   return {
     plan,
@@ -220,7 +246,7 @@ export const runRaid = async (
       counts: p.counts,
       parts: p.phase.parts,
     })),
-    options: weaponOptions(candidates, plan.itemIds, hpByKey, extraDps),
+    options: weaponOptions(all, plan.itemIds, hpByKey, extraDps),
     specs,
   };
 };

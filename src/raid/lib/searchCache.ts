@@ -25,7 +25,8 @@ interface Saved {
   specs?: [string, number][];
 }
 
-const SPEC_LIMIT = 5000;
+// spec damage and the loadout upgrade's DPS lookups
+const SPEC_LIMIT = 30000;
 
 // a data update (new items or monsters) can change any result
 const currentVersion = () => `${CACHE_VERSION}:${availableEquipment.length}:${getMonsters().length}`;

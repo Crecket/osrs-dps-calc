@@ -51,7 +51,14 @@ const wait = (ms: number) => act(() => new Promise<void>((r) => { setTimeout(r, 
 
 const result = (settings: RaidSettings): RaidResult => ({
   plan: {
-    itemIds: [20997, 4151], cost: 1e9, totalSeconds: 600, picks: [{ key: 'bork:0', candidate: null, seconds: 600 }], overBudget: false, main: null,
+    itemIds: [20997, 4151],
+    cost: 1e9,
+    totalSeconds: 600,
+    picks: [{
+      key: 'bork:0', hp: 1500, candidate: null, seconds: 600,
+    }],
+    overBudget: false,
+    main: null,
   },
   layout: layoutLoadout([20997, 4151], null, settings.supplies, settings.magic),
   phases: [{
@@ -118,7 +125,14 @@ describe('RaidPage', () => {
       const r = result(settings);
       return {
         ...r,
-        plan: { ...r.plan, picks: [{ key: 'bork:0', candidate: null, seconds: 100 }, { key: 'bork:0', candidate: null, seconds: 200 }] },
+        plan: {
+          ...r.plan,
+          picks: [{
+            key: 'bork:0', hp: 750, candidate: null, seconds: 100,
+          }, {
+            key: 'bork:0', hp: 750, candidate: null, seconds: 200,
+          }],
+        },
         phases: [{ ...r.phases[0], parts: [{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }] }],
       };
     });
