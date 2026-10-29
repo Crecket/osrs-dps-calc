@@ -12,7 +12,7 @@ import { BulkRow } from '@/bulk/types';
 import { raidById } from '@/raid/raids';
 import { routePhases } from '@/raid/lib/route';
 import {
-  fromStored, missingSearches, raidCandidates, RaidProgress, tierExclusions, toStored,
+  fromStored, missingSearches, RAID_PARALLEL, raidCandidates, RaidProgress, tierExclusions, toStored,
 } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
 
@@ -120,6 +120,26 @@ describe('raidCandidates', () => {
     expect(mockRun).toHaveBeenCalledTimes(4);
     expect(result.map((c) => c.phaseKey).sort()).toEqual(['guardian:0', 'guardian:0', 'guardian:1', 'guardian:1']);
     expect(progress[progress.length - 1]).toMatchObject({ search: 4, searches: 4, cached: 0 });
+  });
+
+  test('runs several searches at once, concurrently on the pools, keeping phase order', async () => {
+    let active = 0;
+    let most = 0;
+    const optsSeen: unknown[] = [];
+    mockRun.mockImplementation(async (...args: unknown[]) => {
+      optsSeen.push(args[4]);
+      active += 1;
+      most = Math.max(most, active);
+      await new Promise((r) => { setTimeout(r, 5); });
+      active -= 1;
+      return outcome();
+    });
+    const four = routePhases(fa, fa.defaultRoute, {}, []).slice(0, 4);
+    const result = await raidCandidates(four, inputs, [[1], [1, 2]], deps, () => {}, new SearchCache(memoryStorage()), search);
+    expect(mockRun).toHaveBeenCalledTimes(8);
+    expect(most).toBe(RAID_PARALLEL);
+    expect(optsSeen.every((o) => (o as { concurrent?: boolean }).concurrent === true)).toBe(true);
+    expect(result.map((c) => c.phaseKey)).toEqual(four.flatMap((p) => [p.phase.key, p.phase.key]));
   });
 
   test('second run with the same exclusions hits the cache', async () => {

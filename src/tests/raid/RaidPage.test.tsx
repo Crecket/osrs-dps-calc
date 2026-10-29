@@ -161,7 +161,7 @@ describe('RaidPage', () => {
     const { container, unmount } = await mount();
     await act(async () => button(container, 'Find raid gear')!.click());
     await wait(20);
-    expect(container.textContent).toContain('Search 4 of 18 — Ocellus — Phase 2 (6 cached)');
+    expect(container.textContent).toContain('3 of 18 searches done (6 cached) · running Ocellus — Phase 2');
     const bars = container.querySelectorAll('[role=progressbar]');
     expect(bars).toHaveLength(2);
     expect(bars[1].getAttribute('aria-valuenow')).toBe('50');

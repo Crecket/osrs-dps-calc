@@ -196,9 +196,8 @@ const RaidPage: React.FC = observer(() => {
                     <>
                       <span>
                         {progress && progress.searches > 0
-                          ? `Search ${Math.min(progress.search + 1, progress.searches)} of ${progress.searches} — ${progress.phaseLabel}`
+                          ? `${progress.search} of ${progress.searches} searches done${progress.cached > 0 ? ` (${progress.cached} cached)` : ''}${progress.phaseLabel ? ` · running ${progress.phaseLabel}` : ''}`
                           : 'Planning'}
-                        {progress && progress.cached > 0 ? ` (${progress.cached} cached)` : ''}
                       </span>
                       <Bar label="Searches" value={overall} />
                       <span className="text-xs text-gray-500 dark:text-gray-300">{progress?.inner ? PHASE_LABELS[progress.inner.phase] : ' '}</span>

@@ -36,6 +36,8 @@ export interface RaidProgress {
 
 /** Weapons searched per style and phase */
 export const RAID_TOP_K = 3;
+/** Searches run at once */
+export const RAID_PARALLEL = 3;
 
 /**
  * Exclusion lists for the price tiers (the budget, a quarter of it, owned and free items only): the pool's items that
@@ -112,8 +114,9 @@ export const missingSearches = (phases: RoutePhase[], base: BestInputs, tiers: n
   .reduce((n, phase) => n + tiers.filter((tier) => !cache.has(searchKey(phase, searchInputs(base, tier)))).length, 0);
 
 /**
- * Every search's setups with DPS for each phase × tier, from the cache or by running the best setup search (one at a
- * time: a new runBestSetup call cancels the one before).
+ * Every search's setups with DPS for each phase × tier, from the cache or by running the best setup search.
+ * `RAID_PARALLEL` searches run at once on the shared pools, so workers one search leaves idle (its effect check, its
+ * last few combinations) pick up another's work. Candidates come back in phase × tier order.
  */
 export const raidCandidates = async (
   phases: RoutePhase[],
@@ -126,43 +129,53 @@ export const raidCandidates = async (
 ): Promise<Candidate[]> => {
   const searches = missingSearches(phases, base, tiers, cache);
   const cached = phases.length * tiers.length - searches;
-  let done = 0;
   const players = new Map<BestStyle, Player>();
   const playerFor = (style: BestStyle) => {
     if (!players.has(style)) players.set(style, basePlayer(base, style));
     return players.get(style)!;
   };
 
-  const out: Candidate[] = [];
-  for (const phase of phases) {
-    for (const tier of tiers) {
-      const inputs = searchInputs(base, tier);
-      const key = searchKey(phase, inputs);
-      let stored = cache.get(key);
-      if (!stored) {
-        const phaseLabel = `${phase.boss.name}${phase.boss.phases.length > 1 ? ` — ${phase.phase.label}` : ''}`;
-        onProgress({
-          search: done, searches, phaseLabel, inner: null, cached,
-        });
-        const finished = done;
-        // eslint-disable-next-line no-await-in-loop
-        const outcomes = await search(inputs, phase.monster, deps, (d, total, p) => onProgress({
-          search: finished, searches, phaseLabel, inner: { done: d, total, phase: p }, cached,
-        }), { topK: RAID_TOP_K });
-        stored = outcomes.flatMap((o) => o.setups.map((setup, i) => ({ setup, dps: o.rows[i]?.dps ?? 0, style: o.style })))
-          .filter((x) => x.dps > 0)
-          .map((x) => toStored(x.setup, x.style, x.dps));
-        cache.set(key, stored);
-        done += 1;
-        onProgress({
-          search: done, searches, phaseLabel, inner: null, cached,
-        });
-      }
-      stored.forEach((s) => {
-        const c = fromStored(s, phase.phase.key, playerFor(s.style));
-        if (c) out.push(c);
-      });
+  const jobs = phases.flatMap((phase) => tiers.map((tier) => {
+    const inputs = searchInputs(base, tier);
+    return { phase, inputs, key: searchKey(phase, inputs) };
+  }));
+  const stored: StoredCandidate[][] = jobs.map((j) => cache.get(j.key) ?? []);
+  const todo = jobs.map((j, i) => i).filter((i) => !cache.has(jobs[i].key));
+
+  let done = 0;
+  const active = new Map<number, string>();
+  // the latest progress any running search reported
+  const latest: { inner: RaidProgress['inner'] } = { inner: null };
+  const report = () => onProgress({
+    search: done, searches, phaseLabel: [...new Set(active.values())].join(', '), inner: latest.inner, cached,
+  });
+
+  // each lane takes the next search until none are left
+  let next = 0;
+  const lane = async () => {
+    while (next < todo.length) {
+      const i = todo[next];
+      next += 1;
+      const { phase, inputs, key } = jobs[i];
+      active.set(i, `${phase.boss.name}${phase.boss.phases.length > 1 ? ` — ${phase.phase.label}` : ''}`);
+      report();
+      // eslint-disable-next-line no-await-in-loop
+      const outcomes = await search(inputs, phase.monster, deps, (d, total, p) => {
+        latest.inner = { done: d, total, phase: p };
+        report();
+      }, { topK: RAID_TOP_K, concurrent: true });
+      stored[i] = outcomes.flatMap((o) => o.setups.map((setup, n) => ({ setup, dps: o.rows[n]?.dps ?? 0, style: o.style })))
+        .filter((x) => x.dps > 0)
+        .map((x) => toStored(x.setup, x.style, x.dps));
+      cache.set(key, stored[i]);
+      active.delete(i);
+      done += 1;
+      report();
     }
-  }
-  return out;
+  };
+  await Promise.all(Array.from({ length: Math.min(RAID_PARALLEL, todo.length) }, lane));
+
+  return jobs.flatMap((j, i) => stored[i]
+    .map((s) => fromStored(s, j.phase.phase.key, playerFor(s.style)))
+    .filter((c): c is Candidate => c !== null));
 };
