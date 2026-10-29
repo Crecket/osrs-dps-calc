@@ -7,8 +7,11 @@ import { PhasePart } from '@/raid/types';
 
 /** Flat DPS of a greater thrall: max hit 3 every 4 ticks, always hits */
 export const THRALL_DPS = 0.625;
-/** Seconds a phase counts for when nothing in the loadout can kill it */
-export const NO_SETUP_SECONDS = 600;
+/**
+ * A phase nothing in the loadout can hit counts as killed at this DPS: slower than any real setup, so even a slow
+ * setup on a big phase is always worth bringing (a flat penalty below a real kill time made melee look worthless)
+ */
+export const NO_SETUP_DPS = 0.5;
 /** Most expensive items that get a forced and a banned start each */
 export const KEY_ITEMS = 5;
 // added to a step's cost in the cost-aware pass, so free upgrades go first but tiny gains don't win on price alone
@@ -94,7 +97,7 @@ export const assembleLoadout = (input: AssembleInput): RaidPlan => {
   } = input;
   // what gets scored: every phase, or each part of a phase with parts
   const phases = input.phases.flatMap((p) => (p.parts ?? [{ share: 1 }]).map((part) => ({
-    key: p.key, hp: p.hp * part.share, styles: part.styles, penalty: NO_SETUP_SECONDS * part.share,
+    key: p.key, hp: p.hp * part.share, styles: part.styles,
   })));
 
   // every item as a bit
@@ -143,8 +146,7 @@ export const assembleLoadout = (input: AssembleInput): RaidPlan => {
     .find((c) => fits(c.mask, m) && (!banned || !c.mask.some((w, i) => (w & banned[i]) !== 0))) ?? null;
   const secondsFor = (phase: number, pick: Indexed | null) => {
     const dps = (pick?.candidate.dps ?? 0) + extraDps;
-    const { hp, penalty } = phases[phase];
-    return dps > 0 ? Math.min(hp / dps, penalty) : penalty;
+    return phases[phase].hp / Math.max(dps, NO_SETUP_DPS);
   };
   const phaseSeconds = (m: Mask, banned: Mask | null) => phases.map((_, i) => secondsFor(i, pickFor(i, m, banned)));
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);

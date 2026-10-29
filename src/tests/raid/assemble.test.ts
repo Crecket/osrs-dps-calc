@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { BulkSetup } from '@/bulk/types';
 import { Candidate } from '@/raid/lib/candidates';
 import {
-  assembleLoadout, AssembleInput, NO_SETUP_SECONDS, THRALL_DPS,
+  assembleLoadout, AssembleInput, NO_SETUP_DPS, THRALL_DPS,
 } from '@/raid/lib/assemble';
 
 const cand = (phaseKey: string, itemIds: number[], dps: number): Candidate => ({
@@ -32,9 +32,9 @@ describe('assembleLoadout', () => {
     expect(plan.totalSeconds).toBeCloseTo(100);
   });
 
-  test('a phase with no setup costs the fixed penalty', () => {
+  test('a phase with no setup counts as killed at the no-setup DPS', () => {
     const plan = assembleLoadout(input({}));
-    expect(plan.totalSeconds).toBe(NO_SETUP_SECONDS);
+    expect(plan.totalSeconds).toBe(1000 / NO_SETUP_DPS);
     expect(plan.picks[0].candidate).toBeNull();
   });
 
@@ -73,8 +73,16 @@ describe('assembleLoadout', () => {
     expect(plan.overBudget).toBe(true);
   });
 
+  test('a slow setup on a big phase is still brought: any setup beats none', () => {
+    // 6000 hp at 5 dps is 20 minutes, slow, but far better than nothing
+    const plan = assembleLoadout(input({ phases: phases(1, 6000), candidates: [cand('p0', [1], 5)] }));
+    expect(plan.itemIds).toEqual([1]);
+    expect(plan.totalSeconds).toBeCloseTo(1200);
+  });
+
   test('thralls add flat dps', () => {
-    expect(assembleLoadout(input({ phases: phases(1, 600), extraDps: THRALL_DPS })).totalSeconds).toBe(NO_SETUP_SECONDS);
+    // thralls alone still hit
+    expect(assembleLoadout(input({ phases: phases(1, 600), extraDps: THRALL_DPS })).totalSeconds).toBeCloseTo(600 / THRALL_DPS);
     const plan = assembleLoadout(input({ phases: phases(1, 600), extraDps: THRALL_DPS, candidates: [cand('p0', [1], 6)] }));
     expect(plan.totalSeconds).toBeCloseTo(600 / (6 + THRALL_DPS));
   });
@@ -179,7 +187,7 @@ describe('assembleLoadout', () => {
 
     test('a part with no setup of its styles costs the penalty share', () => {
       const plan = assembleLoadout(input({ phases: split, candidates: [melee('p0', [2], 10)] }));
-      expect(plan.totalSeconds).toBeCloseTo(50 + NO_SETUP_SECONDS / 2);
+      expect(plan.totalSeconds).toBeCloseTo(50 + 500 / NO_SETUP_DPS);
     });
 
     test('a part without styles takes any setup', () => {
