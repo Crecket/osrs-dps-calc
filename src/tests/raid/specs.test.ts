@@ -129,6 +129,15 @@ describe('specRanking', () => {
     expect(ranking[phase.phase.key].filter((r) => r.weaponId === ZCB)).toHaveLength(1);
   });
 
+  test('the Dual macuahuitl is never ranked: not worth bringing for its spec', async () => {
+    const calls: string[][] = [];
+    const deps = { search: { run: async () => [], cancel: () => {} }, rows: rows(calls) } as never;
+    const [bork] = routePhases(fa, fa.defaultRoute, {}, []).filter((p) => p.phase.key === 'bork:0');
+    await specRanking([bork], [{ ...candidate, phaseKey: 'bork:0', style: 'crush' }], [], deps, new SearchCache(memoryStorage()));
+    expect(calls.flat()).not.toContain('Dual macuahuitl');
+    expect(calls.flat()).toContain('Dragon claws');
+  });
+
   test('excluded spec weapons are left out', async () => {
     const calls: string[][] = [];
     const deps = { search: { run: async () => [], cancel: () => {} }, rows: rows(calls) } as never;

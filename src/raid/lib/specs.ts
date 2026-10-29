@@ -43,13 +43,17 @@ const groupOfWeapon = (w: EquipmentPiece): Group => {
 };
 const groupOfStyle = (style: string): Group => (style === 'ranged' || style === 'magic' ? style : 'melee');
 
+// specs not worth bringing to a raid, whatever the numbers say
+const NOT_RANKED = new Set(['Dual macuahuitl']);
+
 let specWeapons: EquipmentPiece[] | null = null;
 let ammo: EquipmentPiece[] = [];
 const loadPool = () => {
   if (!specWeapons) {
     const pool = bestPool();
     const defence = new Set(Object.values(DEFENCE_WEAPON_IDS));
-    specWeapons = pool.filter((e) => e.slot === 'weapon' && WEAPON_SPEC_COSTS[e.name] !== undefined && !defence.has(e.id));
+    specWeapons = pool.filter((e) => e.slot === 'weapon' && WEAPON_SPEC_COSTS[e.name] !== undefined && !defence.has(e.id)
+      && !NOT_RANKED.has(e.name));
     ammo = pool.filter((e) => e.slot === 'ammo');
   }
   return specWeapons;
