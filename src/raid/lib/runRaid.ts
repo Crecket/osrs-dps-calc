@@ -11,7 +11,7 @@ import {
 import { EquipmentPiece } from '@/types/Player';
 import { Spellbook } from '@/types/Spell';
 import {
-  DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS, DefenceCounts, MagicOption, Route,
+  DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS, DefenceCounts, MagicOption, PhasePart, Route,
 } from '@/raid/types';
 import { raidById } from '@/raid/raids';
 import { routeBosses, routePhases } from '@/raid/lib/route';
@@ -74,6 +74,8 @@ export interface ResultPhase {
   bossName: string;
   hp: number;
   counts: DefenceCounts;
+  /** Shares of the health bar only some styles can deal */
+  parts?: PhasePart[];
 }
 
 /** A weapon the loadout can use on a phase, with its best setup's DPS (thralls included) and kill time */
@@ -185,7 +187,7 @@ export const runRaid = async (
   const candidates = await raidCandidates(phases, base, tiers, deps, onProgress, cache, search);
   const extraDps = settings.magic === 'thralls' ? THRALL_DPS : 0;
   const assemble = (maxItems: number) => assembleLoadout({
-    phases: phases.map((p) => ({ key: p.phase.key, hp: p.monster.monster.skills.hp })),
+    phases: phases.map((p) => ({ key: p.phase.key, hp: p.monster.monster.skills.hp, parts: p.phase.parts })),
     candidates,
     priceOf,
     budget: settings.budget,
@@ -216,6 +218,7 @@ export const runRaid = async (
       bossName: p.boss.name,
       hp: p.monster.monster.skills.hp,
       counts: p.counts,
+      parts: p.phase.parts,
     })),
     options: weaponOptions(candidates, plan.itemIds, hpByKey, extraDps),
     specs,

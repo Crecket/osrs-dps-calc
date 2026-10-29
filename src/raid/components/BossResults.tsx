@@ -1,20 +1,32 @@
 import React from 'react';
 import { observer } from 'mobx-react-lite';
+import { BestStyle } from '@/best/types';
 import { RaidResult } from '@/raid/lib/runRaid';
 import { formatTime } from '@/raid/lib/format';
 import {
   ItemImage, ItemMenu, itemById, useItemMenu,
 } from '@/raid/components/items';
-import { DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS } from '@/raid/types';
+import { DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS, PhasePart } from '@/raid/types';
 
 // spec weapons shown per phase, best damage per 1% energy first
 const SPECS_SHOWN = 3;
+
+const MELEE: BestStyle[] = ['stab', 'slash', 'crush'];
+const partStyles = ({ styles }: PhasePart) => {
+  if (!styles) return 'any style';
+  if (styles.length === MELEE.length && MELEE.every((st) => styles.includes(st))) return 'melee';
+  return styles.join('/');
+};
+/** e.g. "50% ranged · 50% any style" */
+const partsLabel = (parts: PhasePart[]) => parts.map((p) => `${Math.round(p.share * 100)}% ${partStyles(p)}`).join(' · ');
 
 /** GearScape-style rows: per boss its specs, and per phase every weapon the loadout can use, the fastest in green */
 const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
   const menu = useItemMenu();
   const bosses = [...new Map(result.phases.map((p) => [p.bossId, p.bossName])).entries()];
-  const pickSeconds = new Map(result.plan.picks.map((p) => [p.key, p.seconds]));
+  // a phase with parts has a pick per part
+  const pickSeconds = new Map<string, number>();
+  result.plan.picks.forEach((p) => pickSeconds.set(p.key, (pickSeconds.get(p.key) ?? 0) + p.seconds));
 
   return (
     <div className="flex flex-col divide-y divide-body-300 dark:divide-dark-200">
@@ -31,6 +43,7 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
               <div key={p.key} className="flex items-start gap-3">
                 <div className="w-32 shrink-0 text-xs flex flex-col gap-1">
                   {phases.length > 1 && <span>{p.label}</span>}
+                  {p.parts && <span className="text-gray-500 dark:text-gray-300">{partsLabel(p.parts)}</span>}
                   <span className="flex gap-1.5">
                     {DEFENCE_WEAPONS.filter((w) => p.counts[w] > 0).map((w) => (
                       <span key={w} className="flex items-center">

@@ -91,8 +91,19 @@ const versionIds = (name: string) => {
  * item has no price (untradeable). Looks up the id, then the canonical id, then the item's other versions (a charged
  * item is often only tradeable uncharged), then the name without a trailing "(…)".
  */
+// getCanonicalItemId scans every alias; the tiers price thousands of items on each settings change
+const canonicalIds = new Map<number, number>();
+const canonicalOf = (id: number) => {
+  let canonical = canonicalIds.get(id);
+  if (canonical === undefined) {
+    canonical = getCanonicalItemId(id);
+    canonicalIds.set(id, canonical);
+  }
+  return canonical;
+};
+
 export const itemPrice = (id: number, prices: Prices | null, owned: Set<number>): number => {
-  const canonical = getCanonicalItemId(id);
+  const canonical = canonicalOf(id);
   if (!prices || owned.has(id) || owned.has(canonical)) return 0;
   const byId = prices.byId.get(id) ?? prices.byId.get(canonical);
   if (byId !== undefined) return byId;

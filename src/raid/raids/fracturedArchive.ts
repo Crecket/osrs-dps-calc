@@ -1,7 +1,9 @@
-import { DefenceCounts, RaidDef } from '@/raid/types';
+import { DefenceCounts, PhasePart, RaidDef } from '@/raid/types';
 
 // Defence reduction defaults: the community's optimal specs per boss (Ralos counts hitsplats, as the engine does)
 const specs = (elderMaul: number, tonalztic: number): DefenceCounts => ({ elderMaul, dwh: 0, tonalztic });
+// can't be meleed the whole fight: half the health bar is ranged
+const HALF_RANGED: PhasePart[] = [{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }];
 
 const fracturedArchive: RaidDef = {
   id: 'fractured-archive',
@@ -38,7 +40,7 @@ const fracturedArchive: RaidDef = {
           name: 'Bork',
           phases: [
             {
-              key: 'bork:0', label: 'Bork', monsterId: 16640, version: '', defaults: specs(2, 0),
+              key: 'bork:0', label: 'Bork', monsterId: 16640, version: '', defaults: specs(2, 0), parts: HALF_RANGED,
             },
             {
               key: 'bork:1', label: 'The Smorks', monsterId: 16641, version: '', defaults: specs(2, 4),
@@ -71,7 +73,7 @@ const fracturedArchive: RaidDef = {
           id: 'dreadnoth',
           name: 'Dreadnoth',
           phases: [{
-            key: 'dreadnoth:0', label: 'Dreadnoth', monsterId: 16665, version: '', defaults: specs(0, 5),
+            key: 'dreadnoth:0', label: 'Dreadnoth', monsterId: 16665, version: '', defaults: specs(0, 5), parts: HALF_RANGED,
           }],
         },
       ],
@@ -116,10 +118,21 @@ const fracturedArchive: RaidDef = {
             key: 'ocellus:0', label: 'Phase 1', monsterId: 16673, version: 'Phase 1', defaults: specs(0, 2),
           },
           {
-            key: 'ocellus:1', label: 'The Blade', monsterId: 16675, version: 'Phase 2', defaults: specs(2, 4),
+            key: 'ocellus:1',
+            label: 'The Blade',
+            monsterId: 16675,
+            version: 'Phase 2',
+            defaults: specs(2, 4),
+            allowedStyles: ['ranged'],
           },
           {
-            key: 'ocellus:2', label: 'Phase 3', monsterId: 16677, version: 'Phase 3', defaults: specs(2, 0),
+            key: 'ocellus:2',
+            label: 'Phase 3',
+            monsterId: 16677,
+            version: 'Phase 3',
+            defaults: specs(2, 0),
+            // half ranged, half melee
+            parts: [{ styles: ['ranged'], share: 0.5 }, { styles: ['stab', 'slash', 'crush'], share: 0.5 }],
           },
         ],
       }],

@@ -164,4 +164,28 @@ describe('assembleLoadout', () => {
     }));
     expect(Date.now() - start).toBeLessThan(1000);
   });
+
+  describe('phases split by style', () => {
+    const melee = (phaseKey: string, itemIds: number[], dps: number): Candidate => ({ ...cand(phaseKey, itemIds, dps), style: 'slash' });
+    const split = [{ key: 'p0', hp: 1000, parts: [{ styles: ['ranged' as const], share: 0.5 }, { styles: ['stab' as const, 'slash' as const, 'crush' as const], share: 0.5 }] }];
+
+    test('each part is done by a setup of its styles', () => {
+      const plan = assembleLoadout(input({ phases: split, candidates: [cand('p0', [1], 5), melee('p0', [2], 10)] }));
+      // 500 hp at 5 dps + 500 hp at 10 dps
+      expect(plan.totalSeconds).toBeCloseTo(150);
+      expect(plan.itemIds.sort()).toEqual([1, 2]);
+      expect(plan.picks.map((p) => p.key)).toEqual(['p0', 'p0']);
+    });
+
+    test('a part with no setup of its styles costs the penalty share', () => {
+      const plan = assembleLoadout(input({ phases: split, candidates: [melee('p0', [2], 10)] }));
+      expect(plan.totalSeconds).toBeCloseTo(50 + NO_SETUP_SECONDS / 2);
+    });
+
+    test('a part without styles takes any setup', () => {
+      const anyPart = [{ key: 'p0', hp: 1000, parts: [{ styles: ['ranged' as const], share: 0.5 }, { share: 0.5 }] }];
+      const plan = assembleLoadout(input({ phases: anyPart, candidates: [cand('p0', [1], 5), melee('p0', [2], 10)] }));
+      expect(plan.totalSeconds).toBeCloseTo(150);
+    });
+  });
 });

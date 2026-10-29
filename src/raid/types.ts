@@ -24,6 +24,14 @@ export interface RaidPhase {
   defaults: DefenceCounts;
   /** Styles that can hit this phase; missing means every style */
   allowedStyles?: BestStyle[];
+  /** Shares of the health bar that only some styles can deal; missing means one setup does it all */
+  parts?: PhasePart[];
+}
+
+/** A share of a health bar, dealt by the fastest setup of `styles` (any style when missing) */
+export interface PhasePart {
+  styles?: BestStyle[];
+  share: number;
 }
 
 export interface BossRules {

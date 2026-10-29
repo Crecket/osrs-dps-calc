@@ -116,11 +116,18 @@ const itemById = (id: number) => {
  * Whether leaving the item out can change a search of `style`: it adds to the style's attack or strength, or it has a
  * special effect (any style, to be safe). Unknown ids count.
  */
+// item data never changes, so each answer is kept: the cache keys check thousands of left-out items per search
+const matters = new Map<string, boolean>();
 const mattersFor = (style: BestStyle, id: number) => {
-  const item = itemById(id);
-  if (!item || isEffectItem(item)) return true;
-  const kinds: ScoreKind[] = style === 'ranged' ? ['ranged', 'rangedStrength'] : [style];
-  return kinds.some((k) => styleScore(item, k).some((v) => v > 0));
+  const key = `${style}:${id}`;
+  let answer = matters.get(key);
+  if (answer === undefined) {
+    const item = itemById(id);
+    const kinds: ScoreKind[] = style === 'ranged' ? ['ranged', 'rangedStrength'] : [style];
+    answer = !item || isEffectItem(item) || kinds.some((k) => styleScore(item, k).some((v) => v > 0));
+    matters.set(key, answer);
+  }
+  return answer;
 };
 
 export const searchKey = (phase: RoutePhase, inputs: BestInputs): string => hashKey(JSON.stringify({ monster: phase.monster.monster, inputs }));
@@ -136,15 +143,20 @@ interface SearchJob {
 }
 
 /** One search per phase × tier × style, so a change that only matters for one style redoes only that style's searches */
-const searchJobs = (phases: RoutePhase[], base: BestInputs, tiers: number[][]): SearchJob[] => phases.flatMap(
-  (phase) => tiers.flatMap((tier) => base.styles.filter((st) => phase.phase.allowedStyles?.includes(st) ?? true).map((style): SearchJob => {
-    const inputs = { ...base, styles: [style], excludedItemIds: tier };
-    const keyInputs = { ...inputs, excludedItemIds: tier.filter((id) => mattersFor(style, id)) };
-    return {
-      phase, style, inputs, key: searchKey(phase, keyInputs), excluded: new Set(tier),
-    };
-  })),
-);
+const searchJobs = (phases: RoutePhase[], base: BestInputs, tiers: number[][]): SearchJob[] => {
+  // per tier and style, the left-out items that matter, worked out once for every phase
+  const keyExclusions = tiers.map((tier) => new Map(base.styles.map((style) => [style, tier.filter((id) => mattersFor(style, id))])));
+  const excludedSets = tiers.map((tier) => new Set(tier));
+  return phases.flatMap((phase) => tiers.flatMap((tier, t) => base.styles
+    .filter((st) => phase.phase.allowedStyles?.includes(st) ?? true)
+    .map((style): SearchJob => {
+      const inputs = { ...base, styles: [style], excludedItemIds: tier };
+      const keyInputs = { ...inputs, excludedItemIds: keyExclusions[t].get(style)! };
+      return {
+        phase, style, inputs, key: searchKey(phase, keyInputs), excluded: excludedSets[t],
+      };
+    })));
+};
 
 // a cached result that uses an item now left out can't be reused, whatever its key says
 const usable = (stored: StoredCandidate[] | undefined, excluded: Set<number>) => !!stored && stored.every(

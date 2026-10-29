@@ -34,6 +34,13 @@ describe('raid definitions', () => {
     expect(flying.monster.monster.version).toBe('Flying');
   });
 
+  test('style rules from the strategy', () => {
+    const phase = (key: string) => routePhases(fa, fa.defaultRoute, {}, []).find((p) => p.phase.key === key)!.phase;
+    expect(phase('ocellus:1').allowedStyles).toEqual(['ranged']);
+    expect(phase('ocellus:2').parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { styles: ['stab', 'slash', 'crush'], share: 0.5 }]);
+    ['bork:0', 'dreadnoth:0'].forEach((key) => expect(phase(key).parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }]));
+  });
+
   test('excluded weapon zeroes its defence reduction', () => {
     const phases = routePhases(fa, fa.defaultRoute, {}, [21003]);
     phases.forEach((p) => {

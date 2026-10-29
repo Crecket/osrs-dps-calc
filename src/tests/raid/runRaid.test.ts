@@ -69,8 +69,17 @@ describe('runRaid', () => {
     expect(mockSearch).toHaveBeenCalled();
     expect(result.layout.inventory).toHaveLength(28);
     expect(result.layout.worn.weapon).toBe(20997);
-    expect(result.phases.map((p) => p.key)).toEqual(result.plan.picks.map((p) => p.key));
+    expect(result.phases.map((p) => p.key)).toEqual([...new Set(result.plan.picks.map((p) => p.key))]);
     expect(result.plan.totalSeconds).toBeGreaterThan(0);
+  });
+
+  test('a phase split by style is planned per part', async () => {
+    const cache = new SearchCache(memoryStorage());
+    const result = await runRaid(defaultSettings(), null, deps, () => {}, cache, search);
+    expect(result.plan.picks.filter((p) => p.key === 'ocellus:2')).toHaveLength(2);
+    expect(result.phases.find((p) => p.key === 'ocellus:2')?.parts).toEqual([
+      { styles: ['ranged'], share: 0.5 }, { styles: ['stab', 'slash', 'crush'], share: 0.5 },
+    ]);
   });
 
   test('each phase lists the loadout\'s weapons with their DPS', async () => {

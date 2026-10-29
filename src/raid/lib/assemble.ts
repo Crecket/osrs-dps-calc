@@ -3,6 +3,7 @@
  * budget and the item count. Pure arithmetic over precomputed DPS; nothing here calls the engine.
  */
 import { Candidate } from '@/raid/lib/candidates';
+import { PhasePart } from '@/raid/types';
 
 /** Flat DPS of a greater thrall: max hit 3 every 4 ticks, always hits */
 export const THRALL_DPS = 0.625;
@@ -16,7 +17,8 @@ const MAX_POLISH_SWEEPS = 5;
 const MIN_GAIN = 1e-6;
 
 export interface AssembleInput {
-  phases: { key: string; hp: number }[];
+  /** A phase with parts is scored per part: its share of the HP by the fastest setup of the part's styles */
+  phases: { key: string; hp: number; parts?: PhasePart[] }[];
   candidates: Candidate[];
   priceOf: (id: number) => number;
   budget: number;
@@ -28,6 +30,7 @@ export interface AssembleInput {
   extraDps: number;
 }
 
+/** One per phase, or per part of a phase with parts (sharing the phase's key) */
 export interface PhasePick {
   key: string;
   candidate: Candidate | null;
@@ -60,8 +63,12 @@ const has = (m: Mask, bit: number) => (m[bit >>> 5] & (1 << (bit & 31))) !== 0;
 
 export const assembleLoadout = (input: AssembleInput): RaidPlan => {
   const {
-    phases, priceOf, budget, maxItems, extraDps,
+    priceOf, budget, maxItems, extraDps,
   } = input;
+  // what gets scored: every phase, or each part of a phase with parts
+  const phases = input.phases.flatMap((p) => (p.parts ?? [{ share: 1 }]).map((part) => ({
+    key: p.key, hp: p.hp * part.share, styles: part.styles, penalty: NO_SETUP_SECONDS * part.share,
+  })));
 
   // every item as a bit
   const ids: number[] = [];
@@ -87,11 +94,12 @@ export const assembleLoadout = (input: AssembleInput): RaidPlan => {
   const costOf = (m: Mask) => ids.reduce((sum, _, b) => (has(m, b) ? sum + prices[b] : sum), 0);
   const countOf = (m: Mask) => ids.reduce((n, _, b) => (has(m, b) ? n + 1 : n), 0);
 
-  // per phase, its candidates best first
-  const phaseIndex = new Map(phases.map((p, i) => [p.key, i]));
-  const all: Indexed[] = input.candidates
-    .filter((c) => phaseIndex.has(c.phaseKey))
-    .map((c) => ({ candidate: c, mask: maskOf(c.itemIds), phase: phaseIndex.get(c.phaseKey)! }));
+  // per phase (or part), its candidates best first
+  const all: Indexed[] = input.candidates.flatMap((c) => {
+    const mask = maskOf(c.itemIds);
+    return phases.flatMap((p, phase) => (p.key === c.phaseKey && (!p.styles || p.styles.includes(c.style))
+      ? [{ candidate: c, mask, phase }] : []));
+  });
   const byPhase: Indexed[][] = phases.map(() => []);
   all.forEach((c) => byPhase[c.phase].push(c));
   byPhase.forEach((list) => list.sort((a, b) => b.candidate.dps - a.candidate.dps));
@@ -108,7 +116,8 @@ export const assembleLoadout = (input: AssembleInput): RaidPlan => {
     .find((c) => fits(c.mask, m) && (!banned || !c.mask.some((w, i) => (w & banned[i]) !== 0))) ?? null;
   const secondsFor = (phase: number, pick: Indexed | null) => {
     const dps = (pick?.candidate.dps ?? 0) + extraDps;
-    return dps > 0 ? Math.min(phases[phase].hp / dps, NO_SETUP_SECONDS) : NO_SETUP_SECONDS;
+    const { hp, penalty } = phases[phase];
+    return dps > 0 ? Math.min(hp / dps, penalty) : penalty;
   };
   const phaseSeconds = (m: Mask, banned: Mask | null) => phases.map((_, i) => secondsFor(i, pickFor(i, m, banned)));
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);

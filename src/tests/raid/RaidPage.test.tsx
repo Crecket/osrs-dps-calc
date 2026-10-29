@@ -113,6 +113,24 @@ describe('RaidPage', () => {
     await unmount();
   });
 
+  test('a phase split by style adds up its parts and shows the split', async () => {
+    mockRunRaid.mockImplementation(async (settings) => {
+      const r = result(settings);
+      return {
+        ...r,
+        plan: { ...r.plan, picks: [{ key: 'bork:0', candidate: null, seconds: 100 }, { key: 'bork:0', candidate: null, seconds: 200 }] },
+        phases: [{ ...r.phases[0], parts: [{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }] }],
+      };
+    });
+    const { container, unmount } = await mount();
+    await act(async () => button(container, 'Find raid gear')!.click());
+    await wait(20);
+    const row = container.querySelector('[data-testid=boss-row]')!;
+    expect(row.textContent).toContain('5:00');
+    expect(row.textContent).toContain('50% ranged');
+    await unmount();
+  });
+
   test('a change that needs searches marks the result stale', async () => {
     const { container, unmount } = await mount();
     await act(async () => button(container, 'Find raid gear')!.click());
