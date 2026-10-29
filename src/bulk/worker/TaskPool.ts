@@ -50,8 +50,9 @@ interface Run<P, R> {
 export const defaultPoolSize = () => Math.max(1, ((typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2) - 1);
 
 /**
- * A pool of workers that computes every payload of the current run, one payload per message. It never debounces or
- * drops payloads; starting a new run cancels the previous one.
+ * A pool of workers that computes every payload of its runs, one payload per message. It never debounces or drops
+ * payloads. Starting a run cancels the earlier ones, unless it is `concurrent`: concurrent runs share the workers, the
+ * oldest run's payloads first, so a worker one run leaves idle picks up another's.
  */
 export class TaskPool<P, R> {
   private size: number;
@@ -64,7 +65,8 @@ export class TaskPool<P, R> {
 
   private workers: PoolWorker[] = [];
 
-  private current: Run<P, R> | null = null;
+  // in start order: dispatch serves the oldest run first
+  private runs = new Map<number, Run<P, R>>();
 
   private nextRunId = 0;
 
@@ -83,9 +85,15 @@ export class TaskPool<P, R> {
   /**
    * Computes every payload; resolves with their results in payload order.
    * @param count the number of results a payload yields, for the progress total
+   * @param opts.concurrent keep earlier runs going and share the workers with them
    */
-  run(payloads: P[], onProgress: (p: TaskProgress<R>) => void, count: (p: P) => number = () => 1): Promise<R[]> {
-    this.cancel();
+  run(
+    payloads: P[],
+    onProgress: (p: TaskProgress<R>) => void,
+    count: (p: P) => number = () => 1,
+    opts: { concurrent?: boolean } = {},
+  ): Promise<R[]> {
+    if (!opts.concurrent) this.cancel();
 
     if (payloads.length === 0) return Promise.resolve([]);
 
@@ -95,25 +103,32 @@ export class TaskPool<P, R> {
     const total = payloads.reduce((n, p) => n + count(p), 0);
 
     return new Promise<R[]>((resolve, reject) => {
-      this.current = {
+      this.runs.set(runId, {
         runId, queue, outstanding: 0, chunks: [], done: 0, total, lastProgress: Date.now(), onProgress, resolve, reject,
-      };
-      this.ensureWorkers(queue.length);
+      });
+      this.ensureWorkers(this.pending());
       this.dispatch();
     });
   }
 
+  /** Cancels every run */
   cancel() {
-    if (this.current) {
-      const { reject } = this.current;
-      this.current = null;
-      if (this.terminateOnCancel) {
-        // a busy worker would finish its stale chunk before taking new work; ensureWorkers spawns replacements on the next run
-        this.workers.filter((w) => w.runId !== null).forEach((w) => w.worker.terminate());
-        this.workers = this.workers.filter((w) => w.runId === null);
-      }
-      reject(new Error('cancelled'));
+    if (this.runs.size === 0) return;
+    const cancelled = [...this.runs.values()];
+    this.runs.clear();
+    if (this.terminateOnCancel) {
+      // a busy worker would finish its stale chunk before taking new work; ensureWorkers spawns replacements on the next run
+      this.workers.filter((w) => w.runId !== null).forEach((w) => w.worker.terminate());
+      this.workers = this.workers.filter((w) => w.runId === null);
     }
+    cancelled.forEach((run) => run.reject(new Error('cancelled')));
+  }
+
+  // payloads waiting or being computed, which is how many workers could be busy
+  private pending() {
+    let n = 0;
+    this.runs.forEach((run) => { n += run.queue.length + run.outstanding; });
+    return n;
   }
 
   shutdown() {
@@ -132,24 +147,24 @@ export class TaskPool<P, R> {
   }
 
   private dispatch() {
-    const run = this.current;
-    if (!run) return;
     for (const pw of this.workers) {
-      if (pw.runId === null && run.queue.length > 0) {
-        const chunk = run.queue.shift()!;
-        pw.runId = run.runId;
-        run.outstanding += 1;
-        pw.worker.postMessage(JSON.stringify(chunk, WORKER_JSON_REPLACER));
-      }
+      if (pw.runId !== null) continue;
+      // the oldest run with payloads left
+      const run = [...this.runs.values()].find((r) => r.queue.length > 0);
+      if (!run) return;
+      const chunk = run.queue.shift()!;
+      pw.runId = run.runId;
+      run.outstanding += 1;
+      pw.worker.postMessage(JSON.stringify(chunk, WORKER_JSON_REPLACER));
     }
   }
 
   private onResponse(pw: PoolWorker, data: string) {
     pw.runId = null;
     const res = JSON.parse(data, WORKER_JSON_REVIVER) as TaskResult<R>;
-    const run = this.current;
+    const run = this.runs.get(res.runId);
 
-    if (run && res.runId === run.runId) {
+    if (run) {
       run.outstanding -= 1;
       run.chunks[res.chunkId] = res.results;
       run.done += res.results.length;
@@ -162,9 +177,8 @@ export class TaskPool<P, R> {
       }
 
       if (finished) {
-        this.current = null;
+        this.runs.delete(run.runId);
         run.resolve(run.chunks.flat());
-        return;
       }
     }
 
@@ -175,16 +189,13 @@ export class TaskPool<P, R> {
     // a crashed worker can't be trusted to respond; drop it, and fail the run only if the crash was on one of its chunks
     pw.worker.terminate();
     this.workers = this.workers.filter((w) => w !== pw);
-    const run = this.current;
-    if (!run) return;
-
-    if (pw.runId === run.runId) {
-      this.current = null;
+    const run = pw.runId === null ? undefined : this.runs.get(pw.runId);
+    if (run) {
+      this.runs.delete(run.runId);
       run.reject(new Error(message || 'A calculation worker crashed'));
-      return;
     }
 
-    this.ensureWorkers(run.queue.length);
+    this.ensureWorkers(this.pending());
     this.dispatch();
   }
 }

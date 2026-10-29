@@ -145,4 +145,56 @@ describe('TaskPool', () => {
     await expect(pool.run([], () => {})).resolves.toEqual([]);
     expect(spawned).toBe(0);
   });
+
+  test('concurrent runs share the workers and each resolves with its own results', async () => {
+    let created = 0;
+    const pool = new TaskPool<number[], number>({
+      size: 2,
+      createWorker: () => {
+        created += 1;
+        return new FakeWorker({ delay: () => 3 });
+      },
+    });
+    const a = pool.run([[1], [2], [3]], () => {}, undefined, { concurrent: true });
+    const b = pool.run([[4], [5]], () => {}, undefined, { concurrent: true });
+    expect(await a).toEqual([1, 4, 9]);
+    expect(await b).toEqual([16, 25]);
+    expect(created).toBe(2);
+  });
+
+  test('a later concurrent run uses workers the first run leaves idle', async () => {
+    const pool = new TaskPool<number[], number>({ size: 4, createWorker: () => new FakeWorker({ delay: () => 20 }) });
+    const start = Date.now();
+    // one chunk each: without sharing, the second run would wait for the first
+    await Promise.all([
+      pool.run([[1]], () => {}, undefined, { concurrent: true }),
+      pool.run([[2]], () => {}, undefined, { concurrent: true }),
+    ]);
+    expect(Date.now() - start).toBeLessThan(38);
+  });
+
+  test('a normal run still cancels every earlier run', async () => {
+    const pool = new TaskPool<number[], number>({ size: 2, createWorker: () => new FakeWorker({ delay: () => 5 }) });
+    const a = pool.run([[1]], () => {}, undefined, { concurrent: true });
+    const b = pool.run([[2]], () => {});
+    await expect(a).rejects.toThrow('cancelled');
+    expect(await b).toEqual([4]);
+  });
+
+  test('cancel() rejects every concurrent run', async () => {
+    const pool = new TaskPool<number[], number>({ size: 2, createWorker: () => new FakeWorker({ delay: () => 5 }) });
+    const a = pool.run([[1]], () => {}, undefined, { concurrent: true });
+    const b = pool.run([[2]], () => {}, undefined, { concurrent: true });
+    pool.cancel();
+    await expect(a).rejects.toThrow('cancelled');
+    await expect(b).rejects.toThrow('cancelled');
+  });
+
+  test('a worker crash fails only the run whose chunk it had', async () => {
+    const pool = new TaskPool<number[], number>({ size: 2, createWorker: () => new FakeWorker({ crashOnRun: 1, delay: () => 2 }) });
+    const a = pool.run([[1]], () => {}, undefined, { concurrent: true });
+    const b = pool.run([[2]], () => {}, undefined, { concurrent: true });
+    await expect(a).rejects.toThrow('boom');
+    expect(await b).toEqual([4]);
+  });
 });
