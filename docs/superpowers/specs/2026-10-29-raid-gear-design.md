@@ -50,5 +50,5 @@ Given a GP budget and the gear the player already owns, show a "half decent" ful
 - Untradeable items cost 0.
 - A fourth magic option, Standard, so a Dagon'hai route still has magic.
 - Thralls as a flat ~0.6 DPS (max hit 3, every 4 ticks, always hits), only on the Thralls option.
-- Greedy assembly over tiered candidates with restarts that ban the most expensive picks and a swap polish, not an exact optimiser.
+- Greedy assembly over tiered candidates, with forced and banned starts for the 5 most expensive items and a swap polish, not an exact optimiser.
 - Routes default to Bork / Dreadnoth / Xarth; the Guardian counts its flying and grounded forms as two phases.
