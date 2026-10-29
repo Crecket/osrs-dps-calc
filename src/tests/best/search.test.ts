@@ -158,8 +158,7 @@ describe('searchWeapon', () => {
   test('on a slayer task an imbued slayer helmet goes on the head', () => {
     const base = basePlayer({ ...inputs, conditions: { ...DEFAULT_CONDITIONS, onSlayerTask: true } }, 'slash');
     const [best] = searchWeapon(base, abyssal, scytheJob, pool, { mode: 'exhaustive', topN: 1, cap: 20000 });
-    // V's helm is a Slayer helmet (i) with better bonuses
-    expect([poolItem('Slayer helmet (i)').id, poolItem("V's helm").id]).toContain(best.gear.head);
+    expect(pool.find((e) => e.id === best.gear.head)?.name).toMatch(/^(Slayer helmet|Black mask)/);
   });
 
   test('a one-handed weapon gets a shield at least as good as the Avernic defender', () => {

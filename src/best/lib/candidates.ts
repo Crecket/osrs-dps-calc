@@ -43,6 +43,9 @@ const GAUNTLET_ONLY = /^(Corrupted|Crystal) (halberd|bow|staff|helm|body|legs) \
 // not real gear: wrapped gloves are a gift-wrapped copy, Nightmare Zone (nz) items can't leave the Nightmare Zone
 const NOT_REAL = /\((wrapped|nz)\)/;
 
+// Leagues-only gear, which can't be had in the main game: Raging Echoes' Echo items and the Demonic Pacts relics and gear
+const LEAGUES_ONLY = /^Echo |^(V's helm|King's barrage|Infernal tecpatl|Nature's recurve|Fang of the hound|Shadowflame quadrant|Lithic sceptre|Evil eye \(item\)|Transmutation ledger|Demonic (hood|robe top|robe bottom|boots) \(t[123]\)|Demonic sceptre)$/;
+
 // left out for now: every Corrupted item (Gauntlet, PvP and Deadman copies, Corrupted Scythe of Vitur)
 const CORRUPTED = /^Corrupted /;
 
@@ -56,7 +59,7 @@ export const isPvpOnly = (item: EquipmentPiece): boolean => /\(bh\)/.test(item.n
 
 /**
  * The items the search may use: canonical items, without uncharged, inactive, broken, Deadman, cosmetic, unobtainable,
- * minigame-only, PvP-only, not real, Corrupted or excluded ones.
+ * minigame-only, PvP-only, Leagues-only, not real, Corrupted or excluded ones.
  */
 export const bestPool = (items: EquipmentPiece[] = availableEquipment): EquipmentPiece[] => items.filter((e) => getCanonicalItemId(e.id) === e.id
   && !EXCLUDED_VERSIONS.has(e.version)
@@ -64,6 +67,7 @@ export const bestPool = (items: EquipmentPiece[] = availableEquipment): Equipmen
   && !EXCLUDED_ITEM_IDS.has(e.id)
   && !GAUNTLET_ONLY.test(e.name)
   && !NOT_REAL.test(e.name)
+  && !LEAGUES_ONLY.test(e.name)
   && !CORRUPTED.test(e.name)
   && !isPvpOnly(e)
   // data artefacts held in the weapon slot: greegrees, Gnomeball (-1), crates and Christmas dinner (0)

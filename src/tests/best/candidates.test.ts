@@ -33,6 +33,14 @@ describe('bestPool', () => {
     expect(pool.map((e) => e.id)).not.toContain(findEquipment('Wilderness champion amulet').id);
   });
 
+  test('drops Leagues-only items: the Demonic Pacts relics and gear and the Raging Echoes items', () => {
+    const names = new Set(pool.map((e) => e.name));
+    ["V's helm", "King's barrage", 'Infernal tecpatl', "Nature's recurve", 'Fang of the hound', 'Shadowflame quadrant', 'Lithic sceptre',
+      'Evil eye (item)', 'Transmutation ledger', 'Demonic hood (t3)', 'Demonic sceptre', 'Echo boots', 'Echo venator bow']
+      .forEach((n) => expect(names.has(n)).toBe(false));
+    expect(names.has('Venator bow')).toBe(true);
+  });
+
   test('drops the PvP Arena\'s Wristbands of the Arena', () => {
     expect(pool.filter((e) => /^Wristbands of the Arena/.test(e.name))).toEqual([]);
   });

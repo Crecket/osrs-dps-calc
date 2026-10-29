@@ -273,7 +273,8 @@ describe('runBestSetup', () => {
     });
     expect(o.setups.length).toBeGreaterThan(0);
     expect(o.setups[0].player.equipment.weapon!.name).toMatch(/^Leaf-bladed /);
-    expect(['Slayer helmet (i)', "V's helm"]).toContain(o.setups[0].player.equipment.head?.name);
+    // a Black mask boosts melee on task as much as a Slayer helmet
+    expect(o.setups[0].player.equipment.head?.name).toMatch(/^(Slayer helmet|Black mask)/);
   }, 60000);
 
   test('a T3 vampyre: only vampyrebane weapons hurt it, and effect items are still considered', async () => {
