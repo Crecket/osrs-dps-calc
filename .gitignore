@@ -42,3 +42,7 @@ yarn-error.log*
 # bulk mode
 .wrangler/
 .superpowers/
+
+# throwaway debug files
+/temp/*
+!/temp/.gitkeep
