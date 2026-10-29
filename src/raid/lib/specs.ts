@@ -1,8 +1,10 @@
 /**
- * Which spec weapon is best on each phase: expected spec damage per 1% energy, on the phase's best setup of the
- * weapon's style. Defence reduction weapons are left out. Main thread only (it runs computeRow on the pools).
+ * Which spec weapon is best on each phase: the spec's damage per second (expected damage over the weapon's attack
+ * time), on the phase's best setup of the weapon's style. Defence reduction weapons are left out. Main thread only (it runs computeRow on the pools).
  */
-import { AmmoApplicability, ammoApplicability, WEAPON_SPEC_COSTS } from '@/lib/Equipment';
+import {
+  AmmoApplicability, ammoApplicability, calculateAttackSpeed, WEAPON_SPEC_COSTS,
+} from '@/lib/Equipment';
 import { EquipmentPiece } from '@/types/Player';
 import { getCombatStylesForCategory } from '@/utils';
 import { bestPool } from '@/best/lib/candidates';
@@ -19,15 +21,17 @@ export interface SpecRank {
   cost: number;
   /** Expected damage of one spec */
   expected: number;
-  /** Expected damage per 1% energy */
-  perEnergy: number;
+  /** Expected damage per second of the spec's attack */
+  dps: number;
 }
 
-/** Best first by damage per 1% energy; specs without damage are left out */
-export const rankSpecs = (specs: Omit<SpecRank, 'perEnergy'>[]): SpecRank[] => specs
+const SECONDS_PER_TICK = 0.6;
+
+/** Best first by the spec's damage per second, so a slow weapon's big spec ranks below a fast one's; no-damage specs are left out */
+export const rankSpecs = (specs: (Omit<SpecRank, 'dps'> & { ticks: number })[]): SpecRank[] => specs
   .filter((s) => s.expected > 0 && s.cost > 0)
-  .map((s) => ({ ...s, perEnergy: s.expected / s.cost }))
-  .sort((a, b) => b.perEnergy - a.perEnergy);
+  .map(({ ticks, ...s }) => ({ ...s, dps: s.expected / (ticks * SECONDS_PER_TICK) }))
+  .sort((a, b) => b.dps - a.dps);
 
 type Group = 'melee' | 'ranged' | 'magic';
 // every weapon can manual cast, so magic counts only when the weapon has no melee or ranged stance
@@ -87,7 +91,7 @@ const specKey = (phase: RoutePhase, setup: BulkSetup) => `spec:${hashKey(JSON.st
 }))}`;
 
 /**
- * Per phase key, the spec weapons ranked by damage per 1% energy. Spec damage comes from computeRow on the rows pool
+ * Per phase key, the spec weapons ranked by the spec's damage per second. Spec damage comes from computeRow on the rows pool
  * (concurrently), cached in `cache` so a re-plan computes nothing again.
  */
 export const specRanking = async (
@@ -120,7 +124,10 @@ export const specRanking = async (
       missing.forEach((s) => cache.setSpec(specKey(phase, s.setup), byId.get(s.setup.id)?.spec?.expected ?? 0));
     }
     out[key] = rankSpecs(setups.map((s) => ({
-      weaponId: s.weapon.id, cost: WEAPON_SPEC_COSTS[s.weapon.name], expected: cache.getSpec(specKey(phase, s.setup)) ?? 0,
+      weaponId: s.weapon.id,
+      cost: WEAPON_SPEC_COSTS[s.weapon.name],
+      expected: cache.getSpec(specKey(phase, s.setup)) ?? 0,
+      ticks: calculateAttackSpeed(s.setup.player, phase.monster.monster),
     })));
   }));
   return out;

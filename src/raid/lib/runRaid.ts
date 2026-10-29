@@ -91,7 +91,7 @@ export interface RaidResult {
   phases: ResultPhase[];
   /** Per phase key, every weapon the loadout can use there, fastest first */
   options: Record<string, WeaponOption[]>;
-  /** Per phase key, spec weapons by damage per 1% energy, best first */
+  /** Per phase key, spec weapons by the spec's damage per second, best first */
   specs: Record<string, SpecRank[]>;
 }
 

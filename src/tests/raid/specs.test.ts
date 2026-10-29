@@ -14,14 +14,15 @@ const ZCB = 26374;
 const KISTEN = 33631;
 
 describe('rankSpecs', () => {
-  test('ranks by expected damage per 1% energy, best first, leaving out specs without damage', () => {
+  test('ranks by damage per second of the spec, best first, leaving out specs without damage', () => {
     const ranked = rankSpecs([
-      { weaponId: ZCB, cost: 75, expected: 90 },
-      { weaponId: KISTEN, cost: 50, expected: 70 },
-      { weaponId: 1, cost: 50, expected: 0 },
+      // a slow spec: more damage, but over 9 ticks
+      { weaponId: 11235, cost: 55, expected: 100, ticks: 9 },
+      { weaponId: KISTEN, cost: 50, expected: 70, ticks: 4 },
+      { weaponId: 1, cost: 50, expected: 0, ticks: 4 },
     ]);
-    expect(ranked.map((r) => r.weaponId)).toEqual([KISTEN, ZCB]);
-    expect(ranked[0].perEnergy).toBeCloseTo(1.4);
+    expect(ranked.map((r) => r.weaponId)).toEqual([KISTEN, 11235]);
+    expect(ranked[0].dps).toBeCloseTo(70 / 2.4);
   });
 });
 

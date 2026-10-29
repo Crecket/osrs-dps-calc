@@ -60,7 +60,7 @@ const result = (settings: RaidSettings): RaidResult => ({
   options: { 'bork:0': [{ weaponId: 20997, dps: 10, seconds: 150 }, { weaponId: 4151, dps: 5, seconds: 300 }] },
   specs: {
     'bork:0': [{
-      weaponId: 26374, cost: 75, expected: 90, perEnergy: 1.2,
+      weaponId: 26374, cost: 75, expected: 90, dps: 30,
     }],
   },
 });
@@ -224,7 +224,7 @@ describe('RaidPage', () => {
     await act(async () => button(container, 'Find raid gear')!.click());
     await wait(20);
     const spec = container.querySelector('[data-testid=spec-cell]')!;
-    expect(spec.textContent).toContain('1.20 / 1%');
+    expect(spec.textContent).toContain('30.00 dps');
     expect(spec.getAttribute('data-tooltip-content')).toContain('Zaryte crossbow');
     await unmount();
   });

@@ -8,7 +8,7 @@ import {
 } from '@/raid/components/items';
 import { DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS, PhasePart } from '@/raid/types';
 
-// spec weapons shown per phase, best damage per 1% energy first
+// spec weapons shown per phase, best spec damage per second first
 const SPECS_SHOWN = 3;
 
 const MELEE: BestStyle[] = ['stab', 'slash', 'crush'];
@@ -24,6 +24,8 @@ const partsLabel = (parts: PhasePart[]) => parts.map((p) => `${Math.round(p.shar
 const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
   const menu = useItemMenu();
   const bosses = [...new Map(result.phases.map((p) => [p.bossId, p.bossName])).entries()];
+  // a result saved before specs were ranked by damage per second has no dps; it shows no specs until the next run
+  const specsOf = (key: string) => (result.specs?.[key] ?? []).filter((sp) => typeof sp.dps === 'number');
   // a phase with parts has a pick per part
   const pickSeconds = new Map<string, number>();
   result.plan.picks.forEach((p) => pickSeconds.set(p.key, (pickSeconds.get(p.key) ?? 0) + p.seconds));
@@ -69,20 +71,20 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
                   ))}
                   {(result.options[p.key] ?? []).length === 0 && <span className="text-xs text-gray-500 dark:text-gray-300">No usable setup</span>}
                 </div>
-                {(result.specs?.[p.key] ?? []).length > 0 && (
+                {specsOf(p.key).length > 0 && (
                   <div className="flex flex-wrap items-start gap-2 pl-3 border-l border-body-300 dark:border-dark-200">
                     <span className="text-xs text-gray-500 dark:text-gray-300 w-10">Specs</span>
-                    {result.specs[p.key].slice(0, SPECS_SHOWN).map((sp) => (
+                    {specsOf(p.key).slice(0, SPECS_SHOWN).map((sp) => (
                       <div
                         key={sp.weaponId}
                         data-testid="spec-cell"
                         className="w-16 flex flex-col items-center text-xs tabular-nums"
                         data-tooltip-id="tooltip"
-                        data-tooltip-content={`${itemById(sp.weaponId)?.name}: ${sp.expected.toFixed(1)} expected per ${sp.cost}% spec`}
+                        data-tooltip-content={`${itemById(sp.weaponId)?.name}: ${sp.expected.toFixed(1)} expected per ${sp.cost}% spec, ${sp.dps.toFixed(2)} damage per second`}
                         onContextMenu={menu.open(sp.weaponId)}
                       >
                         <span className="w-9 h-9 flex items-center justify-center"><ItemImage id={sp.weaponId} /></span>
-                        <span>{`${sp.perEnergy.toFixed(2)} / 1%`}</span>
+                        <span>{`${sp.dps.toFixed(2)} dps`}</span>
                       </div>
                     ))}
                   </div>
