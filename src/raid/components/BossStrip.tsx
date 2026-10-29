@@ -17,7 +17,7 @@ const BossStrip: React.FC = observer(() => {
   const phases = routePhases(raid, settings.route, settings.counts, settings.excludedIds);
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-2" aria-label="Defence reduction per boss">
+    <div className="flex flex-wrap gap-3" aria-label="Defence reduction per boss">
       {routeBosses(raid, settings.route).map((boss) => (
         <div key={boss.id} className="shrink-0 rounded border border-body-300 dark:border-dark-200 p-2 flex flex-col gap-1.5">
           <h4 className="font-serif font-bold text-sm">{boss.name}</h4>

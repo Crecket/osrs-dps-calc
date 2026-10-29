@@ -1,5 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 import { getMonsters } from '@/lib/Monsters';
+import { scaleMonster } from '@/lib/MonsterScaling';
 import { RAIDS, raidById } from '@/raid/raids';
 import { routeBosses, routePhases } from '@/raid/lib/route';
 
@@ -28,7 +29,7 @@ describe('raid definitions', () => {
     const bork = phases.find((p) => p.phase.key === 'bork:0')!;
     expect(bork.monster.monster.inputs.defenceReductions.elderMaul).toBe(1);
     const flying = phases.find((p) => p.phase.key === 'guardian:0')!;
-    expect(flying.monster.monster.inputs.defenceReductions.tonalztic).toBe(1);
+    expect(flying.monster.monster.inputs.defenceReductions.tonalztic).toBe(4);
     expect(flying.monster.monster.version).toBe('Flying');
   });
 
@@ -38,5 +39,31 @@ describe('raid definitions', () => {
       expect(p.counts.elderMaul).toBe(0);
       expect(p.monster.monster.inputs.defenceReductions.elderMaul).toBe(0);
     });
+  });
+
+  test('default specs reach the optimal defence from the strategy list', () => {
+    // Defence after the default specs, from the community's optimal spec list
+    const expected: Record<string, number> = {
+      'guardian:0': 156,
+      'guardian:1': 156,
+      'bork:0': 180,
+      // the list says 120; the engine's data floors Ezekiel at 78 (60% of 130)
+      'ezekiel:0': 78,
+      'moia:0': 117,
+      'dreadnoth:0': 0,
+      'dagonhai:0': 0,
+      'dagonhai:1': 0,
+      'dagonhai:2': 0,
+      'xarth:0': 102,
+      'ocellus:0': 129,
+      'ocellus:1': 0,
+      'ocellus:2': 150,
+    };
+    const all = [
+      ...routePhases(fa, { second: 'bork', third: 'moia', fourth: 'dagonhai' }, {}, []),
+      ...routePhases(fa, { second: 'ezekiel', third: 'dreadnoth', fourth: 'xarth' }, {}, []),
+    ];
+    const got = Object.fromEntries(all.map((p) => [p.phase.key, scaleMonster(p.monster.monster).skills.def]));
+    expect(got).toEqual(expected);
   });
 });

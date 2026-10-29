@@ -1,6 +1,6 @@
 import { DefenceCounts, RaidDef } from '@/raid/types';
 
-// Defence reduction defaults from the OSRS Wiki's Fractured Archive strategy page
+// Defence reduction defaults: the community's optimal specs per boss (Ralos counts hitsplats, as the engine does)
 const specs = (elderMaul: number, tonalztic: number): DefenceCounts => ({ elderMaul, dwh: 0, tonalztic });
 
 const fracturedArchive: RaidDef = {
@@ -15,10 +15,10 @@ const fracturedArchive: RaidDef = {
         name: 'Archive Guardian',
         phases: [
           {
-            key: 'guardian:0', label: 'Flying', monsterId: 16659, version: 'Flying', defaults: specs(1, 1),
+            key: 'guardian:0', label: 'Flying', monsterId: 16659, version: 'Flying', defaults: specs(0, 4),
           },
           {
-            key: 'guardian:1', label: 'Grounded', monsterId: 16659, version: 'Grounded', defaults: specs(1, 1),
+            key: 'guardian:1', label: 'Grounded', monsterId: 16659, version: 'Grounded', defaults: specs(0, 4),
           },
         ],
       }],
@@ -60,7 +60,7 @@ const fracturedArchive: RaidDef = {
           id: 'dreadnoth',
           name: 'Dreadnoth',
           phases: [{
-            key: 'dreadnoth:0', label: 'Dreadnoth', monsterId: 16665, version: '', defaults: specs(1, 3),
+            key: 'dreadnoth:0', label: 'Dreadnoth', monsterId: 16665, version: '', defaults: specs(0, 5),
           }],
         },
       ],
@@ -102,10 +102,10 @@ const fracturedArchive: RaidDef = {
         name: 'Ocellus',
         phases: [
           {
-            key: 'ocellus:0', label: 'Phase 1', monsterId: 16673, version: 'Phase 1', defaults: specs(2, 0),
+            key: 'ocellus:0', label: 'Phase 1', monsterId: 16673, version: 'Phase 1', defaults: specs(0, 2),
           },
           {
-            key: 'ocellus:1', label: 'The Blade', monsterId: 16675, version: 'Phase 2', defaults: specs(0, 0),
+            key: 'ocellus:1', label: 'The Blade', monsterId: 16675, version: 'Phase 2', defaults: specs(2, 4),
           },
           {
             key: 'ocellus:2', label: 'Phase 3', monsterId: 16677, version: 'Phase 3', defaults: specs(2, 0),

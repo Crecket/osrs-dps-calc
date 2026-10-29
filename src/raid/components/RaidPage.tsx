@@ -129,7 +129,7 @@ const RaidPage: React.FC = observer(() => {
 
   return (
     <RaidStoreContext.Provider value={store}>
-      <div className="max-w-[1420px] mx-auto mt-4 mb-8 px-2 flex flex-col gap-3">
+      <div className="max-w-[1920px] mx-auto mt-4 mb-8 px-2 flex flex-col gap-3">
         <div role="note" className="flex items-start gap-2 px-4 py-2 rounded bg-orange-100 dark:bg-orange-500/60 text-orange-500 dark:text-orange-100 text-sm border border-orange-200 dark:border-orange-400">
           <IconAlertTriangle size={18} className="shrink-0 mt-px" aria-hidden />
           <span>
