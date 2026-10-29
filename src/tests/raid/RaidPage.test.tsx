@@ -117,6 +117,8 @@ describe('RaidPage', () => {
     await act(async () => budget.dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
     await wait(20);
     expect(container.textContent).toContain('Inputs changed');
+    // only the warning: the results stay as they are
+    expect(container.querySelector('.opacity-60')).toBeNull();
     expect(mockRunRaid).toHaveBeenCalledTimes(1);
     await unmount();
   });
@@ -180,6 +182,17 @@ describe('RaidPage', () => {
     await act(async () => toggle('magic').click());
     expect(toggle('magic').getAttribute('aria-pressed')).toBe('true');
     expect(container.textContent).toContain('Inputs changed');
+    await unmount();
+  });
+
+  test('supplies show their item icons', async () => {
+    const { container, unmount } = await mount();
+    await act(async () => button(container, 'Find raid gear')!.click());
+    await wait(20);
+    const inv = container.querySelector('[data-testid=inventory-grid]')!;
+    expect(inv.querySelectorAll('img[alt="Saradomin brew(4)"]')).toHaveLength(6);
+    expect(inv.querySelectorAll('img[alt="Super restore(4)"]')).toHaveLength(5);
+    expect(inv.querySelectorAll('img[alt="Rune pouch"]')).toHaveLength(1);
     await unmount();
   });
 

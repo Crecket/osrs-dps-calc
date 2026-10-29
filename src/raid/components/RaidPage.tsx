@@ -223,7 +223,7 @@ const RaidPage: React.FC = observer(() => {
                 </div>
               )}
             >
-              <div className={`p-4 flex flex-col gap-4 ${stale || running ? 'opacity-60' : ''}`}>
+              <div className={`p-4 flex flex-col gap-4 ${running ? 'opacity-60' : ''}`}>
                 <BossStrip />
                 {result ? (
                   <>

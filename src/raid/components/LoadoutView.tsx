@@ -7,6 +7,7 @@ import { RaidResult } from '@/raid/lib/runRaid';
 import { InvCell, SupplyLabel, WornSlot } from '@/raid/lib/layout';
 import { itemPrice, Prices } from '@/raid/lib/prices';
 import { getCanonicalItemId } from '@/lib/Equipment';
+import superCombatIcon from '@/public/img/potions/Super combat.png';
 import { formatGp, formatTime } from '@/raid/lib/format';
 import {
   ItemImage, ItemMenu, itemById, priceLabel, useItemMenu,
@@ -21,14 +22,20 @@ const EQUIPMENT_GRID: (WornSlot | null)[] = [
   'hands', 'feet', 'ring',
 ];
 
-const SUPPLY_STYLE: Record<SupplyLabel, string> = {
-  Brew: 'bg-yellow-200 text-yellow-900 dark:bg-yellow-700/60 dark:text-yellow-100',
-  Restore: 'bg-pink-200 text-pink-900 dark:bg-pink-700/60 dark:text-pink-100',
-  'Rune pouch': 'bg-amber-700/30 text-amber-900 dark:text-amber-100',
-  Reserved: 'bg-gray-300/60 text-gray-600 dark:bg-dark-500 dark:text-gray-300',
+// the OSRS Wiki's item icons; reserved slots (boost potions and the like) show a faded potion
+const WIKI_IMAGES = 'https://oldschool.runescape.wiki/images';
+const SUPPLY_ICON: Record<SupplyLabel, { src: string; alt: string; faded?: boolean }> = {
+  Brew: { src: `${WIKI_IMAGES}/Saradomin_brew(4).png`, alt: 'Saradomin brew(4)' },
+  Restore: { src: `${WIKI_IMAGES}/Super_restore(4).png`, alt: 'Super restore(4)' },
+  'Rune pouch': { src: `${WIKI_IMAGES}/Rune_pouch.png`, alt: 'Rune pouch' },
+  Reserved: { src: superCombatIcon.src, alt: 'Reserved slot', faded: true },
+};
+const SUPPLY_TOOLTIP: Record<SupplyLabel, string> = {
+  Brew: 'Saradomin brew', Restore: 'Super restore', 'Rune pouch': 'Rune pouch', Reserved: 'Reserved (boost potions and the like)',
 };
 
-const cellClass = 'w-9 h-9 flex items-center justify-center rounded border border-[#3e3529] bg-[#3e3529]/70';
+const cellClass = 'w-12 h-12 flex items-center justify-center rounded border border-[#3e3529] bg-[#3e3529]/70';
+const ICON_SIZE = 36;
 
 const LoadoutView: React.FC<{ result: RaidResult; prices: Prices | null }> = observer(({ result, prices }) => {
   const store = useRaidStore();
@@ -45,16 +52,17 @@ const LoadoutView: React.FC<{ result: RaidResult; prices: Prices | null }> = obs
       data-tooltip-content={`${itemById(id)?.name ?? id} — ${priceLabel(id, prices, owned)}`}
       onContextMenu={menu.open(id)}
     >
-      <ItemImage id={id} />
+      <ItemImage id={id} size={ICON_SIZE} />
     </div>
   );
 
   const invCell = (cell: InvCell, i: number) => {
     if (cell === null) return <div key={i} className={cellClass} data-testid="inv-cell" />;
     if (cell.kind === 'item') return <div key={i} data-testid="inv-cell">{itemCell(cell.itemId, `i${i}`)}</div>;
+    const icon = SUPPLY_ICON[cell.label];
     return (
-      <div key={i} data-testid="inv-cell" className={`${cellClass} text-[9px] leading-tight text-center font-semibold ${SUPPLY_STYLE[cell.label]}`}>
-        {cell.label}
+      <div key={i} data-testid="inv-cell" className={cellClass} data-tooltip-id="tooltip" data-tooltip-content={SUPPLY_TOOLTIP[cell.label]}>
+        <img style={{ maxWidth: ICON_SIZE, maxHeight: ICON_SIZE }} className={icon.faded ? 'opacity-40 grayscale' : ''} src={icon.src} alt={icon.alt} loading="lazy" />
       </div>
     );
   };
@@ -101,7 +109,7 @@ const LoadoutView: React.FC<{ result: RaidResult; prices: Prices | null }> = obs
             const id = slot ? layout.worn[slot] : undefined;
             // the grid's positions never move, so they make stable keys
             const key = slot ?? `gap${i}`;
-            if (slot === null || (slot === 'quiverAmmo' && id === undefined)) return <div key={key} className="w-9 h-9" />;
+            if (slot === null || (slot === 'quiverAmmo' && id === undefined)) return <div key={key} className="w-12 h-12" />;
             if (id === undefined) {
               return <div key={key} className={`${cellClass} opacity-50`} data-tooltip-id="tooltip" data-tooltip-content={`No ${slot as keyof PlayerEquipment}`} />;
             }
