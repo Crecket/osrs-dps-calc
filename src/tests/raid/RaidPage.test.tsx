@@ -58,6 +58,11 @@ const result = (settings: RaidSettings): RaidResult => ({
     key: 'bork:0', label: 'Bork', bossId: 'bork', bossName: 'Bork', hp: 1500, counts: { elderMaul: 2, dwh: 0, tonalztic: 0 },
   }],
   options: { 'bork:0': [{ weaponId: 20997, dps: 10, seconds: 150 }, { weaponId: 4151, dps: 5, seconds: 300 }] },
+  specs: {
+    'bork:0': [{
+      weaponId: 26374, cost: 75, expected: 90, perEnergy: 1.2,
+    }],
+  },
 });
 
 const mount = async () => {
@@ -193,6 +198,16 @@ describe('RaidPage', () => {
     expect(inv.querySelectorAll('img[alt="Saradomin brew(4)"]')).toHaveLength(6);
     expect(inv.querySelectorAll('img[alt="Super restore(4)"]')).toHaveLength(5);
     expect(inv.querySelectorAll('img[alt="Rune pouch"]')).toHaveLength(1);
+    await unmount();
+  });
+
+  test('boss rows show the best spec weapons by damage per 1% energy', async () => {
+    const { container, unmount } = await mount();
+    await act(async () => button(container, 'Find raid gear')!.click());
+    await wait(20);
+    const spec = container.querySelector('[data-testid=spec-cell]')!;
+    expect(spec.textContent).toContain('1.20 / 1%');
+    expect(spec.getAttribute('data-tooltip-content')).toContain('Zaryte crossbow');
     await unmount();
   });
 

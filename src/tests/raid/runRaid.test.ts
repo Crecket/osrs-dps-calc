@@ -116,6 +116,16 @@ describe('runRaid', () => {
     expect(result.layout.overflow).toBe(0);
   });
 
+  test('ranks spec weapons per phase', async () => {
+    const rows = {
+      run: jest.fn(async (setups: { id: string; player: { equipment: { weapon: { id: number } | null } } }[]) => setups
+        .map((st) => ({ setupId: st.id, spec: { expected: st.player.equipment.weapon?.id === 26374 ? 90 : 0 } }))),
+      cancel: jest.fn(),
+    };
+    const result = await runRaid(defaultSettings(), null, { ...(deps as object), rows } as never, () => {}, new SearchCache(memoryStorage()), search);
+    expect(result.specs[result.phases[0].key].map((r) => r.weaponId)).toEqual([26374]);
+  });
+
   test('a cheap change re-plans from the cache without searching', async () => {
     const cache = new SearchCache(memoryStorage());
     const settings = defaultSettings();

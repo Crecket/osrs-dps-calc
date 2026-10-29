@@ -20,6 +20,7 @@ import {
   Candidate, missingSearches, raidCandidates, RaidProgress, tierExclusions,
 } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
+import { SpecRank, specRanking } from '@/raid/lib/specs';
 import { assembleLoadout, RaidPlan, THRALL_DPS } from '@/raid/lib/assemble';
 import {
   freeSwitchSlots, Layout, layoutLoadout, Supplies,
@@ -88,6 +89,8 @@ export interface RaidResult {
   phases: ResultPhase[];
   /** Per phase key, every weapon the loadout can use there, fastest first */
   options: Record<string, WeaponOption[]>;
+  /** Per phase key, spec weapons by damage per 1% energy, best first */
+  specs: Record<string, SpecRank[]>;
 }
 
 /** Per phase, the best fitting setup of each weapon the loadout holds */
@@ -201,6 +204,7 @@ export const runRaid = async (
     plan = assemble(maxItems);
     layout = lay(plan);
   }
+  const specs = await specRanking(phases, candidates, settings.excludedIds.map(getCanonicalItemId), deps, cache);
   const hpByKey = new Map(phases.map((p) => [p.phase.key, p.monster.monster.skills.hp]));
   return {
     plan,
@@ -214,5 +218,6 @@ export const runRaid = async (
       counts: p.counts,
     })),
     options: weaponOptions(candidates, plan.itemIds, hpByKey, extraDps),
+    specs,
   };
 };

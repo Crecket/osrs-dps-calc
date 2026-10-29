@@ -1,74 +1,92 @@
 import { describe, expect, test } from '@jest/globals';
-import {
-  buySpecWeapons, planRoomSpecs, roomEnergy, SpecOption,
-} from '@/raid/lib/specs';
+import { BulkRow, BulkSetup } from '@/bulk/types';
+import { raidById } from '@/raid/raids';
+import { routePhases } from '@/raid/lib/route';
+import { SearchCache } from '@/raid/lib/searchCache';
+import { Candidate } from '@/raid/lib/candidates';
+import { buildPlayer } from '@/best/lib/search';
+import { generateEmptyPlayer } from '@/state';
+import { availableEquipment } from '@/lib/Equipment';
+import { getCombatStylesForCategory } from '@/utils';
+import { rankSpecs, specRanking } from '@/raid/lib/specs';
 
 const ZCB = 26374;
 const KISTEN = 33631;
-const CLAWS = 13652;
 
-const option = (weaponId: number, cost: number, expected: number, phaseKey = 'p0', mainDps = 10, attackSeconds = 3): SpecOption => ({
-  weaponId, cost, phaseKey, expected, mainDps, attackSeconds,
-});
-
-describe('roomEnergy', () => {
-  test('100% per room plus 10% every 30 seconds; defence specs come from the team', () => {
-    expect(roomEnergy(0)).toBe(100);
-    expect(roomEnergy(89)).toBe(120);
-    expect(roomEnergy(300)).toBe(200);
+describe('rankSpecs', () => {
+  test('ranks by expected damage per 1% energy, best first, leaving out specs without damage', () => {
+    const ranked = rankSpecs([
+      { weaponId: ZCB, cost: 75, expected: 90 },
+      { weaponId: KISTEN, cost: 50, expected: 70 },
+      { weaponId: 1, cost: 50, expected: 0 },
+    ]);
+    expect(ranked.map((r) => r.weaponId)).toEqual([KISTEN, ZCB]);
+    expect(ranked[0].perEnergy).toBeCloseTo(1.4);
   });
 });
 
-describe('planRoomSpecs', () => {
-  test('a spec saves its damage over the main DPS minus its own attack time', () => {
-    // 60 expected at 10 DPS saves 6 s, minus a 3 s attack = 3 s
-    const room = planRoomSpecs(100, [option(ZCB, 75, 60)], new Set([ZCB]));
-    expect(room.picks).toEqual([{
-      weaponId: ZCB, phaseKey: 'p0', count: 1, seconds: 3,
-    }]);
-    expect(room.seconds).toBeCloseTo(3);
+const memoryStorage = () => {
+  const data = new Map<string, unknown>();
+  return {
+    getItem: async <T>(key: string) => (data.get(key) as T) ?? null,
+    setItem: async <T>(key: string, value: T) => {
+      data.set(key, value);
+      return value;
+    },
+  };
+};
+
+describe('specRanking', () => {
+  const fa = raidById('fractured-archive');
+  const [phase] = routePhases(fa, fa.defaultRoute, {}, []);
+  const tbow = availableEquipment.find((e) => e.id === 20997)!;
+  const rapid = getCombatStylesForCategory(tbow.category).find((s) => s.stance === 'Rapid')!;
+  const candidate: Candidate = {
+    phaseKey: phase.phase.key,
+    style: 'ranged',
+    dps: 10,
+    itemIds: [20997, 11212],
+    setup: {
+      id: 'c',
+      name: 'c',
+      player: buildPlayer(generateEmptyPlayer(), {
+        style: 'ranged', weaponId: 20997, combatStyle: rapid, ammoId: 11212, spellName: null, dartId: null,
+      }, {}),
+    } as BulkSetup,
+  };
+  // only the Zaryte crossbow's spec does damage
+  const rows = (calls: string[][]) => ({
+    run: async (setups: BulkSetup[]) => {
+      calls.push(setups.map((st) => st.player.equipment.weapon!.name));
+      return setups.map((st) => ({
+        setupId: st.id,
+        spec: { expected: st.player.equipment.weapon?.id === ZCB ? 90 : 0 },
+      }) as BulkRow);
+    },
+    cancel: () => {},
   });
 
-  test('picks the best mix for the energy', () => {
-    // 100%: two kisten specs (2 × 2 s) beat one ZCB spec (3 s) with 25% left over
-    const room = planRoomSpecs(100, [option(ZCB, 75, 60), option(KISTEN, 50, 50)], new Set([ZCB, KISTEN]));
-    expect(room.picks).toEqual([{
-      weaponId: KISTEN, phaseKey: 'p0', count: 2, seconds: 4,
-    }]);
+  test('ranks spec weapons per phase on the phase\'s setup of their style, cached', async () => {
+    const calls: string[][] = [];
+    const cache = new SearchCache(memoryStorage());
+    const deps = { search: { run: async () => [], cancel: () => {} }, rows: rows(calls) } as never;
+    const ranking = await specRanking([phase], [candidate], [], deps, cache);
+    expect(ranking[phase.phase.key].map((r) => r.weaponId)).toEqual([ZCB]);
+    // the crossbow fires bolts, not the bow's arrows
+    expect(calls.flat()).toContain('Zaryte crossbow');
+    // defence weapons are not ranked
+    expect(calls.flat()).not.toContain('Elder maul');
+    expect(calls.flat()).not.toContain('Tonalztics of Ralos');
+
+    calls.length = 0;
+    await specRanking([phase], [candidate], [], deps, cache);
+    expect(calls).toEqual([]);
   });
 
-  test('uses only weapons the loadout holds, and nothing that loses time', () => {
-    expect(planRoomSpecs(100, [option(ZCB, 75, 60)], new Set()).picks).toEqual([]);
-    expect(planRoomSpecs(100, [option(CLAWS, 50, 20)], new Set([CLAWS])).picks).toEqual([]);
-  });
-
-  test('specs on the phase where they save the most', () => {
-    const room = planRoomSpecs(50, [option(KISTEN, 50, 50, 'bork'), option(KISTEN, 50, 50, 'smorks', 5)], new Set([KISTEN]));
-    expect(room.picks).toEqual([{
-      weaponId: KISTEN, phaseKey: 'smorks', count: 1, seconds: 7,
-    }]);
-  });
-
-  test('no energy, no specs', () => {
-    expect(planRoomSpecs(0, [option(KISTEN, 50, 50)], new Set([KISTEN])).seconds).toBe(0);
-  });
-});
-
-describe('buySpecWeapons', () => {
-  const rooms = [
-    { bossId: 'a', energy: 100, options: [option(ZCB, 75, 60), option(KISTEN, 50, 50)] },
-    { bossId: 'b', energy: 100, options: [option(ZCB, 75, 90, 'p1')] },
-  ];
-
-  test('buys the spec weapons that save the most per GP while budget and slots allow', () => {
-    const prices: Record<number, number> = { [ZCB]: 300, [KISTEN]: 100 };
-    const bought = buySpecWeapons(rooms, [], (id) => prices[id], 1000, 2);
-    expect(bought.sort()).toEqual([KISTEN, ZCB].sort());
-    expect(buySpecWeapons(rooms, [], (id) => prices[id], 1000, 1)).toHaveLength(1);
-    expect(buySpecWeapons(rooms, [], (id) => prices[id], 200, 2)).toEqual([KISTEN]);
-  });
-
-  test('a weapon already held is not bought again', () => {
-    expect(buySpecWeapons(rooms, [ZCB, KISTEN], () => 1, 1000, 2)).toEqual([]);
+  test('excluded spec weapons are left out', async () => {
+    const calls: string[][] = [];
+    const deps = { search: { run: async () => [], cancel: () => {} }, rows: rows(calls) } as never;
+    await specRanking([phase], [candidate], [ZCB], deps, new SearchCache(memoryStorage()));
+    expect(calls.flat()).not.toContain('Zaryte crossbow');
   });
 });

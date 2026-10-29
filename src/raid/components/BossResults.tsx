@@ -7,6 +7,9 @@ import {
 } from '@/raid/components/items';
 import { DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS } from '@/raid/types';
 
+// spec weapons shown per phase, best damage per 1% energy first
+const SPECS_SHOWN = 3;
+
 /** GearScape-style rows: per boss its specs, and per phase every weapon the loadout can use, the fastest in green */
 const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
   const menu = useItemMenu();
@@ -53,6 +56,24 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
                   ))}
                   {(result.options[p.key] ?? []).length === 0 && <span className="text-xs text-gray-500 dark:text-gray-300">No usable setup</span>}
                 </div>
+                {(result.specs?.[p.key] ?? []).length > 0 && (
+                  <div className="flex flex-wrap items-start gap-2 pl-3 border-l border-body-300 dark:border-dark-200">
+                    <span className="text-xs text-gray-500 dark:text-gray-300 w-10">Specs</span>
+                    {result.specs[p.key].slice(0, SPECS_SHOWN).map((sp) => (
+                      <div
+                        key={sp.weaponId}
+                        data-testid="spec-cell"
+                        className="w-16 flex flex-col items-center text-xs tabular-nums"
+                        data-tooltip-id="tooltip"
+                        data-tooltip-content={`${itemById(sp.weaponId)?.name}: ${sp.expected.toFixed(1)} expected per ${sp.cost}% spec`}
+                        onContextMenu={menu.open(sp.weaponId)}
+                      >
+                        <span className="w-9 h-9 flex items-center justify-center"><ItemImage id={sp.weaponId} /></span>
+                        <span>{`${sp.perEnergy.toFixed(2)} / 1%`}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

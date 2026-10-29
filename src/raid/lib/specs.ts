@@ -1,128 +1,125 @@
 /**
- * Special attacks between the defence reduction specs: per room (one boss, energy back to 100% at the start), which
- * spec weapons to use on which phase, and which spec weapons are worth buying. Pure arithmetic over precomputed spec
- * damage.
+ * Which spec weapon is best on each phase: expected spec damage per 1% energy, on the phase's best setup of the
+ * weapon's style. Defence reduction weapons are left out. Main thread only (it runs computeRow on the pools).
  */
-// energy is planned in steps of 5%, which every spec cost is a multiple of
-const STEP = 5;
-const MIN_GAIN = 1e-6;
-// added to a weapon's price when ranking purchases, so cheap weapons don't win on price alone
-const COST_SMOOTHING = 100_000;
+import { AmmoApplicability, ammoApplicability, WEAPON_SPEC_COSTS } from '@/lib/Equipment';
+import { EquipmentPiece } from '@/types/Player';
+import { getCombatStylesForCategory } from '@/utils';
+import { bestPool } from '@/best/lib/candidates';
+import { BestRunDeps } from '@/best/lib/run';
+import { hashKey } from '@/best/lib/resultCache';
+import { BulkSetup, GEAR_SLOT_ORDER } from '@/bulk/types';
+import { DEFENCE_WEAPON_IDS, RoutePhase } from '@/raid/types';
+import { Candidate } from '@/raid/lib/candidates';
+import { SearchCache } from '@/raid/lib/searchCache';
 
-/** One spec weapon on one phase */
-export interface SpecOption {
+export interface SpecRank {
   weaponId: number;
   /** Spec energy, in % */
   cost: number;
-  phaseKey: string;
   /** Expected damage of one spec */
   expected: number;
-  /** DPS of the phase's normal setup, which the spec's attack replaces */
-  mainDps: number;
-  /** How long the spec attack takes */
-  attackSeconds: number;
+  /** Expected damage per 1% energy */
+  perEnergy: number;
 }
 
-export interface SpecPick {
-  weaponId: number;
-  phaseKey: string;
-  count: number;
-  /** Seconds the specs save together */
-  seconds: number;
-}
+/** Best first by damage per 1% energy; specs without damage are left out */
+export const rankSpecs = (specs: Omit<SpecRank, 'perEnergy'>[]): SpecRank[] => specs
+  .filter((s) => s.expected > 0 && s.cost > 0)
+  .map((s) => ({ ...s, perEnergy: s.expected / s.cost }))
+  .sort((a, b) => b.perEnergy - a.perEnergy);
 
-export interface RoomSpecs {
-  picks: SpecPick[];
-  seconds: number;
-}
+type Group = 'melee' | 'ranged' | 'magic';
+const groupOfWeapon = (w: EquipmentPiece): Group => {
+  const types = getCombatStylesForCategory(w.category).map((s) => s.type);
+  if (types.includes('ranged')) return 'ranged';
+  if (types.includes('magic')) return 'magic';
+  return 'melee';
+};
+const groupOfStyle = (style: string): Group => (style === 'ranged' || style === 'magic' ? style : 'melee');
 
-export interface SpecRoom {
-  bossId: string;
-  /** Energy left for specs after the defence reduction */
-  energy: number;
-  options: SpecOption[];
-}
-
-/** Energy regenerates 10% every 30 seconds (without a Lightbearer) */
-const REGEN_SECONDS_PER_10 = 30;
-
-/**
- * Your energy for damage specs in a room: 100% at the start plus what regenerates over the room's kill time. The
- * defence reduction specs come from the team, so they don't use it.
- */
-export const roomEnergy = (roomSeconds: number): number => 100 + Math.floor(roomSeconds / REGEN_SECONDS_PER_10) * 10;
-
-/** Seconds one spec saves: its damage would take damage / DPS with the normal setup, the spec itself takes its attack */
-export const specSaving = (o: SpecOption): number => (o.mainDps > 0 ? o.expected / o.mainDps - o.attackSeconds : 0);
-
-/**
- * The specs that save the most time with `energy`, using only weapons in `held`: an unbounded knapsack over energy,
- * each weapon on the phase where one spec saves the most.
- */
-export const planRoomSpecs = (energy: number, options: SpecOption[], held: Set<number>): RoomSpecs => {
-  // per weapon, its best phase
-  const best = new Map<number, SpecOption>();
-  options.filter((o) => held.has(o.weaponId) && o.cost > 0 && specSaving(o) > MIN_GAIN).forEach((o) => {
-    const current = best.get(o.weaponId);
-    if (!current || specSaving(o) > specSaving(current)) best.set(o.weaponId, o);
-  });
-  const usable = [...best.values()];
-  const steps = Math.floor(energy / STEP);
-  // dp[e]: most seconds saved with e steps of energy, and the spec that last got there
-  const dp = Array.from({ length: steps + 1 }, () => ({ seconds: 0, last: null as SpecOption | null, from: -1 }));
-  for (let e = 1; e <= steps; e++) {
-    dp[e] = { ...dp[e - 1], last: null, from: e - 1 };
-    usable.forEach((o) => {
-      const c = Math.ceil(o.cost / STEP);
-      if (c > e) return;
-      const seconds = dp[e - c].seconds + specSaving(o);
-      if (seconds > dp[e].seconds + MIN_GAIN) dp[e] = { seconds, last: o, from: e - c };
-    });
+let specWeapons: EquipmentPiece[] | null = null;
+let ammo: EquipmentPiece[] = [];
+const loadPool = () => {
+  if (!specWeapons) {
+    const pool = bestPool();
+    const defence = new Set(Object.values(DEFENCE_WEAPON_IDS));
+    specWeapons = pool.filter((e) => e.slot === 'weapon' && WEAPON_SPEC_COSTS[e.name] !== undefined && !defence.has(e.id));
+    ammo = pool.filter((e) => e.slot === 'ammo');
   }
-  const counts = new Map<SpecOption, number>();
-  for (let e = steps; e > 0; e = dp[e].from) {
-    const { last } = dp[e];
-    if (last) counts.set(last, (counts.get(last) ?? 0) + 1);
-  }
-  const picks = [...counts].map(([o, count]) => ({
-    weaponId: o.weaponId, phaseKey: o.phaseKey, count, seconds: count * specSaving(o),
-  }));
-  return { picks, seconds: dp[steps].seconds };
+  return specWeapons;
 };
 
-const savedWith = (rooms: SpecRoom[], held: Set<number>) => rooms
-  .reduce((n, r) => n + planRoomSpecs(r.energy, r.options, held).seconds, 0);
+const DRAGON_DART = 11230;
+
+/** The candidate's setup with `weapon` in hand: a stance of the candidate's attack type if it has one, valid ammo */
+const withWeapon = (c: Candidate, weapon: EquipmentPiece): BulkSetup => {
+  const { player } = c.setup;
+  const stances = getCombatStylesForCategory(weapon.category);
+  const style = stances.find((s) => s.type === player.style.type) ?? stances.find((s) => groupOfStyle(s.type ?? '') === groupOfWeapon(weapon)) ?? stances[0];
+  let ammoItem = player.equipment.ammo;
+  if (ammoApplicability(weapon.id, ammoItem?.id) === AmmoApplicability.INVALID) {
+    ammoItem = ammo.filter((a) => ammoApplicability(weapon.id, a.id) === AmmoApplicability.INCLUDED)
+      .sort((a, b) => b.bonuses.ranged_str - a.bonuses.ranged_str)[0] ?? null;
+  }
+  const hand = /blowpipe/i.test(weapon.name)
+    ? { ...weapon, itemVars: { blowpipeDartId: DRAGON_DART, blowpipeDartName: 'Dragon dart' } }
+    : weapon;
+  return {
+    id: `spec-${c.phaseKey}-${weapon.id}`,
+    name: weapon.name,
+    player: {
+      ...player,
+      style,
+      spell: null,
+      equipment: {
+        ...player.equipment, weapon: hand, ammo: ammoItem, shield: weapon.isTwoHanded ? null : player.equipment.shield,
+      },
+    },
+  };
+};
+
+const specKey = (phase: RoutePhase, setup: BulkSetup) => `spec:${hashKey(JSON.stringify({
+  monster: phase.monster.monster,
+  gear: GEAR_SLOT_ORDER.map((slot) => setup.player.equipment[slot]?.id ?? null),
+  style: setup.player.style,
+}))}`;
 
 /**
- * Spec weapons to add to the loadout, one at a time by seconds saved per GP, while they fit `budget` (GP left) and
- * `slots` (free inventory slots). Weapons in `held` are already there.
+ * Per phase key, the spec weapons ranked by damage per 1% energy. Spec damage comes from computeRow on the rows pool
+ * (concurrently), cached in `cache` so a re-plan computes nothing again.
  */
-export const buySpecWeapons = (
-  rooms: SpecRoom[],
-  held: number[],
-  priceOf: (id: number) => number,
-  budget: number,
-  slots: number,
-): number[] => {
-  const have = new Set(held);
-  const bought: number[] = [];
-  let left = budget;
-  const weapons = [...new Set(rooms.flatMap((r) => r.options.map((o) => o.weaponId)))].filter((id) => !have.has(id));
-  while (bought.length < slots) {
-    const base = savedWith(rooms, have);
-    let pick: { id: number; score: number } | null = null;
-    for (const id of weapons) {
-      if (have.has(id) || priceOf(id) > left) continue;
-      const gain = savedWith(rooms, new Set([...have, id])) - base;
-      if (gain <= MIN_GAIN) continue;
-      const score = gain / (priceOf(id) + COST_SMOOTHING);
-      if (!pick || score > pick.score) pick = { id, score };
+export const specRanking = async (
+  phases: RoutePhase[],
+  candidates: Candidate[],
+  excluded: number[],
+  deps: BestRunDeps,
+  cache: SearchCache,
+): Promise<Record<string, SpecRank[]>> => {
+  const leftOut = new Set(excluded);
+  const weapons = loadPool().filter((w) => !leftOut.has(w.id));
+  const out: Record<string, SpecRank[]> = {};
+  await Promise.all(phases.map(async (phase) => {
+    const key = phase.phase.key;
+    // per style group, the phase's fastest setup
+    const best = new Map<Group, Candidate>();
+    candidates.filter((c) => c.phaseKey === key).forEach((c) => {
+      const g = groupOfStyle(c.style);
+      if (!best.has(g) || c.dps > best.get(g)!.dps) best.set(g, c);
+    });
+    const setups = weapons.flatMap((w) => {
+      const base = best.get(groupOfWeapon(w));
+      return base ? [{ weapon: w, setup: withWeapon(base, w) }] : [];
+    });
+    const missing = setups.filter((s) => cache.getSpec(specKey(phase, s.setup)) === undefined);
+    if (missing.length > 0) {
+      const rows = await deps.rows.run(missing.map((s) => s.setup), [phase.monster], () => {}, { concurrent: true });
+      const byId = new Map((rows ?? []).map((r) => [r.setupId, r]));
+      missing.forEach((s) => cache.setSpec(specKey(phase, s.setup), byId.get(s.setup.id)?.spec?.expected ?? 0));
     }
-    if (!pick) break;
-    const { id } = pick;
-    have.add(id);
-    bought.push(id);
-    left -= priceOf(id);
-  }
-  return bought;
+    out[key] = rankSpecs(setups.map((s) => ({
+      weaponId: s.weapon.id, cost: WEAPON_SPEC_COSTS[s.weapon.name], expected: cache.getSpec(specKey(phase, s.setup)) ?? 0,
+    })));
+  }));
+  return out;
 };
