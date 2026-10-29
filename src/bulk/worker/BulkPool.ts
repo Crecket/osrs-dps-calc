@@ -23,8 +23,8 @@ const buildPayload = (jobs: [number, number][], setups: BulkSetup[], monsters: B
 };
 
 /**
- * A pool of bulk calc workers: every setup × monster of the current run is computed, in chunks of `chunkSize` jobs.
- * Starting a new run cancels the previous one.
+ * A pool of bulk calc workers: every setup × monster of a run is computed, in chunks of `chunkSize` jobs.
+ * Starting a new run cancels the previous one, unless it is concurrent.
  */
 export class BulkPool {
   private chunkSize: number;
@@ -39,7 +39,8 @@ export class BulkPool {
     this.pool = new TaskPool(opts);
   }
 
-  run(setups: BulkSetup[], monsters: BulkMonster[], onProgress: (p: BulkProgress) => void): Promise<BulkRow[]> {
+  /** @param opts.concurrent keep earlier runs going and share the workers with them */
+  run(setups: BulkSetup[], monsters: BulkMonster[], onProgress: (p: BulkProgress) => void, opts: { concurrent?: boolean } = {}): Promise<BulkRow[]> {
     const jobs: [number, number][] = [];
     setups.forEach((_, s) => monsters.forEach((__, m) => jobs.push([s, m])));
 
@@ -48,7 +49,7 @@ export class BulkPool {
       payloads.push(buildPayload(jobs.slice(i, i + this.chunkSize), setups, monsters));
     }
 
-    return this.pool.run(payloads, ({ results, done, total }) => onProgress({ rows: results, done, total }), (p) => p.jobs.length);
+    return this.pool.run(payloads, ({ results, done, total }) => onProgress({ rows: results, done, total }), (p) => p.jobs.length, opts);
   }
 
   cancel() {

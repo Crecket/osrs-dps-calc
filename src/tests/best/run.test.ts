@@ -367,3 +367,23 @@ describe('spellbooks', () => {
     expect(jobs.every((j) => spellByName(j.spellName!)?.spellbook === 'ancient')).toBe(true);
   });
 });
+
+describe('concurrent runs', () => {
+  test('two concurrent runs both finish and ask the pools to share workers', async () => {
+    const { deps, calls } = fakeDeps(synthetic);
+    const runOpts: unknown[] = [];
+    const search = deps.search.run;
+    deps.search.run = (payloads, onProgress, count, o) => {
+      runOpts.push(o);
+      return search(payloads, onProgress, count, o);
+    };
+    const [a, b] = await Promise.all([
+      runBestSetup(inputs(['ranged']), vorkath, deps, () => {}, { ...opts, concurrent: true }),
+      runBestSetup(inputs(['slash']), vorkath, deps, () => {}, { ...opts, concurrent: true }),
+    ]);
+    expect(a[0].style).toBe('ranged');
+    expect(b[0].style).toBe('slash');
+    expect(calls.length).toBeGreaterThan(0);
+    expect(runOpts.every((o) => (o as { concurrent?: boolean } | undefined)?.concurrent === true)).toBe(true);
+  });
+});

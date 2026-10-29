@@ -176,18 +176,24 @@ export const runBestSetup = async (
   monster: BulkMonster,
   deps: BestRunDeps,
   onProgress: (done: number, total: number, phase: BestPhase) => void,
-  opts: { topK?: number; cap?: number } = {},
+  opts: { topK?: number; cap?: number; concurrent?: boolean } = {},
 ): Promise<StyleOutcome[]> => {
-  if (runningDeps) {
-    runningDeps.search.cancel();
-    runningDeps.rows.cancel();
+  // a concurrent run leaves other runs alone and shares the pools' workers with them; it ends only by the pools'
+  // cancel(), which rejects its pool runs
+  const { concurrent = false } = opts;
+  if (!concurrent) {
+    if (runningDeps) {
+      runningDeps.search.cancel();
+      runningDeps.rows.cancel();
+    }
+    currentRun += 1;
+    runningDeps = deps;
   }
-  currentRun += 1;
   const token = currentRun;
-  runningDeps = deps;
   const check = () => {
-    if (token !== currentRun) throw new Error('cancelled');
+    if (!concurrent && token !== currentRun) throw new Error('cancelled');
   };
+  const poolOpts = { concurrent };
   const topK = opts.topK ?? TOP_K_WEAPONS;
   const cap = opts.cap ?? COMBINATION_CAP;
   const { topN } = inputs;
@@ -211,8 +217,8 @@ export const runBestSetup = async (
       const phaseUnits = payloads.reduce((n, p) => n + units(p), 0);
       // the pool counts finished payloads (one result each); scale that to jobs
       const results = await deps.search.run(payloads, (p) => {
-        if (token === currentRun && p.total > 0) onProgress(before + Math.round((p.done / p.total) * phaseUnits), total, phase);
-      });
+        if ((concurrent || token === currentRun) && p.total > 0) onProgress(before + Math.round((p.done / p.total) * phaseUnits), total, phase);
+      }, undefined, poolOpts);
       check();
       done = before + phaseUnits;
       return results;
@@ -288,7 +294,7 @@ export const runBestSetup = async (
       name: setupName(r.job, variants[i][r.job.weaponId]),
       player: buildPlayer(plan.base, r.job, r.gear),
     })));
-    const rows = await deps.rows.run(setups.flat(), [monster], () => {});
+    const rows = await deps.rows.run(setups.flat(), [monster], () => {}, poolOpts);
     check();
     const rowById = new Map(rows.map((r) => [r.setupId, r]));
 
@@ -310,6 +316,6 @@ export const runBestSetup = async (
       };
     });
   } finally {
-    if (token === currentRun) runningDeps = null;
+    if (!concurrent && token === currentRun) runningDeps = null;
   }
 };
