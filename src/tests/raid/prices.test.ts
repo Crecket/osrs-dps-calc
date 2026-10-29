@@ -55,6 +55,13 @@ describe('itemPrice', () => {
     expect(itemPrice(34715, { byId: new Map([[34717, 3e9]]), byName: new Map() }, new Set())).toBe(3e9);
   });
 
+  test('a clan or corrupted version is priced by the tradeable base item', () => {
+    // Bow of Faerdhinen (c) (Amlodd) 25896 -> Bow of Faerdhinen (Inactive) 25862
+    expect(itemPrice(25896, { byId: new Map([[25862, 40e6]]), byName: new Map() }, new Set())).toBe(40e6);
+    // Crystal body (Amlodd) 27769 -> Crystal body (Inactive) 23977
+    expect(itemPrice(27769, { byId: new Map([[23977, 15e6]]), byName: new Map() }, new Set())).toBe(15e6);
+  });
+
   test('untradeable is free', () => {
     expect(itemPrice(27610, { byId: new Map(), byName: new Map() }, new Set())).toBe(0);
   });

@@ -86,11 +86,6 @@ const versionIds = (name: string) => {
   return idsByName.get(name) ?? [];
 };
 
-/**
- * What the item costs to buy: 0 when owned (as itself or its canonical item), when there are no prices, or when the
- * item has no price (untradeable). Looks up the id, then the canonical id, then the item's other versions (a charged
- * item is often only tradeable uncharged), then the name without a trailing "(…)".
- */
 // getCanonicalItemId scans every alias; the tiers price thousands of items on each settings change
 const canonicalIds = new Map<number, number>();
 const canonicalOf = (id: number) => {
@@ -102,6 +97,22 @@ const canonicalOf = (id: number) => {
   return canonical;
 };
 
+/** The name, then the name without each trailing "(…)" in turn: "Bow of Faerdhinen (c) (Amlodd)", "… (c)", "…" */
+const shorterNames = (name: string): string[] => {
+  const names = [name];
+  for (;;) {
+    const shorter = names[names.length - 1].replace(/\s*\([^)]*\)$/, '');
+    if (shorter === names[names.length - 1] || !shorter) return names;
+    names.push(shorter);
+  }
+};
+
+/**
+ * What the item costs to buy: 0 when owned (as itself or its canonical item), when there are no prices, or when the
+ * item has no price (untradeable). Looks up the id, then the canonical id, then for the name and each shorter name
+ * (without a trailing "(…)") its versions and the name itself: a charged, imbued, corrupted or clan item is often only
+ * tradeable as its plain or inactive version.
+ */
 export const itemPrice = (id: number, prices: Prices | null, owned: Set<number>): number => {
   const canonical = canonicalOf(id);
   if (!prices || owned.has(id) || owned.has(canonical)) return 0;
@@ -109,9 +120,13 @@ export const itemPrice = (id: number, prices: Prices | null, owned: Set<number>)
   if (byId !== undefined) return byId;
   const name = itemById(id)?.name;
   if (!name) return 0;
-  for (const other of versionIds(name)) {
-    const price = prices.byId.get(other);
+  for (const n of shorterNames(name)) {
+    for (const other of versionIds(n)) {
+      const price = prices.byId.get(other);
+      if (price !== undefined) return price;
+    }
+    const price = prices.byName.get(n.toLowerCase());
     if (price !== undefined) return price;
   }
-  return prices.byName.get(name.toLowerCase()) ?? prices.byName.get(name.replace(/\s*\([^)]*\)$/, '').toLowerCase()) ?? 0;
+  return 0;
 };
