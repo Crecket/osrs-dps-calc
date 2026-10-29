@@ -41,6 +41,11 @@ describe('bestPool', () => {
     expect(names.has('Venator bow')).toBe(true);
   });
 
+  test('drops Onyx ascension bolts: the Ascension crossbows never fire them', () => {
+    expect(pool.filter((e) => /^Onyx ascension bolts/.test(e.name))).toEqual([]);
+    expect(pool.some((e) => e.name === 'Diamond ascension bolts (e)')).toBe(true);
+  });
+
   test('drops the PvP Arena\'s Wristbands of the Arena', () => {
     expect(pool.filter((e) => /^Wristbands of the Arena/.test(e.name))).toEqual([]);
   });

@@ -106,7 +106,7 @@ describe('specRanking', () => {
     expect(calls.flat()).toContain('Crimson kisten');
   });
 
-  test('a crossbow spec is ranked with its best enchanted bolts', async () => {
+  test('a crossbow spec is ranked with ruby bolts (e)', async () => {
     const ammo: string[] = [];
     const deps = {
       search: { run: async () => [], cancel: () => {} },
@@ -122,7 +122,8 @@ describe('specRanking', () => {
       },
     } as never;
     const ranking = await specRanking([phase], [candidate], [], deps, new SearchCache(memoryStorage()));
-    expect(ammo).toContain('Ruby dragon bolts (e)');
+    // ruby bolts only: no other bolt type is tried
+    expect([...new Set(ammo)]).toEqual(['Ruby dragon bolts (e)']);
     expect(ranking[phase.phase.key].find((r) => r.weaponId === ZCB)?.expected).toBe(90);
     // one entry per weapon
     expect(ranking[phase.phase.key].filter((r) => r.weaponId === ZCB)).toHaveLength(1);

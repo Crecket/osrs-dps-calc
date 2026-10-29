@@ -34,6 +34,8 @@ const EXCLUDED_ITEM_IDS = new Set([
   22227, 22228, 22229, 22230,
   // minigame-only ammo: Castle wars arrow and bolts
   30694, 30696,
+  // Onyx ascension bolts and their (e): the Ascension crossbows are never used with them
+  34702, 34708,
   // minigame-only gear: The Gauntlet's Crystal dagger (perfected), sceptres and tools (names checked against equipment.json)
   30340, 23820, 23861, 23821, 23822, 23823, 23862, 23863, 23864,
 ]);
