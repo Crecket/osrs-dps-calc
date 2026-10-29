@@ -169,6 +169,28 @@ describe('RaidPage', () => {
     await unmount();
   });
 
+  test('style toggles start with stab and magic off and mark the result stale', async () => {
+    const { container, unmount } = await mount();
+    const toggle = (name: string) => container.querySelector<HTMLButtonElement>(`[aria-label="Styles"] button[data-style="${name}"]`)!;
+    expect(toggle('stab').getAttribute('aria-pressed')).toBe('false');
+    expect(toggle('magic').getAttribute('aria-pressed')).toBe('false');
+    expect(toggle('ranged').getAttribute('aria-pressed')).toBe('true');
+    await act(async () => button(container, 'Find raid gear')!.click());
+    await wait(20);
+    await act(async () => toggle('magic').click());
+    expect(toggle('magic').getAttribute('aria-pressed')).toBe('true');
+    expect(container.textContent).toContain('Inputs changed');
+    await unmount();
+  });
+
+  test('the cost line shows what owned items in the loadout are worth', async () => {
+    const { container, unmount } = await mount();
+    await act(async () => button(container, 'Find raid gear')!.click());
+    await wait(20);
+    expect(container.querySelector('[data-testid=owned-value]')).toBeTruthy();
+    await unmount();
+  });
+
   test('thralls through Dagon\'hai disable the button', async () => {
     const { container, unmount } = await mount();
     await change(select(container, 'stop-fourth'), 'dagonhai');

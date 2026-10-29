@@ -6,7 +6,7 @@ import { getCanonicalItemId } from '@/lib/Equipment';
 import { BestRunDeps, runBestSetup } from '@/best/lib/run';
 import { bestPool } from '@/best/lib/candidates';
 import {
-  BestInputs, BEST_STYLES, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS,
+  BestInputs, BEST_STYLES, BestStyle, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS,
 } from '@/best/types';
 import { EquipmentPiece } from '@/types/Player';
 import { Spellbook } from '@/types/Spell';
@@ -42,7 +42,12 @@ export interface RaidSettings {
   magic: MagicOption;
   /** Boss rules (required items, forbidden magic) apply */
   rulesOn: boolean;
+  /** Styles the searches try */
+  styles: BestStyle[];
 }
+
+/** Stab and magic rarely win in the Archive; leaving them out makes the searches faster */
+export const DEFAULT_RAID_STYLES: BestStyle[] = ['slash', 'crush', 'ranged'];
 
 export const defaultSettings = (): RaidSettings => {
   const raid = raidById('fractured-archive');
@@ -56,6 +61,7 @@ export const defaultSettings = (): RaidSettings => {
     supplies: { brews: 6, restores: 5, reserved: 4 },
     magic: 'thralls',
     rulesOn: true,
+    styles: [...DEFAULT_RAID_STYLES],
   };
 };
 
@@ -114,7 +120,7 @@ export const raidBaseInputs = (settings: RaidSettings): BestInputs => ({
   unlocks: { ...DEFAULT_UNLOCKS },
   conditions: { ...DEFAULT_CONDITIONS },
   potions: {},
-  styles: [...BEST_STYLES],
+  styles: BEST_STYLES.filter((st) => settings.styles.includes(st)),
   topN: 1,
   prayerOverrides: {},
   spellbooks: SPELLBOOKS[settings.magic],

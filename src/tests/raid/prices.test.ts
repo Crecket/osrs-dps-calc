@@ -50,6 +50,11 @@ describe('itemPrice', () => {
     expect(itemPrice(27610, { byId: new Map(), byName: new Map([['venator bow', 5]]) }, new Set())).toBe(5);
   });
 
+  test('a charged item is priced by its tradeable version', () => {
+    // the Obligator (Charged) 34715 isn't on the GE; the Obligator (Uncharged) 34717 is
+    expect(itemPrice(34715, { byId: new Map([[34717, 3e9]]), byName: new Map() }, new Set())).toBe(3e9);
+  });
+
   test('untradeable is free', () => {
     expect(itemPrice(27610, { byId: new Map(), byName: new Map() }, new Set())).toBe(0);
   });

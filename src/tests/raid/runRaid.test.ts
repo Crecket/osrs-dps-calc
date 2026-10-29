@@ -49,6 +49,11 @@ beforeEach(() => {
 });
 
 describe('raidBaseInputs', () => {
+  test('searches the chosen styles, without stab and magic by default', () => {
+    expect(defaultSettings().styles).toEqual(['slash', 'crush', 'ranged']);
+    expect(raidBaseInputs({ ...defaultSettings(), styles: ['ranged'] }).styles).toEqual(['ranged']);
+  });
+
   test('spellbooks follow the magic option', () => {
     expect(raidBaseInputs({ ...defaultSettings(), magic: 'thralls' }).spellbooks).toEqual([]);
     expect(raidBaseInputs({ ...defaultSettings(), magic: 'none' }).spellbooks).toEqual([]);

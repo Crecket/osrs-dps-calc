@@ -3,6 +3,7 @@ import localforage from 'localforage';
 import { makeAutoObservable, toJS } from 'mobx';
 import { availableEquipment, getCanonicalItemId } from '@/lib/Equipment';
 import type { PresetStorage } from '@/bulk/state/BulkStore';
+import { BEST_STYLES, BestStyle } from '@/best/types';
 import {
   DEFENCE_WEAPONS, DefenceCounts, DefenceWeapon, MagicOption,
 } from '@/raid/types';
@@ -65,6 +66,9 @@ const readSettings = (raw: unknown): RaidSettings => {
     supplies,
     magic: MAGIC_OPTIONS.includes(r.magic as MagicOption) ? r.magic as MagicOption : base.magic,
     rulesOn: typeof r.rulesOn === 'boolean' ? r.rulesOn : base.rulesOn,
+    styles: Array.isArray(r.styles) && BEST_STYLES.some((st) => (r.styles as unknown[]).includes(st))
+      ? BEST_STYLES.filter((st) => (r.styles as unknown[]).includes(st))
+      : base.styles,
   };
 };
 
@@ -177,6 +181,14 @@ export class RaidStore {
 
   setMagic(magic: MagicOption) {
     this.settings.magic = magic;
+    this.save();
+  }
+
+  /** At least one style stays on: an empty list is ignored */
+  setStyles(styles: BestStyle[]) {
+    const ordered = BEST_STYLES.filter((st) => styles.includes(st));
+    if (ordered.length === 0) return;
+    this.settings.styles = ordered;
     this.save();
   }
 

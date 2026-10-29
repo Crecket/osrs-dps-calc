@@ -5,7 +5,8 @@ import { PlayerEquipment } from '@/types/Player';
 import { useRaidStore } from '@/raid/state/RaidStore';
 import { RaidResult } from '@/raid/lib/runRaid';
 import { InvCell, SupplyLabel, WornSlot } from '@/raid/lib/layout';
-import { Prices } from '@/raid/lib/prices';
+import { itemPrice, Prices } from '@/raid/lib/prices';
+import { getCanonicalItemId } from '@/lib/Equipment';
 import { formatGp, formatTime } from '@/raid/lib/format';
 import {
   ItemImage, ItemMenu, itemById, priceLabel, useItemMenu,
@@ -72,6 +73,14 @@ const LoadoutView: React.FC<{ result: RaidResult; prices: Prices | null }> = obs
           <strong className="tabular-nums">{`${formatGp(plan.cost)} gp`}</strong>
           {' of '}
           {`${formatGp(store.settings.budget)} gp`}
+        </span>
+        <span data-testid="owned-value" className="text-gray-500 dark:text-gray-300">
+          {(() => {
+            const ownedSet = new Set(owned);
+            const used = plan.itemIds.filter((id) => ownedSet.has(getCanonicalItemId(id)));
+            const worth = used.reduce((n, id) => n + itemPrice(id, prices, new Set()), 0);
+            return `+ ${used.length} owned item${used.length === 1 ? '' : 's'} worth ${formatGp(worth)} gp`;
+          })()}
         </span>
         {plan.overBudget && (
           <span className="flex items-center gap-1 text-orange-500 dark:text-orange-200">

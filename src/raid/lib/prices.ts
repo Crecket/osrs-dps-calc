@@ -76,9 +76,20 @@ const itemById = (id: number) => {
   return itemsById.get(id);
 };
 
+// every version of an item by name, e.g. the Charged and Uncharged Obligator; often only one is on the GE
+let idsByName: Map<string, number[]> | null = null;
+const versionIds = (name: string) => {
+  if (!idsByName) {
+    idsByName = new Map();
+    availableEquipment.forEach((e) => idsByName!.set(e.name, [...(idsByName!.get(e.name) ?? []), e.id]));
+  }
+  return idsByName.get(name) ?? [];
+};
+
 /**
  * What the item costs to buy: 0 when owned (as itself or its canonical item), when there are no prices, or when the
- * item has no price (untradeable). Looks up the id, then the canonical id, then the name without a trailing "(…)".
+ * item has no price (untradeable). Looks up the id, then the canonical id, then the item's other versions (a charged
+ * item is often only tradeable uncharged), then the name without a trailing "(…)".
  */
 export const itemPrice = (id: number, prices: Prices | null, owned: Set<number>): number => {
   const canonical = getCanonicalItemId(id);
@@ -87,5 +98,9 @@ export const itemPrice = (id: number, prices: Prices | null, owned: Set<number>)
   if (byId !== undefined) return byId;
   const name = itemById(id)?.name;
   if (!name) return 0;
+  for (const other of versionIds(name)) {
+    const price = prices.byId.get(other);
+    if (price !== undefined) return price;
+  }
   return prices.byName.get(name.toLowerCase()) ?? prices.byName.get(name.replace(/\s*\([^)]*\)$/, '').toLowerCase()) ?? 0;
 };

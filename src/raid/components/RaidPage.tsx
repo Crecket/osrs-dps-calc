@@ -25,6 +25,7 @@ import RaidInputs from '@/raid/components/RaidInputs';
 import BossStrip from '@/raid/components/BossStrip';
 import LoadoutView from '@/raid/components/LoadoutView';
 import BossResults from '@/raid/components/BossResults';
+import StyleToggles from '@/raid/components/StyleToggles';
 
 const isCancelled = (e: unknown) => e instanceof Error && e.message === 'cancelled';
 
@@ -163,6 +164,7 @@ const RaidPage: React.FC = observer(() => {
                 </button>
               ) : (
                 <>
+                  <StyleToggles />
                   {prices?.at !== undefined && (
                     <button
                       type="button"

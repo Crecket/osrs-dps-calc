@@ -45,6 +45,17 @@ describe('RaidStore', () => {
     expect(store.settings.supplies.brews).toBe(6);
   });
 
+  test('styles: at least one stays on, and invalid saved ones fall back', async () => {
+    const storage = memoryStorage();
+    const store = await loaded(storage);
+    store.setStyles([]);
+    expect(store.settings.styles).toEqual(['slash', 'crush', 'ranged']);
+    store.setStyles(['magic', 'stab']);
+    expect(store.settings.styles).toEqual(['stab', 'magic']);
+    await storage.setItem(RAID_STORAGE_KEY, { settings: { styles: ['nope'] } });
+    expect((await loaded(storage)).settings.styles).toEqual(['slash', 'crush', 'ranged']);
+  });
+
   test('blocks thralls through Dagon\'hai', async () => {
     const store = await loaded();
     store.setRoute('fourth', 'dagonhai');
