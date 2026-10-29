@@ -36,7 +36,7 @@ Given a GP budget and the gear the player already owns, show a "half decent" ful
 
 ## How it works (decided)
 
-1. **Candidates.** For each route phase (monster with its defence reduction applied) and each style, run the existing best setup search (`runBestSetup`) several times with the item pool cut at price tiers: no cap, the budget, budget/4, budget/16 and owned-only (items above the tier and not owned are passed as excluded). Every resulting setup is a candidate for that phase.
+1. **Candidates.** For each route phase (monster with its defence reduction applied) and each style, run the existing best setup search (`runBestSetup`) several times with the item pool cut at price tiers: the budget, budget/4 and owned-or-free only (items above the tier and not owned are passed as excluded). Every resulting setup is a candidate for that phase.
 2. **Assembly.** Start with an empty loadout. Required items (Venator bow for Moia, defence reduction weapons with a non-zero count, Book of the Dead for thralls) are added first. Then repeatedly add the candidate setup whose missing items give the most saved raid time per GP (a phase with no usable setup counts as a large time), while the total price stays within budget and the item count fits the slots. Stop when no candidate improves the time.
 3. **Slots.** Worn = the setup used for the most raid time; every other loadout item is an inventory switch. Ammo: one type is worn, a second is worn when a quiver is worn, any further type takes an inventory slot. Inventory = switches + rune pouch / Book of the Dead + brews + restores + other reserved ≤ 28.
 4. **Spellbook.** The magic option limits which spells the search may use (a spellbook filter added to the best setup inputs).
