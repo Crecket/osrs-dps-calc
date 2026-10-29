@@ -1,9 +1,11 @@
 import localforage from 'localforage';
 import { availableEquipment } from '@/lib/Equipment';
 import { getMonsters } from '@/lib/Monsters';
+import { EquipmentPiece } from '@/types/Player';
 import { BestStyle } from '@/best/types';
 import { Gear } from '@/best/lib/search';
-import { WeaponJob } from '@/best/lib/candidates';
+import { bestPool, WeaponJob } from '@/best/lib/candidates';
+import { hashKey } from '@/best/lib/resultCache';
 import type { PresetStorage } from '@/bulk/state/BulkStore';
 
 export const SEARCH_CACHE_KEY = 'dps-raid-searches';
@@ -28,8 +30,17 @@ interface Saved {
 // spec damage and the loadout upgrade's DPS lookups
 const SPEC_LIMIT = 30000;
 
-// a data update (new items or monsters) can change any result
-const currentVersion = () => `${CACHE_VERSION}:${availableEquipment.length}:${getMonsters().length}`;
+/**
+ * A data update (new items or monsters) can change any result, and so can a change to the items the search may use
+ * (e.g. Leagues items left out): results holding an item no longer allowed must not come back.
+ */
+export const cacheVersion = (pool: EquipmentPiece[]) => `${CACHE_VERSION}:${availableEquipment.length}:${getMonsters().length}:${hashKey(pool.map((e) => e.id).join(','))}`;
+
+let version: string | null = null;
+const currentVersion = () => {
+  if (!version) version = cacheVersion(bestPool());
+  return version;
+};
 
 /**
  * Finished raid searches by key, kept across page loads in least-recently-used order. Writes are debounced; a failed

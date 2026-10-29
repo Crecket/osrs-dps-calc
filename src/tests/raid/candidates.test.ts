@@ -14,7 +14,7 @@ import { routePhases } from '@/raid/lib/route';
 import {
   fromStored, missingSearches, RAID_PARALLEL, raidCandidates, RaidProgress, tierExclusions, toStored,
 } from '@/raid/lib/candidates';
-import { SearchCache } from '@/raid/lib/searchCache';
+import { cacheVersion, SearchCache } from '@/raid/lib/searchCache';
 
 const mockRun = jest.fn<(...args: unknown[]) => Promise<StyleOutcome[]>>();
 const search = ((...args: unknown[]) => mockRun(...args)) as never;
@@ -68,6 +68,13 @@ const deps = { search: { run: jest.fn(), cancel: jest.fn() }, rows: { run: jest.
 beforeEach(() => {
   mockRun.mockReset();
   mockRun.mockImplementation(async () => outcome());
+});
+
+describe('cacheVersion', () => {
+  test('changes when the items the search may use change, so old results are dropped', () => {
+    expect(cacheVersion([tbow])).toBe(cacheVersion([tbow]));
+    expect(cacheVersion([tbow])).not.toBe(cacheVersion([tbow, item(11212)]));
+  });
 });
 
 describe('tierExclusions', () => {
