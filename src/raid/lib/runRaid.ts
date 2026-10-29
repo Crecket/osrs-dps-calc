@@ -49,7 +49,7 @@ export const defaultSettings = (): RaidSettings => {
   return {
     raidId: raid.id,
     route: { ...raid.defaultRoute },
-    budget: 100_000_000,
+    budget: 500_000_000,
     ownedIds: [],
     excludedIds: [],
     counts: {},

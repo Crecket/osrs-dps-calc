@@ -25,7 +25,7 @@ describe('RaidStore', () => {
     const storage = memoryStorage();
     const store = await loaded(storage);
     expect(store.settings.raidId).toBe('fractured-archive');
-    expect(store.settings.budget).toBe(100_000_000);
+    expect(store.settings.budget).toBe(500_000_000);
     expect(store.settings.supplies).toEqual({ brews: 6, restores: 5, reserved: 4 });
     expect(store.settings.magic).toBe('thralls');
     store.setBudget(4_000_000_000);
@@ -40,7 +40,7 @@ describe('RaidStore', () => {
     const storage = memoryStorage();
     await storage.setItem(RAID_STORAGE_KEY, { settings: { budget: 'lots', magic: 'zaros', supplies: { brews: -3 } } });
     const store = await loaded(storage);
-    expect(store.settings.budget).toBe(100_000_000);
+    expect(store.settings.budget).toBe(500_000_000);
     expect(store.settings.magic).toBe('thralls');
     expect(store.settings.supplies.brews).toBe(6);
   });
