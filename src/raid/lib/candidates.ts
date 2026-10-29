@@ -2,11 +2,12 @@
  * Candidate setups for a raid: the best setup search run per route phase at a few price tiers. Main thread only
  * (basePlayer imports '@/state').
  */
-import { getCanonicalItemId } from '@/lib/Equipment';
+import { availableEquipment, getCanonicalItemId } from '@/lib/Equipment';
 import { EquipmentPiece, Player } from '@/types/Player';
 import { BestPhase, BestRunDeps, runBestSetup } from '@/best/lib/run';
 import { buildPlayer, Gear } from '@/best/lib/search';
-import { GearSlot } from '@/best/lib/candidates';
+import { GearSlot, ScoreKind, styleScore } from '@/best/lib/candidates';
+import { isEffectItem } from '@/best/lib/effectItems';
 import { basePlayer } from '@/best/lib/basePlayer';
 import { hashKey } from '@/best/lib/resultCache';
 import { BestInputs, BestStyle } from '@/best/types';
@@ -105,13 +106,54 @@ export const fromStored = (s: StoredCandidate, phaseKey: string, base: Player): 
   }
 };
 
-const searchInputs = (base: BestInputs, tier: number[]): BestInputs => ({ ...base, excludedItemIds: tier });
+let itemsById: Map<number, EquipmentPiece> | null = null;
+const itemById = (id: number) => {
+  if (!itemsById) itemsById = new Map(availableEquipment.map((e) => [e.id, e]));
+  return itemsById.get(id);
+};
+
+/**
+ * Whether leaving the item out can change a search of `style`: it adds to the style's attack or strength, or it has a
+ * special effect (any style, to be safe). Unknown ids count.
+ */
+const mattersFor = (style: BestStyle, id: number) => {
+  const item = itemById(id);
+  if (!item || isEffectItem(item)) return true;
+  const kinds: ScoreKind[] = style === 'ranged' ? ['ranged', 'rangedStrength'] : [style];
+  return kinds.some((k) => styleScore(item, k).some((v) => v > 0));
+};
 
 export const searchKey = (phase: RoutePhase, inputs: BestInputs): string => hashKey(JSON.stringify({ monster: phase.monster.monster, inputs }));
 
+interface SearchJob {
+  phase: RoutePhase;
+  style: BestStyle;
+  /** What the search runs with: one style, the tier's exclusions */
+  inputs: BestInputs;
+  /** The cache key: like `inputs`, but only with the exclusions that matter for the style */
+  key: string;
+  excluded: Set<number>;
+}
+
+/** One search per phase × tier × style, so a change that only matters for one style redoes only that style's searches */
+const searchJobs = (phases: RoutePhase[], base: BestInputs, tiers: number[][]): SearchJob[] => phases.flatMap(
+  (phase) => tiers.flatMap((tier) => base.styles.map((style): SearchJob => {
+    const inputs = { ...base, styles: [style], excludedItemIds: tier };
+    const keyInputs = { ...inputs, excludedItemIds: tier.filter((id) => mattersFor(style, id)) };
+    return {
+      phase, style, inputs, key: searchKey(phase, keyInputs), excluded: new Set(tier),
+    };
+  })),
+);
+
+// a cached result that uses an item now left out can't be reused, whatever its key says
+const usable = (stored: StoredCandidate[] | undefined, excluded: Set<number>) => !!stored && stored.every(
+  (s) => !excluded.has(s.job.weaponId) && Object.values(s.gear).every((id) => id === null || id === undefined || !excluded.has(id)),
+);
+
 /** How many of the searches for these phases and tiers aren't cached yet */
-export const missingSearches = (phases: RoutePhase[], base: BestInputs, tiers: number[][], cache: SearchCache): number => phases
-  .reduce((n, phase) => n + tiers.filter((tier) => !cache.has(searchKey(phase, searchInputs(base, tier)))).length, 0);
+export const missingSearches = (phases: RoutePhase[], base: BestInputs, tiers: number[][], cache: SearchCache): number => searchJobs(phases, base, tiers)
+  .filter((j) => !usable(cache.peek(j.key), j.excluded)).length;
 
 /**
  * Every search's setups with DPS for each phase × tier, from the cache or by running the best setup search.
@@ -127,20 +169,19 @@ export const raidCandidates = async (
   cache: SearchCache,
   search: typeof runBestSetup = runBestSetup,
 ): Promise<Candidate[]> => {
-  const searches = missingSearches(phases, base, tiers, cache);
-  const cached = phases.length * tiers.length - searches;
+  const jobs = searchJobs(phases, base, tiers);
+  const stored: StoredCandidate[][] = jobs.map((j) => {
+    const hit = cache.get(j.key);
+    return usable(hit, j.excluded) ? hit! : [];
+  });
+  const todo = jobs.map((_, i) => i).filter((i) => !usable(cache.peek(jobs[i].key), jobs[i].excluded));
+  const searches = todo.length;
+  const cached = jobs.length - searches;
   const players = new Map<BestStyle, Player>();
   const playerFor = (style: BestStyle) => {
     if (!players.has(style)) players.set(style, basePlayer(base, style));
     return players.get(style)!;
   };
-
-  const jobs = phases.flatMap((phase) => tiers.map((tier) => {
-    const inputs = searchInputs(base, tier);
-    return { phase, inputs, key: searchKey(phase, inputs) };
-  }));
-  const stored: StoredCandidate[][] = jobs.map((j) => cache.get(j.key) ?? []);
-  const todo = jobs.map((j, i) => i).filter((i) => !cache.has(jobs[i].key));
 
   let done = 0;
   const active = new Map<number, string>();
@@ -156,8 +197,10 @@ export const raidCandidates = async (
     while (next < todo.length) {
       const i = todo[next];
       next += 1;
-      const { phase, inputs, key } = jobs[i];
-      active.set(i, `${phase.boss.name}${phase.boss.phases.length > 1 ? ` — ${phase.phase.label}` : ''}`);
+      const {
+        phase, inputs, key, style,
+      } = jobs[i];
+      active.set(i, `${phase.boss.name}${phase.boss.phases.length > 1 ? ` — ${phase.phase.label}` : ''} (${style})`);
       report();
       // eslint-disable-next-line no-await-in-loop
       const outcomes = await search(inputs, phase.monster, deps, (d, total, p) => {

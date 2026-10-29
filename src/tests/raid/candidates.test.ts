@@ -159,6 +159,32 @@ describe('raidCandidates', () => {
   });
 });
 
+describe('per-style searches', () => {
+  const twoStyles: BestInputs = { ...inputs, styles: ['slash', 'ranged'] };
+  // Masori body (f): ranged bonuses only, no special effect
+  const masoriBody = 27238;
+
+  test('each style is its own search', async () => {
+    await raidCandidates(phases, twoStyles, [[1]], deps, () => {}, new SearchCache(memoryStorage()), search);
+    expect(mockRun).toHaveBeenCalledTimes(phases.length * 2);
+    expect(mockRun.mock.calls.map((c) => (c[0] as BestInputs).styles)).toEqual(expect.arrayContaining([['slash'], ['ranged']]));
+  });
+
+  test('excluding a ranged-only item re-runs only the ranged searches', async () => {
+    const cache = new SearchCache(memoryStorage());
+    await raidCandidates(phases, twoStyles, [[1]], deps, () => {}, cache, search);
+    expect(missingSearches(phases, { ...inputs, styles: ['slash'] }, [[1, masoriBody]], cache)).toBe(0);
+    expect(missingSearches(phases, { ...inputs, styles: ['ranged'] }, [[1, masoriBody]], cache)).toBe(phases.length);
+  });
+
+  test('a cached result that uses a now excluded item is not reused', async () => {
+    const cache = new SearchCache(memoryStorage());
+    await raidCandidates(phases, { ...inputs, styles: ['ranged'] }, [[1]], deps, () => {}, cache, search);
+    // the cached Twisted bow setup wears a Masori mask (f); excluding it must redo the search however the key looks
+    expect(missingSearches(phases, { ...inputs, styles: ['ranged'] }, [[1, 27235]], cache)).toBe(phases.length);
+  });
+});
+
 describe('SearchCache', () => {
   const entry = () => toStored(outcome()[0].setups[0], 'ranged', 10);
 
