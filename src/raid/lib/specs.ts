@@ -112,12 +112,13 @@ export const buySpecWeapons = (
   while (bought.length < slots) {
     const base = savedWith(rooms, have);
     let pick: { id: number; score: number } | null = null;
-    weapons.filter((id) => !have.has(id) && priceOf(id) <= left).forEach((id) => {
+    for (const id of weapons) {
+      if (have.has(id) || priceOf(id) > left) continue;
       const gain = savedWith(rooms, new Set([...have, id])) - base;
-      if (gain <= MIN_GAIN) return;
+      if (gain <= MIN_GAIN) continue;
       const score = gain / (priceOf(id) + COST_SMOOTHING);
       if (!pick || score > pick.score) pick = { id, score };
-    });
+    }
     if (!pick) break;
     const { id } = pick;
     have.add(id);

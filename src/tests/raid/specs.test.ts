@@ -23,14 +23,18 @@ describe('planRoomSpecs', () => {
   test('a spec saves its damage over the main DPS minus its own attack time', () => {
     // 60 expected at 10 DPS saves 6 s, minus a 3 s attack = 3 s
     const room = planRoomSpecs(100, [option(ZCB, 75, 60)], new Set([ZCB]));
-    expect(room.picks).toEqual([{ weaponId: ZCB, phaseKey: 'p0', count: 1, seconds: 3 }]);
+    expect(room.picks).toEqual([{
+      weaponId: ZCB, phaseKey: 'p0', count: 1, seconds: 3,
+    }]);
     expect(room.seconds).toBeCloseTo(3);
   });
 
   test('picks the best mix for the energy', () => {
     // 100%: two kisten specs (2 × 2 s) beat one ZCB spec (3 s) with 25% left over
     const room = planRoomSpecs(100, [option(ZCB, 75, 60), option(KISTEN, 50, 50)], new Set([ZCB, KISTEN]));
-    expect(room.picks).toEqual([{ weaponId: KISTEN, phaseKey: 'p0', count: 2, seconds: 4 }]);
+    expect(room.picks).toEqual([{
+      weaponId: KISTEN, phaseKey: 'p0', count: 2, seconds: 4,
+    }]);
   });
 
   test('uses only weapons the loadout holds, and nothing that loses time', () => {
@@ -40,7 +44,9 @@ describe('planRoomSpecs', () => {
 
   test('specs on the phase where they save the most', () => {
     const room = planRoomSpecs(50, [option(KISTEN, 50, 50, 'bork'), option(KISTEN, 50, 50, 'smorks', 5)], new Set([KISTEN]));
-    expect(room.picks).toEqual([{ weaponId: KISTEN, phaseKey: 'smorks', count: 1, seconds: 7 }]);
+    expect(room.picks).toEqual([{
+      weaponId: KISTEN, phaseKey: 'smorks', count: 1, seconds: 7,
+    }]);
   });
 
   test('no energy, no specs', () => {
