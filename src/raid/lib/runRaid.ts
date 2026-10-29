@@ -22,7 +22,8 @@ import {
 } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
 import { SpecRank, specRanking } from '@/raid/lib/specs';
-import { assembleLoadout, RaidPlan, THRALL_DPS } from '@/raid/lib/assemble';
+import { RaidPlan, THRALL_DPS } from '@/raid/lib/assemble';
+import { KitUnit, planKits } from '@/raid/lib/kits';
 import { dpsRater, upgradeLoadout } from '@/raid/lib/upgrade';
 import {
   freeSwitchSlots, Layout, layoutLoadout, Supplies,
@@ -196,18 +197,27 @@ export const runRaid = async (
     return players.get(style)!;
   };
   const rate = dpsRater(deps, cache);
-  // whole setups first, then better items slot by slot with the budget and slots left
+  // a kit per style and its weapons first, then better items slot by slot with the budget and slots left
+  // what has to be dealt: each phase, or each part of one, by the styles that can
+  const units = phases.flatMap((p) => (p.phase.parts ?? [{ share: 1 }]).map((part): KitUnit => {
+    const allowed = p.phase.allowedStyles;
+    const styles = part.styles && allowed ? part.styles.filter((st) => allowed.includes(st)) : (part.styles ?? allowed);
+    return { key: p.phase.key, hp: p.monster.monster.skills.hp * part.share, styles };
+  }));
+  const monsters = new Map(phases.map((p) => [p.phase.key, p.monster]));
   const assemble = async (maxItems: number) => upgradeLoadout({
-    plan: assembleLoadout({
-      phases: phases.map((p) => ({ key: p.phase.key, hp: p.monster.monster.skills.hp, parts: p.phase.parts })),
+    plan: await planKits({
+      units,
+      monsters,
       candidates,
       priceOf,
       budget: settings.budget,
-      requiredIds,
       maxItems,
+      requiredIds,
       extraDps,
-    }),
-    monsters: new Map(phases.map((p) => [p.phase.key, p.monster])),
+      playerFor,
+    }, rate),
+    monsters,
     candidates,
     pool: items,
     priceOf,

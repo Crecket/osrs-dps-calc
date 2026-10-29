@@ -17,7 +17,9 @@ const rapid = getCombatStylesForCategory(tbow.category).find((s) => s.stance ===
 
 const mockSearch = jest.fn<(...args: unknown[]) => Promise<StyleOutcome[]>>();
 const search = ((...args: unknown[]) => mockSearch(...args)) as never;
-const deps = { search: { run: jest.fn(), cancel: jest.fn() }, rows: { run: jest.fn(), cancel: jest.fn() } } as never;
+// every setup the planner rates does 10 DPS, as the searched ones do
+const rateAll = async (setups: { id: string }[]) => setups.map((st) => ({ setupId: st.id, dps: 10 }));
+const deps = { search: { run: jest.fn(), cancel: jest.fn() }, rows: { run: jest.fn(rateAll), cancel: jest.fn() } } as never;
 
 const memoryStorage = () => {
   const data = new Map<string, unknown>();
