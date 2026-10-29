@@ -1,15 +1,19 @@
 import React from 'react';
 import { usePathname } from 'next/navigation';
-import { IconCalculator, IconTable, IconTrophy } from '@tabler/icons-react';
+import {
+  IconCalculator, IconSwords, IconTable, IconTrophy,
+} from '@tabler/icons-react';
 
 export const CALC_PATH = '/calc';
 export const BEST_PATH = '/best';
+export const RAID_PATH = '/raid';
 
 // full page loads in both directions: the calculator's start-up (session restore, storage updater, calc worker) expects
 // to run once per page load, and a client-side link would let the browser's back button remount it
 export const calculatorHref = () => `${process.env.NEXT_PUBLIC_BASE_PATH || ''}${CALC_PATH}`;
 const bulkHref = () => `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/`;
 const bestHref = () => `${process.env.NEXT_PUBLIC_BASE_PATH || ''}${BEST_PATH}`;
+const raidHref = () => `${process.env.NEXT_PUBLIC_BASE_PATH || ''}${RAID_PATH}`;
 
 const className = 'transition-all hover:scale-105 no-underline text-white border border-body-500 bg-orange-700 py-1.5 px-2.5 rounded-md dark:border-dark-200 flex items-center gap-1';
 
@@ -19,7 +23,7 @@ const className = 'transition-all hover:scale-105 no-underline text-white border
 const BulkNavLink: React.FC = () => {
   const pathname = usePathname();
   const onCalculator = pathname?.startsWith(CALC_PATH);
-  const onBest = pathname?.startsWith(BEST_PATH);
+  const onBest = pathname?.startsWith(BEST_PATH) || pathname?.startsWith(RAID_PATH);
 
   const back = (
     <a href={bulkHref()} className={className}>
@@ -41,6 +45,10 @@ const BulkNavLink: React.FC = () => {
       <a href={bestHref()} className={className}>
         <IconTrophy size={20} aria-label="Best setup" />
         <div className="hidden md:block">Best setup</div>
+      </a>
+      <a href={raidHref()} className={className}>
+        <IconSwords size={20} aria-label="Raid gear" />
+        <div className="hidden md:block">Raid gear</div>
       </a>
     </>
   );

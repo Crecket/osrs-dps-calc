@@ -17,7 +17,7 @@ import { raidById } from '@/raid/raids';
 import { routeBosses, routePhases } from '@/raid/lib/route';
 import { itemPrice, Prices } from '@/raid/lib/prices';
 import {
-  missingSearches, raidCandidates, RaidProgress, tierExclusions,
+  Candidate, missingSearches, raidCandidates, RaidProgress, tierExclusions,
 } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
 import { assembleLoadout, RaidPlan, THRALL_DPS } from '@/raid/lib/assemble';
@@ -68,11 +68,38 @@ export interface ResultPhase {
   counts: DefenceCounts;
 }
 
+/** A weapon the loadout can use on a phase, with its best setup's DPS (thralls included) and kill time */
+export interface WeaponOption {
+  weaponId: number;
+  dps: number;
+  seconds: number;
+}
+
 export interface RaidResult {
   plan: RaidPlan;
   layout: Layout;
   phases: ResultPhase[];
+  /** Per phase key, every weapon the loadout can use there, fastest first */
+  options: Record<string, WeaponOption[]>;
 }
+
+/** Per phase, the best fitting setup of each weapon the loadout holds */
+const weaponOptions = (candidates: Candidate[], itemIds: number[], hpByKey: Map<string, number>, extraDps: number) => {
+  const held = new Set(itemIds);
+  const options: Record<string, WeaponOption[]> = {};
+  candidates.filter((c) => c.itemIds.every((id) => held.has(id))).forEach((c) => {
+    const weaponId = c.setup.player.equipment.weapon?.id;
+    if (weaponId === undefined) return;
+    const list = options[c.phaseKey] ?? [];
+    const dps = c.dps + extraDps;
+    const existing = list.find((o) => o.weaponId === weaponId);
+    if (existing && existing.dps >= dps) return;
+    const option = { weaponId, dps, seconds: hpByKey.get(c.phaseKey)! / dps };
+    options[c.phaseKey] = existing ? list.map((o) => (o === existing ? option : o)) : [...list, option];
+  });
+  Object.values(options).forEach((list) => list.sort((a, b) => b.dps - a.dps));
+  return options;
+};
 
 const SPELLBOOKS: Record<MagicOption, Spellbook[]> = {
   thralls: [], none: [], ancients: ['ancient'], standard: ['standard'],
@@ -146,6 +173,7 @@ export const runRaid = async (
     phases, priceOf, tiers, base,
   } = prepare(settings, prices);
   const candidates = await raidCandidates(phases, base, tiers, deps, onProgress, cache, search);
+  const extraDps = settings.magic === 'thralls' ? THRALL_DPS : 0;
   const plan = assembleLoadout({
     phases: phases.map((p) => ({ key: p.phase.key, hp: p.monster.monster.skills.hp })),
     candidates,
@@ -153,8 +181,9 @@ export const runRaid = async (
     budget: settings.budget,
     requiredIds: requiredItems(settings),
     maxItems: WORN_SLOTS + freeSwitchSlots(settings.supplies, settings.magic),
-    extraDps: settings.magic === 'thralls' ? THRALL_DPS : 0,
+    extraDps,
   });
+  const hpByKey = new Map(phases.map((p) => [p.phase.key, p.monster.monster.skills.hp]));
   return {
     plan,
     layout: layoutLoadout(plan.itemIds, plan.main?.setup ?? null, settings.supplies, settings.magic),
@@ -166,5 +195,6 @@ export const runRaid = async (
       hp: p.monster.monster.skills.hp,
       counts: p.counts,
     })),
+    options: weaponOptions(candidates, plan.itemIds, hpByKey, extraDps),
   };
 };

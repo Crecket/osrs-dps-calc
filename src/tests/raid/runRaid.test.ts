@@ -68,6 +68,14 @@ describe('runRaid', () => {
     expect(result.plan.totalSeconds).toBeGreaterThan(0);
   });
 
+  test('each phase lists the loadout\'s weapons with their DPS', async () => {
+    const cache = new SearchCache(memoryStorage());
+    const result = await runRaid(defaultSettings(), null, deps, () => {}, cache, search);
+    const first = result.options[result.phases[0].key];
+    expect(first).toEqual([expect.objectContaining({ weaponId: 20997, dps: 10 + 0.625 })]);
+    expect(first[0].seconds).toBeCloseTo(result.phases[0].hp / 10.625);
+  });
+
   test('a cheap change re-plans from the cache without searching', async () => {
     const cache = new SearchCache(memoryStorage());
     const settings = defaultSettings();
