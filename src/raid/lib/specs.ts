@@ -30,11 +30,12 @@ export const rankSpecs = (specs: Omit<SpecRank, 'perEnergy'>[]): SpecRank[] => s
   .sort((a, b) => b.perEnergy - a.perEnergy);
 
 type Group = 'melee' | 'ranged' | 'magic';
+// every weapon can manual cast, so magic counts only when the weapon has no melee or ranged stance
 const groupOfWeapon = (w: EquipmentPiece): Group => {
   const types = getCombatStylesForCategory(w.category).map((s) => s.type);
   if (types.includes('ranged')) return 'ranged';
-  if (types.includes('magic')) return 'magic';
-  return 'melee';
+  if (types.some((t) => t === 'stab' || t === 'slash' || t === 'crush')) return 'melee';
+  return 'magic';
 };
 const groupOfStyle = (style: string): Group => (style === 'ranged' || style === 'magic' ? style : 'melee');
 
@@ -103,7 +104,8 @@ export const specRanking = async (
     const key = phase.phase.key;
     // per style group, the phase's fastest setup
     const best = new Map<Group, Candidate>();
-    candidates.filter((c) => c.phaseKey === key).forEach((c) => {
+    const allowed = phase.phase.allowedStyles;
+    candidates.filter((c) => c.phaseKey === key && (!allowed || allowed.includes(c.style))).forEach((c) => {
       const g = groupOfStyle(c.style);
       if (!best.has(g) || c.dps > best.get(g)!.dps) best.set(g, c);
     });

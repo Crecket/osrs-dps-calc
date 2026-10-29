@@ -83,6 +83,22 @@ describe('specRanking', () => {
     expect(calls).toEqual([]);
   });
 
+  test('no melee spec weapons on a phase that can\'t be meleed', async () => {
+    const calls: string[][] = [];
+    const deps = { search: { run: async () => [], cancel: () => {} }, rows: rows(calls) } as never;
+    const melee = { ...candidate, style: 'slash' as const };
+    await specRanking([phase], [candidate, melee], [], deps, new SearchCache(memoryStorage()));
+    expect(calls.flat()).not.toContain('Crimson kisten');
+  });
+
+  test('melee spec weapons are ranked on the phase\'s melee setup', async () => {
+    const calls: string[][] = [];
+    const deps = { search: { run: async () => [], cancel: () => {} }, rows: rows(calls) } as never;
+    const [bork] = routePhases(fa, fa.defaultRoute, {}, []).filter((p) => p.phase.key === 'bork:0');
+    await specRanking([bork], [{ ...candidate, phaseKey: 'bork:0', style: 'slash' }], [], deps, new SearchCache(memoryStorage()));
+    expect(calls.flat()).toContain('Crimson kisten');
+  });
+
   test('excluded spec weapons are left out', async () => {
     const calls: string[][] = [];
     const deps = { search: { run: async () => [], cancel: () => {} }, rows: rows(calls) } as never;

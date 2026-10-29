@@ -166,8 +166,15 @@ describe('per-style searches', () => {
 
   test('each style is its own search', async () => {
     await raidCandidates(phases, twoStyles, [[1]], deps, () => {}, new SearchCache(memoryStorage()), search);
-    expect(mockRun).toHaveBeenCalledTimes(phases.length * 2);
+    // the flying Guardian gets no slash search
+    expect(mockRun).toHaveBeenCalledTimes(phases.length * 2 - 1);
     expect(mockRun.mock.calls.map((c) => (c[0] as BestInputs).styles)).toEqual(expect.arrayContaining([['slash'], ['ranged']]));
+  });
+
+  test('a phase that can\'t be meleed gets no melee search', async () => {
+    const flying = routePhases(fa, fa.defaultRoute, {}, []).filter((p) => p.phase.key === 'guardian:0');
+    await raidCandidates(flying, twoStyles, [[1]], deps, () => {}, new SearchCache(memoryStorage()), search);
+    expect(mockRun.mock.calls.map((c) => (c[0] as BestInputs).styles)).toEqual([['ranged']]);
   });
 
   test('excluding a ranged-only item re-runs only the ranged searches', async () => {

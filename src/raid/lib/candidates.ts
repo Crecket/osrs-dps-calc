@@ -137,7 +137,7 @@ interface SearchJob {
 
 /** One search per phase × tier × style, so a change that only matters for one style redoes only that style's searches */
 const searchJobs = (phases: RoutePhase[], base: BestInputs, tiers: number[][]): SearchJob[] => phases.flatMap(
-  (phase) => tiers.flatMap((tier) => base.styles.map((style): SearchJob => {
+  (phase) => tiers.flatMap((tier) => base.styles.filter((st) => phase.phase.allowedStyles?.includes(st) ?? true).map((style): SearchJob => {
     const inputs = { ...base, styles: [style], excludedItemIds: tier };
     const keyInputs = { ...inputs, excludedItemIds: tier.filter((id) => mattersFor(style, id)) };
     return {

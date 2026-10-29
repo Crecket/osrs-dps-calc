@@ -1,4 +1,5 @@
 import { BulkMonster } from '@/bulk/types';
+import type { BestStyle } from '@/best/types';
 
 // Worker-safe: no state, React or app imports.
 
@@ -21,6 +22,8 @@ export interface RaidPhase {
   monsterId: number;
   version: string;
   defaults: DefenceCounts;
+  /** Styles that can hit this phase; missing means every style */
+  allowedStyles?: BestStyle[];
 }
 
 export interface BossRules {

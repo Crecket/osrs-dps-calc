@@ -15,7 +15,13 @@ const fracturedArchive: RaidDef = {
         name: 'Archive Guardian',
         phases: [
           {
-            key: 'guardian:0', label: 'Flying', monsterId: 16659, version: 'Flying', defaults: specs(0, 4),
+            key: 'guardian:0',
+            label: 'Flying',
+            monsterId: 16659,
+            version: 'Flying',
+            defaults: specs(0, 4),
+            // out of melee reach while flying
+            allowedStyles: ['ranged', 'magic'],
           },
           {
             key: 'guardian:1', label: 'Grounded', monsterId: 16659, version: 'Grounded', defaults: specs(0, 4),
