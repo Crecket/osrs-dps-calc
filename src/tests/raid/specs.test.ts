@@ -12,10 +12,10 @@ const option = (weaponId: number, cost: number, expected: number, phaseKey = 'p0
 });
 
 describe('roomEnergy', () => {
-  test('100% minus the defence specs: maul and DWH 50%, Ralos 25% per hitsplat', () => {
-    expect(roomEnergy([{ elderMaul: 0, dwh: 0, tonalztic: 0 }])).toBe(100);
-    expect(roomEnergy([{ elderMaul: 2, dwh: 0, tonalztic: 4 }])).toBe(0);
-    expect(roomEnergy([{ elderMaul: 1, dwh: 0, tonalztic: 0 }, { elderMaul: 0, dwh: 0, tonalztic: 1 }])).toBe(25);
+  test('100% per room plus 10% every 30 seconds; defence specs come from the team', () => {
+    expect(roomEnergy(0)).toBe(100);
+    expect(roomEnergy(89)).toBe(120);
+    expect(roomEnergy(300)).toBe(200);
   });
 });
 

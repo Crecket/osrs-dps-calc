@@ -3,10 +3,6 @@
  * spec weapons to use on which phase, and which spec weapons are worth buying. Pure arithmetic over precomputed spec
  * damage.
  */
-import { DefenceCounts } from '@/raid/types';
-
-// energy per spec of the defence weapons; a Ralos count is hitsplats, two per 50% spec
-const DEFENCE_SPEC_ENERGY: DefenceCounts = { elderMaul: 50, dwh: 50, tonalztic: 25 };
 // energy is planned in steps of 5%, which every spec cost is a multiple of
 const STEP = 5;
 const MIN_GAIN = 1e-6;
@@ -47,11 +43,14 @@ export interface SpecRoom {
   options: SpecOption[];
 }
 
-/** Energy left in a room after its phases' defence reduction specs */
-export const roomEnergy = (counts: DefenceCounts[]): number => Math.max(0, 100 - counts.reduce(
-  (n, c) => n + c.elderMaul * DEFENCE_SPEC_ENERGY.elderMaul + c.dwh * DEFENCE_SPEC_ENERGY.dwh + c.tonalztic * DEFENCE_SPEC_ENERGY.tonalztic,
-  0,
-));
+/** Energy regenerates 10% every 30 seconds (without a Lightbearer) */
+const REGEN_SECONDS_PER_10 = 30;
+
+/**
+ * Your energy for damage specs in a room: 100% at the start plus what regenerates over the room's kill time. The
+ * defence reduction specs come from the team, so they don't use it.
+ */
+export const roomEnergy = (roomSeconds: number): number => 100 + Math.floor(roomSeconds / REGEN_SECONDS_PER_10) * 10;
 
 /** Seconds one spec saves: its damage would take damage / DPS with the normal setup, the spec itself takes its attack */
 export const specSaving = (o: SpecOption): number => (o.mainDps > 0 ? o.expected / o.mainDps - o.attackSeconds : 0);
