@@ -33,6 +33,10 @@ describe('bestPool', () => {
     expect(pool.map((e) => e.id)).not.toContain(findEquipment('Wilderness champion amulet').id);
   });
 
+  test('drops the PvP Arena\'s Wristbands of the Arena', () => {
+    expect(pool.filter((e) => /^Wristbands of the Arena/.test(e.name))).toEqual([]);
+  });
+
   test('drops historical items, which no longer exist in the game', () => {
     expect(pool.filter((e) => /\(historical\)/.test(e.name))).toEqual([]);
     expect(pool.some((e) => e.name === 'Crystal bow')).toBe(true);

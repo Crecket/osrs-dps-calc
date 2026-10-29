@@ -62,6 +62,11 @@ describe('itemPrice', () => {
     expect(itemPrice(27769, { byId: new Map([[23977, 15e6]]), byName: new Map() }, new Set())).toBe(15e6);
   });
 
+  test('an ornament copy costs what its base item costs', () => {
+    // Holy Scythe of Vitur 25736 has the Scythe of Vitur's stats; the scythe is on the GE uncharged (22486)
+    expect(itemPrice(25736, { byId: new Map([[22486, 1.2e9]]), byName: new Map() }, new Set())).toBe(1.2e9);
+  });
+
   test('untradeable is free', () => {
     expect(itemPrice(27610, { byId: new Map(), byName: new Map() }, new Set())).toBe(0);
   });

@@ -107,11 +107,27 @@ const shorterNames = (name: string): string[] => {
   }
 };
 
+// ornament copies the aliases miss: "<prefix> <name>" with the same stats as "<name>", e.g. the Holy Scythe of Vitur
+let baseNames: Map<number, string> | null = null;
+const baseName = (id: number) => {
+  if (!baseNames) {
+    const statsKey = (e: EquipmentPiece) => JSON.stringify([e.slot, e.offensive, e.defensive, e.bonuses, e.speed, e.category]);
+    const namesByStats = new Map<string, string[]>();
+    availableEquipment.forEach((e) => namesByStats.set(statsKey(e), [...(namesByStats.get(statsKey(e)) ?? []), e.name]));
+    baseNames = new Map();
+    availableEquipment.forEach((e) => {
+      const base = namesByStats.get(statsKey(e))!.find((n) => e.name.toLowerCase().endsWith(` ${n.toLowerCase()}`));
+      if (base) baseNames!.set(e.id, base);
+    });
+  }
+  return baseNames.get(id);
+};
+
 /**
  * What the item costs to buy: 0 when owned (as itself or its canonical item), when there are no prices, or when the
  * item has no price (untradeable). Looks up the id, then the canonical id, then for the name and each shorter name
  * (without a trailing "(…)") its versions and the name itself: a charged, imbued, corrupted or clan item is often only
- * tradeable as its plain or inactive version.
+ * tradeable as its plain or inactive version. An ornament copy without a price of its own costs what its base item costs.
  */
 export const itemPrice = (id: number, prices: Prices | null, owned: Set<number>): number => {
   const canonical = canonicalOf(id);
@@ -120,7 +136,8 @@ export const itemPrice = (id: number, prices: Prices | null, owned: Set<number>)
   if (byId !== undefined) return byId;
   const name = itemById(id)?.name;
   if (!name) return 0;
-  for (const n of shorterNames(name)) {
+  const base = baseName(id);
+  for (const n of [...shorterNames(name), ...(base ? shorterNames(base) : [])]) {
     for (const other of versionIds(n)) {
       const price = prices.byId.get(other);
       if (price !== undefined) return price;

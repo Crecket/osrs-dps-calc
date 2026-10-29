@@ -47,11 +47,12 @@ const NOT_REAL = /\((wrapped|nz)\)/;
 const CORRUPTED = /^Corrupted /;
 
 /**
- * PvP-only gear: Bounty Hunter copies (bh), which only work on Bounty Hunter worlds, and the Vesta's, Statius's, Morrigan's and Zuriel's gear in every variant (plain, (bh), Corrupted, Deadman, blighted), which comes from LMS, Deadman and Bounty Hunter and works only in PvP areas, and the PvP Arena's Koriff's, Maoma's and Saika's headgear.
+ * PvP-only gear: Bounty Hunter copies (bh), which only work on Bounty Hunter worlds, and the Vesta's, Statius's, Morrigan's and Zuriel's gear in every variant (plain, (bh), Corrupted, Deadman, blighted), which comes from LMS, Deadman and Bounty Hunter and works only in PvP areas, and the PvP Arena's Koriff's, Maoma's and Saika's headgear and Wristbands of the Arena.
  */
 export const isPvpOnly = (item: EquipmentPiece): boolean => /\(bh\)/.test(item.name)
   || /^(Corrupted )?(Vesta|Statius|Morrigan|Zuriel)'s /i.test(item.name)
-  || /^(Koriff|Maoma|Saika)'s /.test(item.name);
+  || /^(Koriff|Maoma|Saika)'s /.test(item.name)
+  || /^Wristbands of the Arena/.test(item.name);
 
 /**
  * The items the search may use: canonical items, without uncharged, inactive, broken, Deadman, cosmetic, unobtainable,
