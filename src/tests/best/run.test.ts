@@ -13,6 +13,7 @@ import {
   BestInputs, BestStyle, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS,
 } from '@/best/types';
 import { getTestMonster } from '@/tests/utils/TestUtils';
+import { spellByName } from '@/types/Spell';
 
 const pool = bestPool();
 
@@ -345,5 +346,24 @@ describe('runBestSetup', () => {
     const outcomes = await second;
     // topN 1: one setup for each of the topK weapons
     expect(outcomes[0].setups.length).toBe(2);
+  });
+});
+
+describe('spellbooks', () => {
+  const spellJobs = (calls: BestPayload[][]) => calls.flat().flatMap((p) => p.jobs).filter((j) => j.spellName !== null);
+
+  test('spellbooks [] leaves only powered staves', async () => {
+    const { deps, calls } = fakeDeps(synthetic);
+    await runBestSetup({ ...inputs(['magic']), spellbooks: [] }, vorkath, deps, () => {}, opts);
+    expect(calls.flat().length).toBeGreaterThan(0);
+    expect(spellJobs(calls)).toEqual([]);
+  });
+
+  test('spellbooks [ancient] leaves only ancient spells', async () => {
+    const { deps, calls } = fakeDeps(synthetic);
+    await runBestSetup({ ...inputs(['magic']), spellbooks: ['ancient'] }, vorkath, deps, () => {}, opts);
+    const jobs = spellJobs(calls);
+    expect(jobs.length).toBeGreaterThan(0);
+    expect(jobs.every((j) => spellByName(j.spellName!)?.spellbook === 'ancient')).toBe(true);
   });
 });

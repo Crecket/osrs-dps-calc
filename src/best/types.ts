@@ -1,6 +1,7 @@
 import { PlayerSkills } from '@/types/Player';
 import Potion from '@/enums/Potion';
 import { Prayer } from '@/enums/Prayer';
+import type { Spellbook } from '@/types/Spell';
 
 export type BestStyle = 'stab' | 'slash' | 'crush' | 'ranged' | 'magic';
 export const BEST_STYLES: BestStyle[] = ['stab', 'slash', 'crush', 'ranged', 'magic'];
@@ -41,6 +42,8 @@ export interface BestInputs {
   prayerOverrides?: Partial<Record<'melee' | 'ranged' | 'magic', Prayer[]>>;
   /** Canonical ids of items the search must not use */
   excludedItemIds?: number[];
+  /** Spellbooks the magic setups may cast from; null or missing allows every spell, [] only powered staves */
+  spellbooks?: Spellbook[] | null;
 }
 
 // not on slayer task: upstream defaults to on, which would make the slayer helm win every boss

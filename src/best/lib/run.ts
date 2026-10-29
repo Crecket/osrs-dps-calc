@@ -14,6 +14,7 @@ import { TaskPool } from '@/bulk/worker/TaskPool';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import { BulkMonster, BulkRow, BulkSetup } from '@/bulk/types';
 import { BestInputs, BestStyle } from '@/best/types';
+import { Spellbook, spellByName } from '@/types/Spell';
 
 export interface StyleOutcome {
   style: BestStyle;
@@ -73,6 +74,13 @@ const chunk = <T>(items: T[], size: number): T[][] => Array.from(
   { length: Math.ceil(items.length / size) },
   (_, i) => items.slice(i * size, (i + 1) * size),
 );
+
+// jobs without a spell (powered staves, other styles) are always allowed
+const allowedSpell = (job: WeaponJob, spellbooks: Spellbook[] | null | undefined) => {
+  if (!spellbooks || job.spellName === null) return true;
+  const spell = spellByName(job.spellName);
+  return !!spell && spellbooks.includes(spell.spellbook);
+};
 
 const jobKey = (job: WeaponJob) => JSON.stringify([job.weaponId, job.combatStyle.name, job.ammoId, job.spellName, job.dartId]);
 
@@ -189,7 +197,9 @@ export const runBestSetup = async (
     // the workers leave the same items out of their pools
     const excluded = (inputs.excludedItemIds ?? []).map(getCanonicalItemId);
     const plans: StylePlan[] = inputs.styles.map((style) => ({
-      style, base: basePlayer(inputs, style), jobs: weaponJobs(getPool(excluded), style, target),
+      style,
+      base: basePlayer(inputs, style),
+      jobs: weaponJobs(getPool(excluded), style, target).filter((job) => allowedSpell(job, inputs.spellbooks)),
     }));
 
     // progress counts jobs: one per effect test, one per searched job and phase
