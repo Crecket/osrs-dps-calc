@@ -106,6 +106,28 @@ describe('specRanking', () => {
     expect(calls.flat()).toContain('Crimson kisten');
   });
 
+  test('a crossbow spec is ranked with its best enchanted bolts', async () => {
+    const ammo: string[] = [];
+    const deps = {
+      search: { run: async () => [], cancel: () => {} },
+      rows: {
+        // the Zaryte crossbow's spec only shines with ruby bolts (e)
+        run: async (setups: BulkSetup[]) => setups.map((st) => {
+          const bolt = st.player.equipment.ammo?.name ?? '';
+          if (st.player.equipment.weapon?.id === ZCB) ammo.push(bolt);
+          const ruby = st.player.equipment.weapon?.id === ZCB && bolt === 'Ruby dragon bolts (e)';
+          return { setupId: st.id, spec: { expected: ruby ? 90 : 10 } } as BulkRow;
+        }),
+        cancel: () => {},
+      },
+    } as never;
+    const ranking = await specRanking([phase], [candidate], [], deps, new SearchCache(memoryStorage()));
+    expect(ammo).toContain('Ruby dragon bolts (e)');
+    expect(ranking[phase.phase.key].find((r) => r.weaponId === ZCB)?.expected).toBe(90);
+    // one entry per weapon
+    expect(ranking[phase.phase.key].filter((r) => r.weaponId === ZCB)).toHaveLength(1);
+  });
+
   test('excluded spec weapons are left out', async () => {
     const calls: string[][] = [];
     const deps = { search: { run: async () => [], cancel: () => {} }, rows: rows(calls) } as never;

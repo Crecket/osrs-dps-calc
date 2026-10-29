@@ -57,21 +57,27 @@ const loadPool = () => {
 
 const DRAGON_DART = 11230;
 
-/** The candidate's setup with `weapon` in hand: a stance of the candidate's attack type if it has one, valid ammo */
-const withWeapon = (c: Candidate, weapon: EquipmentPiece): BulkSetup => {
+/** Ammo to spec with: the setup's if the weapon fires it, else the strongest it does, and every enchanted bolt as strong (a bolt spec rides on its effect) */
+const ammoOptions = (weapon: EquipmentPiece, current: EquipmentPiece | null): (EquipmentPiece | null)[] => {
+  const valid = ammo.filter((a) => ammoApplicability(weapon.id, a.id) === AmmoApplicability.INCLUDED)
+    .sort((a, b) => b.bonuses.ranged_str - a.bonuses.ranged_str);
+  const fires = ammoApplicability(weapon.id, current?.id) !== AmmoApplicability.INVALID;
+  const base = fires ? current : (valid[0] ?? null);
+  const strength = base?.bonuses.ranged_str ?? 0;
+  const enchanted = valid.filter((a) => a.id !== base?.id && /\(e\)$/.test(a.name) && a.bonuses.ranged_str >= strength);
+  return [base, ...enchanted];
+};
+
+/** The candidate's setup with `weapon` in hand and `ammoItem`: a stance of the candidate's attack type if it has one */
+const withWeapon = (c: Candidate, weapon: EquipmentPiece, ammoItem: EquipmentPiece | null): BulkSetup => {
   const { player } = c.setup;
   const stances = getCombatStylesForCategory(weapon.category);
   const style = stances.find((s) => s.type === player.style.type) ?? stances.find((s) => groupOfStyle(s.type ?? '') === groupOfWeapon(weapon)) ?? stances[0];
-  let ammoItem = player.equipment.ammo;
-  if (ammoApplicability(weapon.id, ammoItem?.id) === AmmoApplicability.INVALID) {
-    ammoItem = ammo.filter((a) => ammoApplicability(weapon.id, a.id) === AmmoApplicability.INCLUDED)
-      .sort((a, b) => b.bonuses.ranged_str - a.bonuses.ranged_str)[0] ?? null;
-  }
   const hand = /blowpipe/i.test(weapon.name)
     ? { ...weapon, itemVars: { blowpipeDartId: DRAGON_DART, blowpipeDartName: 'Dragon dart' } }
     : weapon;
   return {
-    id: `spec-${c.phaseKey}-${weapon.id}`,
+    id: `spec-${c.phaseKey}-${weapon.id}-${ammoItem?.id ?? 0}`,
     name: weapon.name,
     player: {
       ...player,
@@ -115,7 +121,7 @@ export const specRanking = async (
     });
     const setups = weapons.flatMap((w) => {
       const base = best.get(groupOfWeapon(w));
-      return base ? [{ weapon: w, setup: withWeapon(base, w) }] : [];
+      return base ? ammoOptions(w, base.setup.player.equipment.ammo).map((a) => ({ weapon: w, setup: withWeapon(base, w, a) })) : [];
     });
     const missing = setups.filter((s) => cache.getSpec(specKey(phase, s.setup)) === undefined);
     if (missing.length > 0) {
@@ -123,10 +129,17 @@ export const specRanking = async (
       const byId = new Map((rows ?? []).map((r) => [r.setupId, r]));
       missing.forEach((s) => cache.setSpec(specKey(phase, s.setup), byId.get(s.setup.id)?.spec?.expected ?? 0));
     }
-    out[key] = rankSpecs(setups.map((s) => ({
+    // each weapon with its best ammo
+    const byWeapon = new Map<number, { setup: BulkSetup; weapon: EquipmentPiece; expected: number }>();
+    setups.forEach((s) => {
+      const expected = cache.getSpec(specKey(phase, s.setup)) ?? 0;
+      const seen = byWeapon.get(s.weapon.id);
+      if (!seen || expected > seen.expected) byWeapon.set(s.weapon.id, { ...s, expected });
+    });
+    out[key] = rankSpecs([...byWeapon.values()].map((s) => ({
       weaponId: s.weapon.id,
       cost: WEAPON_SPEC_COSTS[s.weapon.name],
-      expected: cache.getSpec(specKey(phase, s.setup)) ?? 0,
+      expected: s.expected,
       ticks: calculateAttackSpeed(s.setup.player, phase.monster.monster),
     })));
   }));
