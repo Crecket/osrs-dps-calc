@@ -18,13 +18,13 @@ describe('rankSpecs', () => {
     const ranked = rankSpecs([
       // a slow spec: more damage, but over 9 ticks
       {
-        weaponId: 11235, cost: 55, expected: 100, ticks: 9,
+        weaponId: 11235, cost: 55, expected: 100, ticks: 9, ammoId: null,
       },
       {
-        weaponId: KISTEN, cost: 50, expected: 70, ticks: 4,
+        weaponId: KISTEN, cost: 50, expected: 70, ticks: 4, ammoId: null,
       },
       {
-        weaponId: 1, cost: 50, expected: 0, ticks: 4,
+        weaponId: 1, cost: 50, expected: 0, ticks: 4, ammoId: null,
       },
     ]);
     expect(ranked.map((r) => r.weaponId)).toEqual([KISTEN, 11235]);

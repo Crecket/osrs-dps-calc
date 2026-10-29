@@ -23,6 +23,8 @@ export interface SpecRank {
   expected: number;
   /** Expected damage per second of the spec's attack */
   dps: number;
+  /** The ammo the spec was rated with, if the weapon fires any */
+  ammoId: number | null;
 }
 
 const SECONDS_PER_TICK = 0.6;
@@ -134,9 +136,21 @@ export const specRanking = async (
     out[key] = rankSpecs(setups.map((s) => ({
       weaponId: s.weapon.id,
       cost: WEAPON_SPEC_COSTS[s.weapon.name],
+      ammoId: s.setup.player.equipment.ammo?.id ?? null,
       expected: cache.getSpec(specKey(phase, s.setup)) ?? 0,
       ticks: calculateAttackSpeed(s.setup.player, phase.monster.monster),
     })));
   }));
   return out;
+};
+
+/** The spec weapon worth bringing: the most spec damage per second added up over the route's phases */
+export const routeSpec = (specs: Record<string, SpecRank[]>): SpecRank | null => {
+  const totals = new Map<number, { rank: SpecRank; total: number }>();
+  Object.values(specs).flat().forEach((r) => {
+    const t = totals.get(r.weaponId) ?? { rank: r, total: 0 };
+    t.total += r.dps;
+    totals.set(r.weaponId, t);
+  });
+  return [...totals.values()].sort((a, b) => b.total - a.total)[0]?.rank ?? null;
 };

@@ -42,9 +42,9 @@ export interface KitInput {
 type Group = 'melee' | 'ranged' | 'magic';
 const groupOf = (style: BestStyle): Group => (style === 'ranged' || style === 'magic' ? style : 'melee');
 
-// kits and weapons kept per group, cheapest to best, so a small budget still has options
-const KITS_PER_GROUP = 8;
-const WEAPONS_PER_GROUP = 10;
+// kits kept per phase: cheapest to best, so a small budget still has options; every distinct weapon is kept, since
+// one best on its own phases (the Twisted bow) must not lose to a cheaper one best on others
+const KITS_PER_PHASE = 3;
 // as in the assembly: free upgrades first, but tiny gains don't win on price alone
 const COST_SMOOTHING = 100_000;
 const MIN_GAIN = 1e-6;
@@ -99,32 +99,39 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
   const relative = (c: Candidate) => c.dps / (bestOnPhase.get(c.phaseKey) || 1);
 
   // kits and weapons out of the searched setups
-  const kits = new Map<string, Kit & { strength: number }>();
-  const weapons = new Map<string, Weapon & { strength: number }>();
+  const kits = new Map<string, Kit>();
+  // per phase and group, each kit's best strength there
+  const kitStrength = new Map<string, Map<Kit, number>>();
+  const weapons = new Map<string, Weapon>();
   input.candidates.forEach((c) => {
     const stored = toStored(c.setup, c.style, c.dps);
     const group = groupOf(c.style);
     const { ammo, ...gear } = stored.gear;
     const kitItems = canonical(Object.values(gear));
     const kitKey = `${group}:${[...kitItems].sort((a, b) => a - b).join(',')}`;
-    const kit = kits.get(kitKey);
-    if (!kit || relative(c) > kit.strength) {
+    if (!kits.has(kitKey)) {
       kits.set(kitKey, {
-        group, gear, items: kitItems, cost: costOf(kitItems), strength: relative(c),
+        group, gear, items: kitItems, cost: costOf(kitItems),
       });
     }
+    const kit = kits.get(kitKey)!;
+    const phaseKey = `${c.phaseKey}:${group}`;
+    const strengths = kitStrength.get(phaseKey) ?? new Map<Kit, number>();
+    strengths.set(kit, Math.max(strengths.get(kit) ?? 0, relative(c)));
+    kitStrength.set(phaseKey, strengths);
     const weaponItems = canonical([stored.job.weaponId, ammo, stored.job.dartId]);
     const weaponKey = `${group}:${stored.job.weaponId}:${ammo ?? ''}:${stored.job.combatStyle.name}:${stored.job.spellName ?? ''}`;
-    const weapon = weapons.get(weaponKey);
-    if (!weapon || relative(c) > weapon.strength) {
+    if (!weapons.has(weaponKey)) {
       weapons.set(weaponKey, {
-        group, style: c.style, job: stored.job, ammoId: ammo ?? null, items: weaponItems, cost: costOf(weaponItems), strength: relative(c),
+        group, style: c.style, job: stored.job, ammoId: ammo ?? null, items: weaponItems, cost: costOf(weaponItems),
       });
     }
   });
   const groups = [...new Set([...kits.values()].map((k) => k.group))];
-  const kitsOf = new Map(groups.map((g) => [g, front([...kits.values()].filter((k) => k.group === g), (k) => k.strength, KITS_PER_GROUP)]));
-  const weaponsOf = new Map(groups.map((g) => [g, front([...weapons.values()].filter((w) => w.group === g), (w) => w.strength, WEAPONS_PER_GROUP)]));
+  // each phase's cheap-to-best kits, together
+  const keptKits = new Set([...kitStrength.values()].flatMap((strengths) => front([...strengths.keys()], (k) => strengths.get(k)!, KITS_PER_PHASE)));
+  const kitsOf = new Map(groups.map((g) => [g, [...keptKits].filter((k) => k.group === g)]));
+  const weaponsOf = new Map(groups.map((g) => [g, [...weapons.values()].filter((w) => w.group === g)]));
 
   // every kit with every weapon of its group, rated on every unit its style can deal
   const combos = new Map<Kit, Map<Weapon, Combo>>();

@@ -137,6 +137,18 @@ describe('runRaid', () => {
     expect(result.specs[result.phases[0].key].map((r) => r.weaponId)).toEqual([26374]);
   });
 
+  test('the best spec weapon of the route is brought, with its spec ammo', async () => {
+    const rows = {
+      run: jest.fn(async (setups: { id: string; player: { equipment: { weapon: { id: number } | null } } }[]) => setups
+        .map((st) => ({ setupId: st.id, dps: 10, spec: { expected: st.player.equipment.weapon?.id === 26374 ? 90 : 0 } }))),
+      cancel: jest.fn(),
+    };
+    const result = await runRaid(defaultSettings(), null, { ...(deps as object), rows } as never, () => {}, new SearchCache(memoryStorage()), search);
+    // the Zaryte crossbow and its ruby dragon bolts (e)
+    expect(result.plan.itemIds).toEqual(expect.arrayContaining([26374, 21944]));
+    expect(result.layout.inventory.some((c) => c?.kind === 'item' && c.itemId === 26374)).toBe(true);
+  });
+
   test('a cheap change re-plans from the cache without searching', async () => {
     const cache = new SearchCache(memoryStorage());
     const settings = defaultSettings();

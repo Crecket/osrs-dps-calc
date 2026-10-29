@@ -21,7 +21,7 @@ import {
   Candidate, missingSearches, raidCandidates, RaidProgress, tierExclusions,
 } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
-import { SpecRank, specRanking } from '@/raid/lib/specs';
+import { routeSpec, SpecRank, specRanking } from '@/raid/lib/specs';
 import { RaidPlan, THRALL_DPS } from '@/raid/lib/assemble';
 import { KitUnit, planKits } from '@/raid/lib/kits';
 import { dpsRater, upgradeLoadout } from '@/raid/lib/upgrade';
@@ -189,8 +189,14 @@ export const runRaid = async (
   } = prepare(settings, prices);
   const candidates = await raidCandidates(phases, base, tiers, deps, onProgress, cache, search);
   const extraDps = settings.magic === 'thralls' ? THRALL_DPS : 0;
-  const requiredIds = requiredItems(settings);
   const excluded = new Set(settings.excludedIds.map(getCanonicalItemId));
+  const specs = await specRanking(phases, candidates, [...excluded], deps, cache);
+  // the route's best spec weapon and its spec ammo come along
+  const spec = routeSpec(specs);
+  const requiredIds = [...new Set([
+    ...requiredItems(settings),
+    ...(spec ? [spec.weaponId, ...(spec.ammoId !== null ? [spec.ammoId] : [])].map(getCanonicalItemId) : []),
+  ])];
   const players = new Map<BestStyle, Player>();
   const playerFor = (style: BestStyle) => {
     if (!players.has(style)) players.set(style, basePlayer(base, style));
@@ -240,9 +246,8 @@ export const runRaid = async (
     plan = await assemble(maxItems);
     layout = lay(plan);
   }
-  // the upgraded setups count as candidates for the weapon cells and the spec ranking
+  // the upgraded setups count as candidates for the weapon cells
   const all = [...candidates, ...plan.picks.flatMap((p) => (p.candidate ? [p.candidate] : []))];
-  const specs = await specRanking(phases, all, [...excluded], deps, cache);
   const hpByKey = new Map(phases.map((p) => [p.phase.key, p.monster.monster.skills.hp]));
   return {
     plan,

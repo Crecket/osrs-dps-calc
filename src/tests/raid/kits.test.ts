@@ -78,6 +78,24 @@ describe('planKits', () => {
     expect(plan.totalSeconds).toBeCloseTo(200);
   });
 
+  test('a dearer weapon that is best on its own phases is kept next to a cheaper one', async () => {
+    // the bowfa is best on a, the Twisted bow on b; both are worth bringing with the budget
+    const byPhase = async (setups: BulkSetup[], m: BulkMonster) => setups.map((s) => {
+      const weapon = s.player.equipment.weapon?.id;
+      if (weapon === BOWFA) return m.id === 'a' ? 14 : 8;
+      if (weapon === TBOW) return m.id === 'b' ? 14 : 8;
+      return 0;
+    });
+    const prices: Record<number, number> = { [TBOW]: 1e9, [BOWFA]: 4e7 };
+    const plan = await planKits(input({
+      priceOf: (id) => prices[id] ?? 0,
+      budget: 2e9,
+      candidates: [cand('a', 'ranged', BOWFA, null, MASORI, 14), cand('b', 'ranged', TBOW, ARROW, MASORI, 14)],
+    }), byPhase);
+    expect(plan.itemIds).toEqual(expect.arrayContaining([TBOW, BOWFA]));
+    expect(plan.totalSeconds).toBeCloseTo(2 * (1200 / 14));
+  });
+
   test('stays within the budget', async () => {
     const prices: Record<number, number> = { [TBOW]: 1e9 };
     const plan = await planKits(input({ priceOf: (id) => prices[id] ?? 0, budget: 5e8 }), rate);
