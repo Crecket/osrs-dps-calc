@@ -4,7 +4,7 @@ import { getCombatStylesForCategory } from '@/utils';
 import { generateEmptyPlayer } from '@/state';
 import { buildPlayer } from '@/best/lib/search';
 import { BulkSetup } from '@/bulk/types';
-import { freeSwitchSlots, layoutLoadout } from '@/raid/lib/layout';
+import { freeSwitchSlots, layoutLoadout, slotEfficientLayout } from '@/raid/lib/layout';
 
 const tbow = availableEquipment.find((e) => e.id === 20997)!;
 const rapid = getCombatStylesForCategory(tbow.category).find((s) => s.stance === 'Rapid')!;
@@ -107,5 +107,30 @@ describe('layoutLoadout', () => {
     const layout = layoutLoadout(switches, null, { brews: 10, restores: 10, reserved: 0 }, 'none');
     expect(layout.overflow).toBe(2);
     expect(layout.inventory.filter((c) => c?.kind === 'supply')).toHaveLength(20);
+  });
+});
+
+describe('slotEfficientLayout', () => {
+  test('wears the setup that leaves the fewest switches: a one-handed weapon with the book beside it over a two-handed bow', () => {
+    const whip = availableEquipment.find((e) => e.id === 4151)!;
+    const melee: BulkSetup = {
+      id: 'melee',
+      name: 'melee',
+      player: buildPlayer(generateEmptyPlayer(), {
+        style: 'slash', weaponId: 4151, combatStyle: getCombatStylesForCategory(whip.category).find((s) => s.type === 'slash')!, ammoId: null, spellName: null, dartId: null,
+      }, {}),
+    };
+    const items = [20997, 11212, 4151, 25818];
+    const none = { brews: 0, restores: 0, reserved: 0 };
+    // the bow first, as the setup used the longest: whip and book would be switches
+    expect(layoutLoadout(items, setup({}), none, 'none').inventory.filter((c) => c !== null)).toHaveLength(2);
+    const layout = slotEfficientLayout(items, [setup({}), melee], none, 'none');
+    expect(layout.worn).toMatchObject({ weapon: 4151, shield: 25818, ammo: 11212 });
+    expect(layout.inventory.filter((c) => c !== null)).toEqual([{ kind: 'item', itemId: 20997 }]);
+  });
+
+  test('of equally good setups the first one stays worn', () => {
+    const layout = slotEfficientLayout([20997, 11212], [setup({}), setup({})], { brews: 0, restores: 0, reserved: 0 }, 'none');
+    expect(layout.worn.weapon).toBe(20997);
   });
 });

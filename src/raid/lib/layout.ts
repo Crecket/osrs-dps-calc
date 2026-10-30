@@ -92,3 +92,11 @@ export const layoutLoadout = (itemIds: number[], main: BulkSetup | null, supplie
   while (inventory.length < INVENTORY_SIZE) inventory.push(null);
   return { worn, inventory, overflow: Math.max(0, switches.length - room) };
 };
+
+/** The layout with the fewest switches in the inventory, wearing one of `mains` (the first of equally good ones) */
+export const slotEfficientLayout = (itemIds: number[], mains: BulkSetup[], supplies: Supplies, magic: MagicOption): Layout => {
+  const switchCount = (l: Layout) => l.overflow + l.inventory.filter((c) => c?.kind === 'item').length;
+  return mains.map((main) => layoutLoadout(itemIds, main, supplies, magic))
+    .reduce<Layout | null>((best, l) => (!best || switchCount(l) < switchCount(best) ? l : best), null)
+    ?? layoutLoadout(itemIds, null, supplies, magic);
+};

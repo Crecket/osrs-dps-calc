@@ -27,7 +27,7 @@ import { RaidPlan, THRALL_DPS } from '@/raid/lib/assemble';
 import { KitUnit, planKits } from '@/raid/lib/kits';
 import { dpsRater, upgradeLoadout } from '@/raid/lib/upgrade';
 import {
-  freeSwitchSlots, Layout, layoutLoadout, Supplies,
+  freeSwitchSlots, Layout, slotEfficientLayout, Supplies,
 } from '@/raid/lib/layout';
 
 export const BOOK_OF_THE_DEAD = 25818;
@@ -276,7 +276,14 @@ export const runRaid = async (
     extraDps,
     playerFor,
   }, rate);
-  const lay = (plan: RaidPlan) => layoutLoadout(plan.itemIds, plan.main?.setup ?? null, settings.supplies, settings.magic);
+  // the main setup worn is the one leaving the fewest switches (Masori, the Zaryte crossbow and the book beside it
+  // rather than a melee set with everything ranged in the bag), the longest-used of equally good ones
+  const lay = (plan: RaidPlan) => {
+    const mains = [plan.main, ...plan.picks.map((p) => p.candidate)].filter((c): c is Candidate => !!c);
+    const distinct = mains.filter((c, i) => mains.findIndex((o) => o.setup.id === c.setup.id) === i);
+    return slotEfficientLayout(plan.itemIds, distinct.map((c) => c.setup), settings.supplies, settings.magic);
+  };
+  const freeCells = (l: Layout) => l.inventory.filter((c) => c === null).length;
   // the item limit assumes all worn slots are filled; when the main setup wears fewer, switches overflow, so plan again
   // with fewer items
   let maxItems = WORN_SLOTS + freeSwitchSlots(settings.supplies, settings.magic);
@@ -287,6 +294,18 @@ export const runRaid = async (
     // eslint-disable-next-line no-await-in-loop
     plan = await assemble(maxItems);
     layout = lay(plan);
+  }
+  // the item limit counts every worn slot once; a quiver's slot or a lighter main setup can leave inventory cells free,
+  // so plan again with them while that is faster and still fits
+  for (let i = 0; i < MAX_REPLANS && layout.overflow === 0 && freeCells(layout) > 0; i++) {
+    const more = Math.max(maxItems, plan.itemIds.length) + freeCells(layout);
+    // eslint-disable-next-line no-await-in-loop
+    const next = await assemble(more);
+    const nextLayout = lay(next);
+    if (nextLayout.overflow > 0 || next.totalSeconds >= plan.totalSeconds - 1e-6) break;
+    maxItems = more;
+    plan = next;
+    layout = nextLayout;
   }
   // the upgraded setups count as candidates for the weapon cells
   const all = [...candidates, ...plan.picks.flatMap((p) => (p.candidate ? [p.candidate] : []))];
