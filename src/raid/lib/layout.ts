@@ -38,8 +38,9 @@ const itemById = (id: number) => {
 };
 
 /**
- * The loadout as worn gear and a 28-slot inventory: `main`'s gear is worn, an ammo switch fills an empty ammo slot and
- * another the quiver slot when a Dizana's quiver (or its max cape) is brought; every other item is an inventory switch, in `itemIds` order, followed by
+ * The loadout as worn gear and a 28-slot inventory: `main`'s gear is worn, a switch fills each slot it leaves empty
+ * (the shield slot only beside a one-handed weapon), and an ammo switch the quiver slot when a Dizana's quiver (or its
+ * max cape) is brought; every other item is an inventory switch, in `itemIds` order, followed by
  * the rune pouch, reserved slots, restores and brews. Switches that don't fit are counted in `overflow`, supplies never.
  */
 export const layoutLoadout = (itemIds: number[], main: BulkSetup | null, supplies: Supplies, magic: MagicOption): Layout => {
@@ -62,7 +63,18 @@ export const layoutLoadout = (itemIds: number[], main: BulkSetup | null, supplie
     const ammo = nextAmmo();
     if (ammo !== undefined) worn.ammo = ammo;
   }
-  const quiver = [main?.player.equipment.cape?.id, ...switches].some((id) => id !== undefined && itemById(id)?.name.includes('Dizana\'s'));
+  // any other empty worn slot holds a switch too (the Book of the Dead beside a one-handed weapon): a slot saved
+  const twoHanded = main?.player.equipment.weapon?.isTwoHanded ?? false;
+  if (main) {
+    GEAR_SLOT_ORDER.forEach((slot) => {
+      if (slot === 'ammo' || slot === 'weapon' || worn[slot] !== undefined || (slot === 'shield' && twoHanded)) return;
+      const item = switches.find((id) => itemById(id)?.slot === slot);
+      if (item === undefined) return;
+      worn[slot] = item;
+      switches = switches.filter((id) => id !== item);
+    });
+  }
+  const quiver = [worn.cape, ...switches].some((id) => id !== undefined && itemById(id)?.name.includes('Dizana\'s'));
   if (quiver) {
     const ammo = nextAmmo();
     if (ammo !== undefined) worn.quiverAmmo = ammo;

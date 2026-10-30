@@ -55,11 +55,38 @@ describe('layoutLoadout', () => {
         style: 'slash', weaponId: 22325, combatStyle: getCombatStylesForCategory(scythe.category).find((s) => s.type === 'slash')!, ammoId: null, spellName: null, dartId: null,
       }, {}),
     };
-    // the quiver is a switch: it keeps its ammo when not worn
+    // the quiver fills the empty cape slot
     const layout = layoutLoadout([22325, 20997, 11212, 21944, 28951], main, { brews: 0, restores: 0, reserved: 0 }, 'none');
-    expect(layout.worn.ammo).toBe(11212);
+    expect(layout.worn).toMatchObject({ ammo: 11212, quiverAmmo: 21944, cape: 28951 });
+    expect(layout.inventory.filter((c) => c !== null)).toEqual([{ kind: 'item', itemId: 20997 }]);
+  });
+
+  test('a quiver switch keeps its ammo too', () => {
+    // the cape slot is taken, so the quiver is a switch
+    const layout = layoutLoadout([20997, 11212, 22109, 21944, 28951], setup({ cape: 22109 }), { brews: 0, restores: 0, reserved: 0 }, 'none');
     expect(layout.worn.quiverAmmo).toBe(21944);
-    expect(layout.inventory.filter((c) => c !== null)).toEqual([{ kind: 'item', itemId: 20997 }, { kind: 'item', itemId: 28951 }]);
+    expect(layout.inventory.filter((c) => c !== null)).toEqual([{ kind: 'item', itemId: 28951 }]);
+  });
+
+  test('an empty worn slot holds a switch instead of the inventory: the Book of the Dead next to a one-handed weapon', () => {
+    const whip = availableEquipment.find((e) => e.id === 4151)!;
+    const main: BulkSetup = {
+      id: 'main',
+      name: 'main',
+      player: buildPlayer(generateEmptyPlayer(), {
+        style: 'slash', weaponId: 4151, combatStyle: getCombatStylesForCategory(whip.category).find((s) => s.type === 'slash')!, ammoId: null, spellName: null, dartId: null,
+      }, { head: 27235 }),
+    };
+    const layout = layoutLoadout([4151, 27235, 25818, 19547, 26382], main, { brews: 0, restores: 0, reserved: 0 }, 'none');
+    expect(layout.worn).toMatchObject({ shield: 25818, neck: 19547 });
+    // the head slot is taken, so the other helm stays a switch
+    expect(layout.inventory.filter((c) => c !== null)).toEqual([{ kind: 'item', itemId: 26382 }]);
+  });
+
+  test('a two-handed weapon leaves the shield slot empty', () => {
+    const layout = layoutLoadout([20997, 11212, 25818], setup({}), { brews: 0, restores: 0, reserved: 0 }, 'none');
+    expect(layout.worn.shield).toBeUndefined();
+    expect(layout.inventory[0]).toEqual({ kind: 'item', itemId: 25818 });
   });
 
   test('without a quiver a second ammo goes in the inventory', () => {
