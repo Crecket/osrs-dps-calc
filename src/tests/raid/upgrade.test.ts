@@ -123,6 +123,13 @@ describe('upgradeLoadout', () => {
     expect(result.totalSeconds).toBeCloseTo(2 * (1000 / 11.5));
   });
 
+  test('tries the weapon\'s other stances: the searched one may not be the fastest after an upgrade', async () => {
+    const byStance = async (setups: BulkSetup[]) => setups.map((st) => (st.player.style.stance === 'Longrange' ? 11 : 10));
+    const result = await upgradeLoadout(input({ pool: [] }), byStance);
+    expect(result.picks.map((p) => p.candidate?.setup.player.style.stance)).toEqual(['Longrange', 'Longrange']);
+    expect(result.totalSeconds).toBeCloseTo(2 * (1000 / 11));
+  });
+
   test('stays within the budget', async () => {
     const result = await upgradeLoadout(input({ budget: 10e6 }), rate);
     expect(result.itemIds).toContain(BONECRUSHER);

@@ -8,6 +8,8 @@ import {
   AmmoApplicability, ammoApplicability, getCanonicalItemId,
 } from '@/lib/Equipment';
 import { EquipmentPiece, Player } from '@/types/Player';
+import { PlayerCombatStyle } from '@/types/PlayerCombatStyle';
+import { getCombatStylesForCategory } from '@/utils';
 import { BestRunDeps } from '@/best/lib/run';
 import { GearSlot, scoreKind, styleScore } from '@/best/lib/candidates';
 import { hashKey } from '@/best/lib/resultCache';
@@ -16,7 +18,7 @@ import {
   BulkMonster, BulkSetup, GEAR_SLOT_ORDER,
 } from '@/bulk/types';
 import { Candidate, fromStored, toStored } from '@/raid/lib/candidates';
-import { SearchCache } from '@/raid/lib/searchCache';
+import { SearchCache, StoredCandidate } from '@/raid/lib/searchCache';
 import {
   mainSetup, orderedItems, PhasePick, RaidPlan, wearsLightbearer, yieldToBrowser,
 } from '@/raid/lib/assemble';
@@ -64,9 +66,12 @@ interface Group {
 }
 
 interface Move {
-  slot: GearSlot;
+  /** The slot changed, or 'stance' for another way of attacking with the same weapon */
+  slot: GearSlot | 'stance';
   from: number | null;
   to: number;
+  /** The change, applied to a setup of the group */
+  apply: (s: StoredCandidate) => StoredCandidate;
   /** Per unit of the group, its setup with the item in the slot and that setup's DPS */
   next: Candidate[];
 }
@@ -129,21 +134,52 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   };
 
   let variant = 0;
+  /** The group's setups with the change applied, unrated; null when one can't be built */
+  const build = (group: Group, apply: Move['apply']): Candidate[] | null => {
+    const first = variant;
+    variant += group.units.length;
+    const next = group.units.map((u, i) => {
+      const stored = apply(toStored(u.candidate.setup, u.candidate.style, 0));
+      const built = fromStored(stored, u.pick.key, input.playerFor(stored.style));
+      return built ? { ...built, setup: { ...built.setup, id: `upgrade-${first + i + 1}` } } : null;
+    });
+    return next.some((n) => n === null) ? null : next as Candidate[];
+  };
+
+  /**
+   * The weapon's other stances of its style group (Aggressive slash, or crush, for a Soulreaper axe searched on
+   * Accurate): the search picked the stance for its own gear, and after an upgrade another can be faster
+   */
+  const stances = (c: Candidate): { style: BestStyle; combatStyle: PlayerCombatStyle }[] => {
+    const weapon = c.setup.player.equipment.weapon!;
+    const melee = (t: BestStyle) => t === 'stab' || t === 'slash' || t === 'crush';
+    const current = c.setup.player.style;
+    return getCombatStylesForCategory(weapon.category)
+      .filter((st) => st.type && (st.type === c.style || (melee(c.style) && melee(st.type as BestStyle))))
+      .filter((st) => st.name !== current.name || st.type !== current.type)
+      .map((st) => ({ style: st.type as BestStyle, combatStyle: st }));
+  };
+
   const movesFor = async (group: Group): Promise<Move[]> => {
-    const moves = tries(group.units[0].candidate).flatMap(({ slot, item }) => {
-      const next = group.units.map((u) => {
-        const stored = toStored(u.candidate.setup, u.candidate.style, 0);
-        const built = fromStored({ ...stored, gear: { ...stored.gear, [slot]: item.id } }, u.pick.key, input.playerFor(u.candidate.style));
-        if (!built) return null;
-        variant += 1;
-        return { ...built, setup: { ...built.setup, id: `upgrade-${variant}` } };
-      });
-      if (next.some((n) => n === null)) return [];
-      const from = group.units[0].candidate.setup.player.equipment[slot];
+    const c = group.units[0].candidate;
+    const weaponId = getCanonicalItemId(c.setup.player.equipment.weapon!.id);
+    const gearMoves = tries(c).flatMap(({ slot, item }): Move[] => {
+      const apply = (st: StoredCandidate) => ({ ...st, gear: { ...st.gear, [slot]: item.id } });
+      const next = build(group, apply);
+      if (!next) return [];
+      const from = c.setup.player.equipment[slot];
       return [{
-        slot, from: from ? getCanonicalItemId(from.id) : null, to: getCanonicalItemId(item.id), next: next as Candidate[],
+        slot, from: from ? getCanonicalItemId(from.id) : null, to: getCanonicalItemId(item.id), apply, next,
       }];
     });
+    const stanceMoves = stances(c).flatMap(({ style, combatStyle }): Move[] => {
+      const apply = (st: StoredCandidate) => ({ ...st, style, job: { ...st.job, style, combatStyle } });
+      const next = build(group, apply);
+      return next ? [{
+        slot: 'stance', from: weaponId, to: weaponId, apply, next,
+      }] : [];
+    });
+    const moves = [...gearMoves, ...stanceMoves];
     // each unit's variants rated on its own monster
     await Promise.all(group.units.map(async (u, i) => {
       const dps = await rate(moves.map((m) => m.next[i].setup), u.monster);
@@ -238,19 +274,11 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     rejected.add(keyOf(a, b));
     if (a.group === b.group) {
       const { group } = a;
-      const first = variant;
-      variant += group.units.length;
-      const next = group.units.map((u, i) => {
-        const stored = toStored(u.candidate.setup, u.candidate.style, 0);
-        const built = fromStored({
-          ...stored, gear: { ...stored.gear, [a.move.slot]: a.move.next[0].setup.player.equipment[a.move.slot]?.id ?? a.move.to, [b.move.slot]: b.move.next[0].setup.player.equipment[b.move.slot]?.id ?? b.move.to },
-        }, u.pick.key, input.playerFor(u.candidate.style));
-        return built ? { ...built, setup: { ...built.setup, id: `upgrade-${first + i + 1}` } } : null;
-      });
-      if (next.some((n) => n === null)) continue;
+      const next = build(group, (st) => b.move.apply(a.move.apply(st)));
+      if (!next) continue;
       // eslint-disable-next-line no-await-in-loop
-      const dps = await Promise.all(group.units.map((u, i) => rate([next[i]!.setup], u.monster).then(([d]) => d)));
-      const rated = next.map((n, i) => ({ ...n!, dps: dps[i] }));
+      const dps = await Promise.all(group.units.map((u, i) => rate([next[i].setup], u.monster).then(([d]) => d)));
+      const rated = next.map((n, i) => ({ ...n, dps: dps[i] }));
       if (!(gainOf(group, rated) > MIN_GAIN)) continue;
       group.units.forEach((u, i) => {
         // eslint-disable-next-line no-param-reassign
