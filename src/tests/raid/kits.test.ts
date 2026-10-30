@@ -22,6 +22,8 @@ const ZCB = 26374;
 const VENATOR_RING = 28310;
 const LIGHTBEARER = 25975;
 const RUBY = 21944;
+const MACE = 24417;
+const AVERNIC = 22322;
 
 const item = (id: number) => availableEquipment.find((e) => e.id === id)!;
 const inputs = raidBaseInputs(defaultSettings());
@@ -173,6 +175,54 @@ describe('planKits', () => {
     expect(plan.itemIds).toContain(LIGHTBEARER);
     expect(plan.itemIds).not.toContain(VENATOR_RING);
     expect(plan.picks[0].candidate?.setup.player.equipment.ring?.id).toBe(LIGHTBEARER);
+  });
+
+  test('a one-handed weapon is tried with off-hands: the searched ones and the best of the pool', async () => {
+    // the mace was searched without a shield; the defender in the pool makes it the best weapon on both
+    const melee = async (setups: BulkSetup[]) => setups.map((s) => {
+      const weapon = s.player.equipment.weapon?.id;
+      if (weapon === SCYTHE) return 10;
+      if (weapon === MACE) return s.player.equipment.shield?.id === AVERNIC ? 12 : 8;
+      return 0;
+    });
+    const plan = await planKits(input({
+      units: [{ key: 'b', hp: 1200 }, { key: 'c', hp: 1200 }],
+      candidates: [cand('c', 'slash', SCYTHE, null, [TORVA], 10), cand('b', 'crush', MACE, null, [TORVA], 8)],
+      pool: [item(AVERNIC)],
+    }), melee);
+    expect(plan.picks.map((p) => p.candidate?.setup.player.equipment.weapon?.id)).toEqual([MACE, MACE]);
+    expect(plan.picks[0].candidate?.setup.player.equipment.shield?.id).toBe(AVERNIC);
+    expect(plan.itemIds).toContain(AVERNIC);
+  });
+
+  test('a shield in a kit is not carried for a two-handed weapon', async () => {
+    const plan = await planKits(input({
+      units: [{ key: 'c', hp: 1200 }],
+      candidates: [cand('c', 'slash', SCYTHE, null, [TORVA], 12), cand('c', 'crush', MACE, null, [TORVA, AVERNIC], 8)],
+    }), rate);
+    expect(plan.picks[0].candidate?.setup.player.equipment.weapon?.id).toBe(SCYTHE);
+    expect(plan.itemIds).not.toContain(AVERNIC);
+  });
+
+  test('a blowpipe\'s darts are loaded in it, not an inventory item', async () => {
+    const blowpipe = item(12926);
+    const player = buildPlayer(playerFor('ranged'), {
+      style: 'ranged', weaponId: 12926, combatStyle: getCombatStylesForCategory(blowpipe.category).find((st) => st.stance === 'Rapid')!, ammoId: null, spellName: null, dartId: 11230,
+    }, gearOf(MASORI));
+    const pipe: Candidate = {
+      phaseKey: 'b', style: 'ranged', dps: 14, setup: { id: 'pipe', name: 'pipe', player }, itemIds: [...MASORI, 12926],
+    };
+    // the bow is best on a, the blowpipe on b
+    const byWeapon = async (setups: BulkSetup[], m: BulkMonster) => setups.map((st) => {
+      const isPipe = st.player.equipment.weapon?.id === 12926;
+      return isPipe === (m.id === 'b') ? 14 : 10;
+    });
+    const plan = await planKits(input({
+      candidates: [cand('a', 'ranged', TBOW, ARROW, MASORI, 12), pipe],
+      // Masori, the Lightbearer, the Twisted bow and its arrows, and the blowpipe
+      maxItems: 7,
+    }), byWeapon);
+    expect(plan.picks.map((p) => p.candidate?.setup.player.equipment.weapon?.id)).toEqual([TBOW, 12926]);
   });
 
   test('the item limit holds', async () => {

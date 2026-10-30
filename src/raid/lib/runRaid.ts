@@ -264,6 +264,7 @@ export const runRaid = async (
       requiredIds,
       extraDps,
       playerFor,
+      pool: items.filter((e) => !excluded.has(getCanonicalItemId(e.id))),
     }, rate),
     monsters,
     candidates,

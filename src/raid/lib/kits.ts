@@ -9,9 +9,9 @@ import {
   AmmoApplicability, ammoApplicability, availableEquipment, getCanonicalItemId,
 } from '@/lib/Equipment';
 import { getCombatStylesForCategory } from '@/utils';
-import { Player } from '@/types/Player';
+import { EquipmentPiece, Player } from '@/types/Player';
 import { Gear } from '@/best/lib/search';
-import { WeaponJob } from '@/best/lib/candidates';
+import { scoreKind, styleScore, WeaponJob } from '@/best/lib/candidates';
 import { BestStyle } from '@/best/types';
 import { BulkMonster } from '@/bulk/types';
 import { Candidate, fromStored, toStored } from '@/raid/lib/candidates';
@@ -40,6 +40,8 @@ export interface KitInput {
   requiredIds: number[];
   extraDps: number;
   playerFor: (style: BestStyle) => Player;
+  /** Items the search may use: their best off-hands are tried with every one-handed weapon */
+  pool?: EquipmentPiece[];
 }
 
 type Group = 'melee' | 'ranged' | 'magic';
@@ -53,6 +55,8 @@ const COST_SMOOTHING = 100_000;
 const MIN_GAIN = 1e-6;
 // rounds of adding weapons and swapping one
 const MAX_ROUNDS = 10;
+// off-hands of the pool tried with each one-handed weapon, besides the searched ones
+const POOL_SHIELDS = 2;
 
 interface Kit {
   group: Group;
@@ -61,11 +65,13 @@ interface Kit {
   cost: number;
 }
 
+/** A weapon with what it fires and, when one-handed, its off-hand: the off-hand belongs to the weapon, not the kit */
 interface Weapon {
   group: Group;
   style: BestStyle;
   job: WeaponJob;
   ammoId: number | null;
+  shieldId: number | null;
   items: number[];
   cost: number;
 }
@@ -107,11 +113,14 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
   const kits = new Map<string, Kit>();
   // per phase and group, each kit's best strength there
   const kitStrength = new Map<string, Map<Kit, number>>();
-  const weapons = new Map<string, Weapon>();
+  const weapons = new Map<string, Omit<Weapon, 'shieldId'>>();
+  // per group the off-hands the searches wore
+  const searchedShields = new Map<Group, Set<number>>();
   input.candidates.forEach((c) => {
     const stored = toStored(c.setup, c.style, c.dps);
     const group = groupOf(c.style);
-    const { ammo, ...searched } = stored.gear;
+    const { ammo, shield, ...searched } = stored.gear;
+    if (typeof shield === 'number') searchedShields.set(group, (searchedShields.get(group) ?? new Set()).add(shield));
     const gear = wearsLightbearer(c.style) ? { ...searched, ring: LIGHTBEARER } : searched;
     const kitItems = canonical(Object.values(gear));
     const kitKey = `${group}:${[...kitItems].sort((a, b) => a - b).join(',')}`;
@@ -125,7 +134,8 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
     const strengths = kitStrength.get(phaseKey) ?? new Map<Kit, number>();
     strengths.set(kit, Math.max(strengths.get(kit) ?? 0, relative(c)));
     kitStrength.set(phaseKey, strengths);
-    const weaponItems = canonical([stored.job.weaponId, ammo, stored.job.dartId]);
+    // a blowpipe's darts are loaded in it: not an item of the loadout
+    const weaponItems = canonical([stored.job.weaponId, ammo]);
     const weaponKey = `${group}:${stored.job.weaponId}:${ammo ?? ''}:${stored.job.combatStyle.name}:${stored.job.spellName ?? ''}`;
     if (!weapons.has(weaponKey)) {
       weapons.set(weaponKey, {
@@ -167,7 +177,26 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
   // each phase's cheap-to-best kits, together
   const keptKits = new Set([...kitStrength.values()].flatMap((strengths) => front([...strengths.keys()], (k) => strengths.get(k)!, KITS_PER_PHASE)));
   const kitsOf = new Map(groups.map((g) => [g, [...keptKits].filter((k) => k.group === g)]));
-  const weaponsOf = new Map(groups.map((g) => [g, [...weapons.values()].filter((w) => w.group === g)]));
+  // every one-handed weapon with each off-hand worth trying, or none (a slot for the Book of the Dead)
+  const poolShields = (input.pool ?? []).filter((e) => e.slot === 'shield');
+  const withShields = (w: Omit<Weapon, 'shieldId'>): Weapon[] => {
+    const weapon = availableEquipment.find((e) => e.id === w.job.weaponId);
+    if (!weapon || weapon.isTwoHanded) return [{ ...w, shieldId: null }];
+    const kind = scoreKind(weapon, w.style);
+    const value = (e: EquipmentPiece) => {
+      const [attack, strength] = styleScore(e, kind);
+      return attack + 2 * strength;
+    };
+    const best = [...poolShields].sort((a, b) => value(b) - value(a)).slice(0, POOL_SHIELDS).map((e) => e.id);
+    const shields = canonical([...(searchedShields.get(w.group) ?? []), ...best]);
+    return [null, ...shields].map((shieldId) => {
+      const items = canonical([...w.items, shieldId]);
+      return {
+        ...w, shieldId, items, cost: costOf(items),
+      };
+    });
+  };
+  const weaponsOf = new Map(groups.map((g) => [g, [...weapons.values()].filter((w) => w.group === g).flatMap(withShields)]));
 
   // every kit with every weapon of its group, rated on every unit its style can deal
   const combos = new Map<Kit, Map<Weapon, Combo>>();
@@ -176,7 +205,7 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
     const byWeapon = new Map<Weapon, Combo>();
     weaponsOf.get(g)!.forEach((w) => {
       const built = fromStored({
-        style: w.style, job: w.job, dps: 0, gear: { ...kit.gear, ammo: w.ammoId },
+        style: w.style, job: w.job, dps: 0, gear: { ...kit.gear, ammo: w.ammoId, shield: w.shieldId },
       }, 'kit', input.playerFor(w.style));
       if (!built) return;
       id += 1;
