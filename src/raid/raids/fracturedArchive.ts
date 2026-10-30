@@ -102,7 +102,7 @@ const fracturedArchive: RaidDef = {
           id: 'xarth',
           name: 'Xarth',
           phases: [{
-            key: 'xarth:0', label: 'Xarth', monsterId: 16684, version: '', defaults: specs(0, 2),
+            key: 'xarth:0', label: 'Xarth', monsterId: 16684, version: '', defaults: specs(0, 2), parts: HALF_RANGED,
           }],
         },
       ],
@@ -115,7 +115,7 @@ const fracturedArchive: RaidDef = {
         name: 'Ocellus',
         phases: [
           {
-            key: 'ocellus:0', label: 'Phase 1', monsterId: 16673, version: 'Phase 1', defaults: specs(0, 2),
+            key: 'ocellus:0', label: 'Phase 1', monsterId: 16673, version: 'Phase 1', defaults: specs(0, 2), parts: HALF_RANGED,
           },
           {
             key: 'ocellus:1',
