@@ -17,6 +17,7 @@ const BONECRUSHER = 22986;
 const ANGUISH = 19547;
 const DRAGON_ARROW = 11212;
 const VENATOR_RING = 28310;
+const VAMBRACES = 26235;
 const item = (id: number) => availableEquipment.find((e) => e.id === id)!;
 const rapid = getCombatStylesForCategory(item(TBOW).category).find((s) => s.stance === 'Rapid')!;
 const inputs = raidBaseInputs(defaultSettings());
@@ -121,10 +122,16 @@ describe('upgradeLoadout', () => {
   });
 
   test('an item for an empty slot only fits below the item limit', async () => {
+    const hands = async (setups: BulkSetup[]) => setups.map((s) => (s.player.equipment.hands?.id === VAMBRACES ? 12 : 10));
+    const withHands = { pool: [...pool, item(VAMBRACES)], excluded: new Set([ANGUISH]) };
+    expect((await upgradeLoadout(input({ ...withHands, maxItems: 4 }), hands)).itemIds).not.toContain(VAMBRACES);
+    expect((await upgradeLoadout(input({ ...withHands, maxItems: 5 }), hands)).itemIds).toContain(VAMBRACES);
+  });
+
+  test('a ranged setup keeps its ring: the Lightbearer is never swapped for a Venator ring', async () => {
     const ring = async (setups: BulkSetup[]) => setups.map((s) => (s.player.equipment.ring?.id === VENATOR_RING ? 12 : 10));
-    const withRing = { pool: [...pool, item(VENATOR_RING)], excluded: new Set([ANGUISH]) };
-    expect((await upgradeLoadout(input({ ...withRing, maxItems: 4 }), ring)).itemIds).not.toContain(VENATOR_RING);
-    expect((await upgradeLoadout(input({ ...withRing, maxItems: 5 }), ring)).itemIds).toContain(VENATOR_RING);
+    const result = await upgradeLoadout(input({ pool: [...pool, item(VENATOR_RING)], excluded: new Set([ANGUISH]) }), ring);
+    expect(result.itemIds).not.toContain(VENATOR_RING);
   });
 
   test('never uses an excluded item', async () => {

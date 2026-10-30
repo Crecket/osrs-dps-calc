@@ -12,6 +12,13 @@ export const THRALL_DPS = 0.625;
  */
 export const NO_SETUP_DPS = 0.5;
 
+/**
+ * Ranged and magic setups wear the Lightbearer: twice the spec energy regeneration is worth more in a raid than a
+ * ring's stats (the Venator ring's), and spec energy isn't modelled, so it is a fixed choice
+ */
+export const LIGHTBEARER = 25975;
+export const wearsLightbearer = (style: string) => style === 'ranged' || style === 'magic';
+
 /** One per phase, or per part of a phase with parts (sharing the phase's key) */
 export interface PhasePick {
   key: string;

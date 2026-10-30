@@ -19,6 +19,8 @@ const VOID = [11664, 13072, 13073, 8842];
 const SCYTHE = 22325;
 const TORVA = 26382;
 const ZCB = 26374;
+const VENATOR_RING = 28310;
+const LIGHTBEARER = 25975;
 const RUBY = 21944;
 
 const item = (id: number) => availableEquipment.find((e) => e.id === id)!;
@@ -155,12 +157,22 @@ describe('planKits', () => {
         cand('a', 'ranged', TBOW, ARROW, MASORI, 14),
         cand('c', 'ranged', ZCB, RUBY, MASORI, 14),
       ],
-      // Masori, and either the Twisted bow and the crossbow with their ammo, or the bowfa and one of them
-      maxItems: 7,
+      // Masori and the Lightbearer, and either the Twisted bow and the crossbow with their ammo, or the bowfa and one of them
+      maxItems: 8,
     }), byPhase);
     expect(plan.itemIds).toEqual(expect.arrayContaining([TBOW, ZCB]));
     expect(plan.itemIds).not.toContain(BOWFA);
     expect(plan.totalSeconds).toBeCloseTo(3 * (1200 / 14));
+  });
+
+  test('ranged kits wear the Lightbearer instead of the searched ring', async () => {
+    const plan = await planKits(input({
+      units: [{ key: 'a', hp: 1200 }],
+      candidates: [cand('a', 'ranged', TBOW, ARROW, [...MASORI, VENATOR_RING], 12)],
+    }), rate);
+    expect(plan.itemIds).toContain(LIGHTBEARER);
+    expect(plan.itemIds).not.toContain(VENATOR_RING);
+    expect(plan.picks[0].candidate?.setup.player.equipment.ring?.id).toBe(LIGHTBEARER);
   });
 
   test('the item limit holds', async () => {

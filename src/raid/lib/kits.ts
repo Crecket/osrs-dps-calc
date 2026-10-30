@@ -16,7 +16,7 @@ import { BestStyle } from '@/best/types';
 import { BulkMonster } from '@/bulk/types';
 import { Candidate, fromStored, toStored } from '@/raid/lib/candidates';
 import {
-  mainSetup, NO_SETUP_DPS, orderedItems, PhasePick, RaidPlan,
+  LIGHTBEARER, mainSetup, NO_SETUP_DPS, orderedItems, PhasePick, RaidPlan, wearsLightbearer,
 } from '@/raid/lib/assemble';
 import { RateFn } from '@/raid/lib/upgrade';
 
@@ -111,7 +111,8 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
   input.candidates.forEach((c) => {
     const stored = toStored(c.setup, c.style, c.dps);
     const group = groupOf(c.style);
-    const { ammo, ...gear } = stored.gear;
+    const { ammo, ...searched } = stored.gear;
+    const gear = wearsLightbearer(c.style) ? { ...searched, ring: LIGHTBEARER } : searched;
     const kitItems = canonical(Object.values(gear));
     const kitKey = `${group}:${[...kitItems].sort((a, b) => a - b).join(',')}`;
     if (!kits.has(kitKey)) {

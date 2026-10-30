@@ -18,7 +18,7 @@ import {
 import { Candidate, fromStored, toStored } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
 import {
-  mainSetup, orderedItems, PhasePick, RaidPlan,
+  mainSetup, orderedItems, PhasePick, RaidPlan, wearsLightbearer,
 } from '@/raid/lib/assemble';
 
 /** DPS of each setup on the monster */
@@ -112,7 +112,8 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
       return attack + 2 * strength;
     };
     return SLOTS.flatMap((slot) => {
-      if ((slot === 'shield' && weapon.isTwoHanded) || (slot === 'ammo' && isBlowpipe(weapon))) return [];
+      if ((slot === 'shield' && weapon.isTwoHanded) || (slot === 'ammo' && isBlowpipe(weapon))
+        || (slot === 'ring' && wearsLightbearer(c.style))) return [];
       const current = c.setup.player.equipment[slot];
       let items = (bySlot.get(slot) ?? []).filter((e) => e.id !== current?.id);
       if (slot === 'ammo') items = items.filter((e) => ammoApplicability(weapon.id, e.id) === AmmoApplicability.INCLUDED);
