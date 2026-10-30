@@ -20,7 +20,19 @@ const partStyles = ({ styles }: PhasePart) => {
 /** e.g. "50% ranged · 50% any style" */
 const partsLabel = (parts: PhasePart[]) => parts.map((p) => `${Math.round(p.share * 100)}% ${partStyles(p)}`).join(' · ');
 
-/** GearScape-style rows: per boss its specs, and per phase every weapon the loadout can use, the fastest in green */
+interface Cell {
+  weaponId: number;
+  dps: number;
+  seconds: number;
+  /** Which part of the phase the weapon deals, on a split phase */
+  part?: string;
+}
+
+// every phase row uses the same columns, so cells line up down the whole list
+const ROW = 'grid grid-cols-1 md:grid-cols-[9rem_minmax(0,1fr)_14.5rem] gap-x-4 gap-y-2 items-start';
+const CELL = 'w-[4.5rem] flex flex-col items-center gap-0.5 rounded px-1 py-1.5 text-xs tabular-nums';
+
+/** GearScape-style rows: per phase the weapons the loadout uses (one per part of a split phase), the other weapons it can use, and the best specs */
 const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
   const menu = useItemMenu();
   const bosses = [...new Map(result.phases.map((p) => [p.bossId, p.bossName])).entries()];
@@ -30,68 +42,99 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
   const pickSeconds = new Map<string, number>();
   result.plan.picks.forEach((p) => pickSeconds.set(p.key, (pickSeconds.get(p.key) ?? 0) + p.seconds));
 
+  const usedOf = (key: string, parts?: PhasePart[]): Cell[] => result.plan.picks.filter((p) => p.key === key).flatMap((p, i) => {
+    const weaponId = p.candidate?.setup.player.equipment.weapon?.id;
+    if (weaponId === undefined) return [];
+    const part = parts?.[i];
+    return [{
+      weaponId, dps: p.seconds > 0 ? p.hp / p.seconds : 0, seconds: p.seconds, part: part ? `${Math.round(part.share * 100)}% ${partStyles(part)}` : undefined,
+    }];
+  });
+
+  const weaponCell = (c: Cell, kind: 'used' | 'option') => (
+    <div
+      key={`${c.weaponId}-${c.part ?? ''}`}
+      data-testid={`${kind}-cell`}
+      className={`${CELL} ${kind === 'used'
+        ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 font-semibold'
+        : 'bg-body-100 dark:bg-dark-400'}`}
+      data-tooltip-id="tooltip"
+      data-tooltip-content={itemById(c.weaponId)?.name}
+      onContextMenu={menu.open(c.weaponId)}
+    >
+      <span className="w-9 h-9 flex items-center justify-center"><ItemImage id={c.weaponId} /></span>
+      <span>{c.dps.toFixed(2)}</span>
+      <span className="font-normal">{formatTime(c.seconds)}</span>
+      {c.part && <span className="font-normal text-[10px] leading-tight text-center text-gray-600 dark:text-gray-300">{c.part}</span>}
+    </div>
+  );
+
   return (
-    <div className="flex flex-col divide-y divide-body-300 dark:divide-dark-200">
+    <div className="flex flex-col gap-3">
+      <div className={`${ROW} hidden md:grid px-3 text-xs text-gray-500 dark:text-gray-300`} aria-hidden>
+        <span>Phase</span>
+        <span>Weapons: used, then other options (DPS, kill time)</span>
+        <span>Best specs (spec DPS)</span>
+      </div>
       {bosses.map(([bossId, bossName]) => {
         const phases = result.phases.filter((p) => p.bossId === bossId);
         const seconds = phases.reduce((n, p) => n + (pickSeconds.get(p.key) ?? 0), 0);
         return (
-          <div key={bossId} className="py-2 flex flex-col gap-1" data-testid="boss-row">
-            <div className="flex items-center gap-3 text-sm">
-              <strong className="font-serif">{bossName}</strong>
-              <span className="tabular-nums text-gray-500 dark:text-gray-300">{formatTime(seconds)}</span>
-            </div>
-            {phases.map((p) => (
-              <div key={p.key} className="flex items-start gap-3">
-                <div className="w-32 shrink-0 text-xs flex flex-col gap-1">
-                  {phases.length > 1 && <span>{p.label}</span>}
-                  {p.parts && <span className="text-gray-500 dark:text-gray-300">{partsLabel(p.parts)}</span>}
-                  <span className="flex gap-1.5">
-                    {DEFENCE_WEAPONS.filter((w) => p.counts[w] > 0).map((w) => (
-                      <span key={w} className="flex items-center">
-                        <ItemImage id={DEFENCE_WEAPON_IDS[w]} size={16} />
-                        <span className="tabular-nums">{p.counts[w]}</span>
-                      </span>
-                    ))}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {(result.options[p.key] ?? []).map((o, i) => (
-                    <div
-                      key={o.weaponId}
-                      className={`w-16 flex flex-col items-center text-xs tabular-nums ${i === 0 ? 'text-green-600 dark:text-green-400 font-semibold' : ''}`}
-                      data-tooltip-id="tooltip"
-                      data-tooltip-content={itemById(o.weaponId)?.name}
-                      onContextMenu={menu.open(o.weaponId)}
-                    >
-                      <span className="w-9 h-9 flex items-center justify-center"><ItemImage id={o.weaponId} /></span>
-                      <span>{o.dps.toFixed(2)}</span>
-                      <span>{formatTime(o.seconds)}</span>
+          <section key={bossId} className="rounded border border-body-300 dark:border-dark-200" data-testid="boss-row">
+            <header className="flex items-baseline justify-between gap-3 px-3 py-2 border-b border-body-300 dark:border-dark-200 bg-body-100/60 dark:bg-dark-500/60">
+              <strong className="font-serif text-sm">{bossName}</strong>
+              <span className="tabular-nums text-sm text-gray-500 dark:text-gray-300">{formatTime(seconds)}</span>
+            </header>
+            <div className="flex flex-col divide-y divide-body-300 dark:divide-dark-200">
+              {phases.map((p) => {
+                const used = usedOf(p.key, p.parts);
+                const usedIds = new Set(used.map((c) => c.weaponId));
+                const others = (result.options[p.key] ?? []).filter((o) => !usedIds.has(o.weaponId));
+                const specs = specsOf(p.key).slice(0, SPECS_SHOWN);
+                return (
+                  <div key={p.key} className={`${ROW} px-3 py-2.5`}>
+                    <div className="text-xs flex flex-col gap-1 pt-1">
+                      <span className="font-semibold">{p.label}</span>
+                      {p.parts && <span className="text-gray-500 dark:text-gray-300">{partsLabel(p.parts)}</span>}
+                      {DEFENCE_WEAPONS.some((w) => p.counts[w] > 0) && (
+                        <span className="flex gap-1.5">
+                          {DEFENCE_WEAPONS.filter((w) => p.counts[w] > 0).map((w) => (
+                            <span key={w} className="flex items-center gap-0.5">
+                              <ItemImage id={DEFENCE_WEAPON_IDS[w]} size={16} />
+                              <span className="tabular-nums">{p.counts[w]}</span>
+                            </span>
+                          ))}
+                        </span>
+                      )}
                     </div>
-                  ))}
-                  {(result.options[p.key] ?? []).length === 0 && <span className="text-xs text-gray-500 dark:text-gray-300">No usable setup</span>}
-                </div>
-                {specsOf(p.key).length > 0 && (
-                  <div className="flex flex-wrap items-start gap-2 pl-3 border-l border-body-300 dark:border-dark-200">
-                    <span className="text-xs text-gray-500 dark:text-gray-300 w-10">Specs</span>
-                    {specsOf(p.key).slice(0, SPECS_SHOWN).map((sp) => (
-                      <div
-                        key={sp.weaponId}
-                        data-testid="spec-cell"
-                        className="w-16 flex flex-col items-center text-xs tabular-nums"
-                        data-tooltip-id="tooltip"
-                        data-tooltip-content={`${itemById(sp.weaponId)?.name}: ${sp.expected.toFixed(1)} expected per ${sp.cost}% spec, ${sp.dps.toFixed(2)} damage per second`}
-                        onContextMenu={menu.open(sp.weaponId)}
-                      >
-                        <span className="w-9 h-9 flex items-center justify-center"><ItemImage id={sp.weaponId} /></span>
-                        <span>{`${sp.dps.toFixed(2)} dps`}</span>
-                      </div>
-                    ))}
+                    <div className="flex flex-wrap items-start gap-1.5">
+                      {used.map((c) => weaponCell(c, 'used'))}
+                      {used.length > 0 && others.length > 0 && <span className="self-stretch w-px mx-1 bg-body-300 dark:bg-dark-200" aria-hidden />}
+                      {others.map((o) => weaponCell(o, 'option'))}
+                      {used.length === 0 && others.length === 0 && <span className="text-xs text-gray-500 dark:text-gray-300 pt-1">No usable setup</span>}
+                    </div>
+                    <div className="flex flex-wrap items-start gap-1.5">
+                      {specs.map((sp) => (
+                        <div
+                          key={sp.weaponId}
+                          data-testid="spec-cell"
+                          className={`${CELL} bg-body-100 dark:bg-dark-400`}
+                          data-tooltip-id="tooltip"
+                          data-tooltip-content={`${itemById(sp.weaponId)?.name}: ${sp.expected.toFixed(1)} expected per ${sp.cost}% spec, ${sp.dps.toFixed(2)} damage per second`}
+                          onContextMenu={menu.open(sp.weaponId)}
+                        >
+                          <span className="w-9 h-9 flex items-center justify-center"><ItemImage id={sp.weaponId} /></span>
+                          <span>{`${sp.dps.toFixed(2)} dps`}</span>
+                          <span className="text-gray-500 dark:text-gray-300">{`${sp.cost}%`}</span>
+                        </div>
+                      ))}
+                      {specs.length === 0 && <span className="text-xs text-gray-500 dark:text-gray-300 pt-1">—</span>}
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          </section>
         );
       })}
       <ItemMenu target={menu.target} onClose={menu.close} />

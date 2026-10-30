@@ -145,6 +145,35 @@ describe('RaidPage', () => {
     await unmount();
   });
 
+  test('each phase row shows the weapon used per part first, then the other usable weapons', async () => {
+    const used = (weaponId: number) => ({ setup: { player: { equipment: { weapon: { id: weaponId } } } }, dps: 0 }) as never;
+    mockRunRaid.mockImplementation(async (settings) => {
+      const r = result(settings);
+      return {
+        ...r,
+        plan: {
+          ...r.plan,
+          picks: [{
+            key: 'bork:0', hp: 750, candidate: used(20997), seconds: 75,
+          }, {
+            key: 'bork:0', hp: 750, candidate: used(4151), seconds: 150,
+          }],
+        },
+        options: { 'bork:0': [...r.options['bork:0'], { weaponId: 22325, dps: 4, seconds: 375 }] },
+        phases: [{ ...r.phases[0], parts: [{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }] }],
+      };
+    });
+    const { container, unmount } = await mount();
+    await act(async () => button(container, 'Find raid gear')!.click());
+    await wait(20);
+    const cells = [...container.querySelectorAll('[data-testid=used-cell]')];
+    expect(cells.map((c) => c.textContent)).toEqual([expect.stringContaining('50% ranged'), expect.stringContaining('50% any style')]);
+    // 750 hp in 75 s
+    expect(cells[0].textContent).toContain('10.00');
+    expect(container.querySelectorAll('[data-testid=option-cell]')).toHaveLength(1);
+    await unmount();
+  });
+
   test('a change that needs searches marks the result stale', async () => {
     const { container, unmount } = await mount();
     await act(async () => button(container, 'Find raid gear')!.click());
