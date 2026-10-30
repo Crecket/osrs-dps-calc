@@ -1,3 +1,4 @@
+import { availableEquipment } from '@/lib/Equipment';
 import {
   beforeEach, describe, expect, test,
 } from '@jest/globals';
@@ -43,6 +44,18 @@ describe('itemPrice', () => {
 
   test('owned is free', () => {
     expect(itemPrice(27610, prices, new Set([27610]))).toBe(0);
+  });
+
+  test('an untradeable item made from tradeable parts costs what they do: a Tormented synapse, Hydra leather', () => {
+    const parts = { byId: new Map([[29580, 12e6], [22983, 3e6]]), byName: new Map<string, number>() };
+    ['Emberlight', 'Scorching bow', 'Purging staff'].forEach((name) => {
+      const weapon = availableEquipment.find((e) => e.name === name)!;
+      expect(itemPrice(weapon.id, parts, new Set())).toBe(12e6);
+      expect(itemPrice(weapon.id, parts, new Set([weapon.id]))).toBe(0);
+    });
+    expect(itemPrice(availableEquipment.find((e) => e.name === 'Ferocious gloves')!.id, parts, new Set())).toBe(3e6);
+    // the Avernic defender stays free
+    expect(itemPrice(22322, parts, new Set())).toBe(0);
   });
 
   test('falls back to the name without its suffix', () => {

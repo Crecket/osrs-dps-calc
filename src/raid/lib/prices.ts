@@ -124,10 +124,27 @@ const baseName = (id: number) => {
 };
 
 /**
+ * Untradeable items made from tradeable parts, which cost what the parts do (from the osrs-price-index composites).
+ * The Avernic defender and Avernic treads (max) are left free on purpose.
+ */
+const RECIPES: Record<string, { itemId: number; qty: number }[]> = {
+  'Ferocious gloves': [{ itemId: 22983, qty: 1 }], // Hydra leather
+  Emberlight: [{ itemId: 29580, qty: 1 }], // Tormented synapse
+  'Scorching bow': [{ itemId: 29580, qty: 1 }],
+  'Purging staff': [{ itemId: 29580, qty: 1 }],
+  'Amulet of blood fury': [{ itemId: 6585, qty: 1 }, { itemId: 24777, qty: 1 }], // Amulet of fury, Blood shard
+  "Elidinis' ward (f)": [{ itemId: 25985, qty: 1 }, { itemId: 12827, qty: 1 }, { itemId: 566, qty: 10_000 }], // ward, Arcane sigil, Soul runes
+  'Harmonised Nightmare staff': [{ itemId: 24422, qty: 1 }, { itemId: 24511, qty: 1 }], // Nightmare staff and its orb
+  'Volatile Nightmare staff': [{ itemId: 24422, qty: 1 }, { itemId: 24514, qty: 1 }],
+  'Eldritch Nightmare staff': [{ itemId: 24422, qty: 1 }, { itemId: 24517, qty: 1 }],
+};
+
+/**
  * What the item costs to buy: 0 when owned (as itself or its canonical item), when there are no prices, or when the
  * item has no price (untradeable). Looks up the id, then the canonical id, then for the name and each shorter name
  * (without a trailing "(…)") its versions and the name itself: a charged, imbued, corrupted or clan item is often only
- * tradeable as its plain or inactive version. An ornament copy without a price of its own costs what its base item costs.
+ * tradeable as its plain or inactive version. An ornament copy without a price of its own costs what its base item costs,
+ * and an untradeable item made from tradeable parts what its parts cost.
  */
 export const itemPrice = (id: number, prices: Prices | null, owned: Set<number>): number => {
   const canonical = canonicalOf(id);
@@ -145,5 +162,6 @@ export const itemPrice = (id: number, prices: Prices | null, owned: Set<number>)
     const price = prices.byName.get(n.toLowerCase());
     if (price !== undefined) return price;
   }
-  return 0;
+  const recipe = shorterNames(name).map((n) => RECIPES[n]).find(Boolean);
+  return recipe ? recipe.reduce((n, part) => n + (prices.byId.get(part.itemId) ?? 0) * part.qty, 0) : 0;
 };
