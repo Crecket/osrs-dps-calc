@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { BestStyle } from '@/best/types';
-import { RaidResult, WeaponTier } from '@/raid/lib/runRaid';
+import { attackLabel, RaidResult, WeaponTier } from '@/raid/lib/runRaid';
 import { formatGp, formatTime } from '@/raid/lib/format';
 import {
   ItemImage, ItemMenu, itemById, useItemMenu,
@@ -34,6 +34,9 @@ const TIERS: [string, number, string][] = [
 ];
 const TIER_SHOWN = 15;
 
+/** The weapon's name and how it attacks: "Soulreaper axe — crush · Smash (Aggressive)" */
+const weaponTooltip = (weaponId: number, attack?: string) => [itemById(weaponId)?.name ?? weaponId, attack].filter(Boolean).join(' — ');
+
 /** The phase's weapons of one style group, fastest first, tiered against the fastest */
 const TierList: React.FC<{ tiers: WeaponTier[]; weaponId: number; title: string }> = ({ tiers, weaponId, title }) => {
   const best = tiers[0]?.dps ?? 0;
@@ -52,7 +55,10 @@ const TierList: React.FC<{ tiers: WeaponTier[]; weaponId: number; title: string 
             >
               <span className={`w-5 h-5 rounded flex items-center justify-center font-bold ${color}`}>{letter}</span>
               <span className="flex items-center justify-center"><ItemImage id={t.weaponId} size={24} /></span>
-              <span className="truncate">{itemById(t.weaponId)?.name ?? t.weaponId}</span>
+              <span className="truncate" data-tooltip-id="tooltip" data-tooltip-content={weaponTooltip(t.weaponId, t.attack)}>
+                {itemById(t.weaponId)?.name ?? t.weaponId}
+                {t.attack && <span className="text-gray-500 dark:text-gray-300">{` · ${t.attack.split(' · ')[0]}`}</span>}
+              </span>
               <span className="text-right">{t.dps.toFixed(2)}</span>
               <span className="text-right">{formatTime(t.seconds)}</span>
               <span className="text-right text-gray-500 dark:text-gray-300">{t.cost > 0 ? formatGp(t.cost) : 'free'}</span>
@@ -71,6 +77,7 @@ interface Cell {
   seconds: number;
   /** Which part of the phase the weapon deals, on a split phase */
   part?: string;
+  attack?: string;
 }
 
 // every phase row uses the same columns, so cells line up down the whole list
@@ -94,7 +101,11 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
     if (weaponId === undefined) return [];
     const part = parts?.[i];
     return [{
-      weaponId, dps: p.seconds > 0 ? p.hp / p.seconds : 0, seconds: p.seconds, part: part ? `${Math.round(part.share * 100)}% ${partStyles(part)}` : undefined,
+      weaponId,
+      dps: p.seconds > 0 ? p.hp / p.seconds : 0,
+      seconds: p.seconds,
+      part: part ? `${Math.round(part.share * 100)}% ${partStyles(part)}` : undefined,
+      attack: p.candidate ? attackLabel(p.candidate.setup.player) : undefined,
     }];
   });
 
@@ -111,7 +122,7 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
           ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 font-semibold'
           : 'bg-body-100 dark:bg-dark-400 hover:bg-body-200 dark:hover:bg-dark-300'}`}
         data-tooltip-id="tooltip"
-        data-tooltip-content={itemById(c.weaponId)?.name}
+        data-tooltip-content={weaponTooltip(c.weaponId, c.attack)}
         onClick={() => setOpen(expanded ? null : { key, weaponId: c.weaponId })}
         onContextMenu={menu.open(c.weaponId)}
       >

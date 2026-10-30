@@ -117,7 +117,17 @@ export interface WeaponOption {
   weaponId: number;
   dps: number;
   seconds: number;
+  /** How it attacks, e.g. "crush · Smash (Aggressive)"; missing on results saved before it was added */
+  attack?: string;
 }
+
+/** How a setup attacks: its attack type and stance, or its spell; empty when the setup doesn't say */
+export const attackLabel = (player: Player): string => {
+  if (player.spell) return `magic · ${player.spell.name}`;
+  const { style } = player;
+  if (!style) return '';
+  return `${style.type ?? 'magic'} · ${style.displayNameOverride ?? style.name} (${style.stance})`;
+};
 
 export interface RaidResult {
   plan: RaidPlan;
@@ -142,6 +152,7 @@ export interface WeaponTier {
   cost: number;
   /** The loadout holds the weapon */
   held: boolean;
+  attack?: string;
 }
 
 /** Per phase, every searched weapon at its best setup, fastest first: the tier list behind a phase's weapons */
@@ -164,7 +175,7 @@ export const weaponTiers = (
   return Object.fromEntries([...best.entries()].map(([key, byWeapon]) => [key, [...byWeapon.entries()].map(([weaponId, c]) => {
     const dps = c.dps + extraDps;
     return {
-      weaponId, style: c.style, dps, seconds: hpByKey.get(key)! / dps, cost: priceOf(weaponId), held: held.has(getCanonicalItemId(weaponId)),
+      weaponId, style: c.style, dps, seconds: hpByKey.get(key)! / dps, cost: priceOf(weaponId), held: held.has(getCanonicalItemId(weaponId)), attack: attackLabel(c.setup.player),
     };
   }).sort((a, b) => b.dps - a.dps)]));
 };
@@ -180,7 +191,9 @@ const weaponOptions = (candidates: Candidate[], itemIds: number[], hpByKey: Map<
     const dps = c.dps + extraDps;
     const existing = list.find((o) => o.weaponId === weaponId);
     if (existing && existing.dps >= dps) return;
-    const option = { weaponId, dps, seconds: hpByKey.get(c.phaseKey)! / dps };
+    const option = {
+      weaponId, dps, seconds: hpByKey.get(c.phaseKey)! / dps, attack: attackLabel(c.setup.player),
+    };
     options[c.phaseKey] = existing ? list.map((o) => (o === existing ? option : o)) : [...list, option];
   });
   Object.values(options).forEach((list) => list.sort((a, b) => b.dps - a.dps));

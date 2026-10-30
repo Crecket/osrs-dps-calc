@@ -9,7 +9,7 @@ import { basePlayer } from '@/best/lib/basePlayer';
 import { BulkRow } from '@/bulk/types';
 import { SearchCache } from '@/raid/lib/searchCache';
 import {
-  dartOptions, defaultSettings, excludedOf, raidBaseInputs, runRaid, searchesNeeded, weaponTiers,
+  attackLabel, dartOptions, defaultSettings, excludedOf, raidBaseInputs, runRaid, searchesNeeded, weaponTiers,
 } from '@/raid/lib/runRaid';
 import { Candidate } from '@/raid/lib/candidates';
 
@@ -55,23 +55,34 @@ beforeEach(() => {
 describe('weaponTiers', () => {
   test('per phase every searched weapon at its best, fastest first, with its price and whether the loadout holds it', () => {
     const c = (phaseKey: string, weaponId: number, style: Candidate['style'], dps: number) => ({
-      phaseKey, style, dps, itemIds: [weaponId], setup: { player: { equipment: { weapon: { id: weaponId } } } },
+      phaseKey, style, dps, itemIds: [weaponId], setup: { player: { equipment: { weapon: { id: weaponId } }, style: { name: 'Hack', type: style, stance: 'Aggressive' }, spell: null } },
     }) as unknown as Candidate;
     const tiers = weaponTiers([
       c('a', 20997, 'ranged', 10), c('a', 20997, 'ranged', 12), c('a', 26374, 'ranged', 11), c('a', 22325, 'slash', 9), c('b', 4151, 'slash', 5),
     ], new Map([['a', 1200], ['b', 500]]), 0.5, (id) => (id === 20997 ? 1e9 : 0), [26374]);
     expect(tiers.a).toEqual([
       {
-        weaponId: 20997, style: 'ranged', dps: 12.5, seconds: 96, cost: 1e9, held: false,
+        weaponId: 20997, style: 'ranged', dps: 12.5, seconds: 96, cost: 1e9, held: false, attack: 'ranged · Hack (Aggressive)',
       },
       {
-        weaponId: 26374, style: 'ranged', dps: 11.5, seconds: 1200 / 11.5, cost: 0, held: true,
+        weaponId: 26374, style: 'ranged', dps: 11.5, seconds: 1200 / 11.5, cost: 0, held: true, attack: 'ranged · Hack (Aggressive)',
       },
       {
-        weaponId: 22325, style: 'slash', dps: 9.5, seconds: 1200 / 9.5, cost: 0, held: false,
+        weaponId: 22325, style: 'slash', dps: 9.5, seconds: 1200 / 9.5, cost: 0, held: false, attack: 'slash · Hack (Aggressive)',
       },
     ]);
     expect(tiers.b.map((t) => t.weaponId)).toEqual([4151]);
+  });
+});
+
+describe('attackLabel', () => {
+  test('the attack type and stance, so a Soulreaper axe reads as crush or slash', () => {
+    const axe = availableEquipment.find((e) => e.name === 'Soulreaper axe')!;
+    const smash = getCombatStylesForCategory(axe.category).find((s) => s.type === 'crush')!;
+    const player = buildPlayer(basePlayer(raidBaseInputs(defaultSettings()), 'crush'), {
+      style: 'crush', weaponId: axe.id, combatStyle: smash, ammoId: null, spellName: null, dartId: null,
+    }, {});
+    expect(attackLabel(player)).toBe(`crush · ${smash.name} (${smash.stance})`);
   });
 });
 
