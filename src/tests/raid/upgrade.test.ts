@@ -123,6 +123,29 @@ describe('upgradeLoadout', () => {
     expect(result.totalSeconds).toBeCloseTo(2 * (1000 / 11.5));
   });
 
+  test('leaves a whole armour set at once: one Masori piece breaks Void, all of Masori beats it', async () => {
+    const VOID = [11664, 13072, 13073, 8842];
+    const MASORI = [MASK, 27238, 27241, VAMBRACES];
+    const inVoid = (c: Candidate): Candidate => {
+      const player = buildPlayer(playerFor(), {
+        style: 'ranged', weaponId: TBOW, combatStyle: rapid, ammoId: DRAGON_ARROW, spellName: null, dartId: null,
+      }, Object.fromEntries(VOID.map((id) => [item(id).slot, id])));
+      return { ...c, setup: { ...c.setup, player }, itemIds: [TBOW, DRAGON_ARROW, ...VOID] };
+    };
+    const picks = [inVoid(candidate('a', 11)), inVoid(candidate('b', 11))];
+    const wears = (s: BulkSetup, ids: number[]) => ids.every((id) => Object.values(s.player.equipment).some((e) => e?.id === id));
+    const setRate = async (setups: BulkSetup[]) => setups.map((s) => {
+      if (wears(s, VOID)) return 11;
+      return wears(s, MASORI) ? 12 : 9;
+    });
+    const result = await upgradeLoadout(input({
+      plan: plan(picks), candidates: picks, pool: [...pool, ...[...VOID, ...MASORI].map(item)], priceOf: () => 0,
+    }), setRate);
+    expect(result.itemIds).toEqual(expect.arrayContaining(MASORI));
+    VOID.forEach((id) => expect(result.itemIds).not.toContain(id));
+    expect(result.totalSeconds).toBeCloseTo(2 * (1000 / 12));
+  });
+
   test('tries the weapon\'s other stances: the searched one may not be the fastest after an upgrade', async () => {
     const byStance = async (setups: BulkSetup[]) => setups.map((st) => (st.player.style.stance === 'Longrange' ? 11 : 10));
     const result = await upgradeLoadout(input({ pool: [] }), byStance);
