@@ -41,7 +41,7 @@ export const FieldGrid: React.FC<React.PropsWithChildren<{ wide?: boolean }>> = 
 );
 
 // the icon's space is kept without an icon, so every label's text starts at the same place
-const LabelContent: React.FC<{ label: string; icon?: StaticImageData }> = ({ label, icon }) => (
+const LabelContent: React.FC<{ label: string; icon?: Pick<StaticImageData, 'src'> }> = ({ label, icon }) => (
   <>
     <span className="w-[18px] h-[18px] shrink-0 flex items-center justify-center">
       {icon && <img className="max-w-full max-h-full object-contain" src={icon.src} alt="" />}
@@ -50,7 +50,7 @@ const LabelContent: React.FC<{ label: string; icon?: StaticImageData }> = ({ lab
   </>
 );
 
-export const FieldLabel: React.FC<{ htmlFor?: string; label: string; icon?: StaticImageData }> = ({ htmlFor, label, icon }) => {
+export const FieldLabel: React.FC<{ htmlFor?: string; label: string; icon?: Pick<StaticImageData, 'src'> }> = ({ htmlFor, label, icon }) => {
   const content = <LabelContent label={label} icon={icon} />;
   return htmlFor
     ? <label htmlFor={htmlFor} className="flex items-center gap-2 text-sm">{content}</label>

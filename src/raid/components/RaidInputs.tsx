@@ -12,6 +12,7 @@ import { raidById } from '@/raid/raids';
 import { MagicOption } from '@/raid/types';
 import { Supplies } from '@/raid/lib/layout';
 import { formatGp, parseGp } from '@/raid/lib/format';
+import { getCdnImage } from '@/utils';
 import { ItemImage, itemById } from '@/raid/components/items';
 import Panel, { buttonClass } from '@/bulk/components/Panel';
 import {
@@ -24,6 +25,9 @@ const MAGIC: [MagicOption, string][] = [
   ['standard', 'Standard spells (rune pouch)'],
   ['none', 'No spells'],
 ];
+
+const DRAGON_ARROW = 11212;
+const dartIcon = { src: getCdnImage(`equipment/${itemById(DRAGON_ARROW)?.image ?? 'Dragon arrow.png'}`) };
 
 const SUPPLIES: [keyof Supplies, string][] = [['brews', 'Brews'], ['restores', 'Restores'], ['reserved', 'Other reserved']];
 
@@ -150,6 +154,16 @@ const RaidInputs: React.FC = observer(() => {
               </React.Fragment>
             ))}
             <BudgetField />
+            <FieldLabel htmlFor="raid-dart" label="Blowpipe darts" icon={dartIcon} />
+            <select
+              id="raid-dart"
+              className={fieldClass}
+              value={settings.bestDart ?? ''}
+              onChange={(e) => store.setBestDart(e.target.value === '' ? null : Number(e.target.value))}
+            >
+              <option value="">Any</option>
+              {dartOptions().map((d) => <option key={d.id} value={d.id}>{`${d.name} or weaker`}</option>)}
+            </select>
           </FieldGrid>
         </Section>
         <Section title="Inventory">
@@ -160,16 +174,6 @@ const RaidInputs: React.FC = observer(() => {
             <FieldLabel htmlFor="raid-magic" label="Magic" />
             <select id="raid-magic" className={fieldClass} value={settings.magic} onChange={(e) => store.setMagic(e.target.value as MagicOption)}>
               {MAGIC.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-            </select>
-            <FieldLabel htmlFor="raid-dart" label="Blowpipe darts" />
-            <select
-              id="raid-dart"
-              className={fieldClass}
-              value={settings.bestDart ?? ''}
-              onChange={(e) => store.setBestDart(e.target.value === '' ? null : Number(e.target.value))}
-            >
-              <option value="">Any</option>
-              {dartOptions().map((d) => <option key={d.id} value={d.id}>{`${d.name} or weaker`}</option>)}
             </select>
             <Check label="Boss rules" checked={settings.rulesOn} onChange={store.setRulesOn} />
             <Check label="Dragon warhammer only (no Elder maul or Tonalztics)" checked={settings.dwhOnly} onChange={store.setDwhOnly} />
