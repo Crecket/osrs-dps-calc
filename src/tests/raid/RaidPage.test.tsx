@@ -41,6 +41,7 @@ jest.mock('@/bulk/worker/createBulkWorker', () => ({ __esModule: true, default: 
 // required after the mocks are registered (jest.mock from @jest/globals isn't hoisted above imports)
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const RaidPage = require('@/raid/components/RaidPage').default as React.FC;
+const { SETTLE_MS } = require('@/raid/components/RaidPage') as { SETTLE_MS: number };
 const { layoutLoadout } = require('@/raid/lib/layout') as typeof import('@/raid/lib/layout');
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
@@ -108,6 +109,7 @@ describe('RaidPage', () => {
   test('nothing runs until the button; then grids and boss rows render', async () => {
     const { container, unmount } = await mount();
     expect(select(container, 'stop-second')).toBeTruthy();
+    await wait(SETTLE_MS + 50);
     expect(container.textContent).toContain('18 searches to run');
     expect(mockRunRaid).not.toHaveBeenCalled();
     await act(async () => button(container, 'Find raid gear')!.click());
@@ -258,7 +260,7 @@ describe('RaidPage', () => {
     const brews = [...container.querySelectorAll<HTMLInputElement>('input[type=number]')]
       .find((i) => i.value === '6')!;
     await change(brews, '8');
-    await wait(50);
+    await wait(SETTLE_MS + 50);
     expect(mockRunRaid).toHaveBeenCalledTimes(2);
     expect(mockRunRaid.mock.calls[1][0].supplies.brews).toBe(8);
     expect(container.textContent).not.toContain('Inputs changed');

@@ -16,7 +16,7 @@ import { BestStyle } from '@/best/types';
 import { BulkMonster } from '@/bulk/types';
 import { Candidate, fromStored, toStored } from '@/raid/lib/candidates';
 import {
-  LIGHTBEARER, mainSetup, NO_SETUP_DPS, orderedItems, PhasePick, RaidPlan, wearsLightbearer,
+  LIGHTBEARER, mainSetup, NO_SETUP_DPS, orderedItems, PhasePick, RaidPlan, wearsLightbearer, yieldToBrowser,
 } from '@/raid/lib/assemble';
 import { RateFn } from '@/raid/lib/upgrade';
 
@@ -306,15 +306,17 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
     tuples = tuples.flatMap((t) => [t, ...kitsOf.get(g)!.map((k) => [...t, k])]);
   });
   let bestPlan: Plan | null = null;
-  tuples.forEach((chosen) => {
+  for (const chosen of tuples) {
     const items = new Set([...required, ...chosen.flatMap((k) => k.items)]);
-    if (costOf(items) > cap || items.size > Math.max(maxItems, required.length)) return;
-    [true, false].forEach((costAware) => {
+    if (costOf(items) > cap || items.size > Math.max(maxItems, required.length)) continue;
+    for (const costAware of [true, false]) {
       const plan = withWeapons(chosen, costAware);
       if (!bestPlan || plan.seconds < bestPlan.seconds - MIN_GAIN
         || (Math.abs(plan.seconds - bestPlan.seconds) <= MIN_GAIN && plan.cost < bestPlan.cost)) bestPlan = plan;
-    });
-  });
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await yieldToBrowser();
+  }
   const chosen = bestPlan ?? withWeapons([], true);
 
   const picks: PhasePick[] = units.map((u, j) => {

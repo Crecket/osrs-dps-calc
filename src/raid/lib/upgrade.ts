@@ -18,7 +18,7 @@ import {
 import { Candidate, fromStored, toStored } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
 import {
-  mainSetup, orderedItems, PhasePick, RaidPlan, wearsLightbearer,
+  mainSetup, orderedItems, PhasePick, RaidPlan, wearsLightbearer, yieldToBrowser,
 } from '@/raid/lib/assemble';
 
 /** DPS of each setup on the monster */
@@ -169,6 +169,8 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   const costOf = (ids: Set<number>) => [...ids].reduce((n, id) => n + priceOf(id), 0);
 
   for (let step = 0; step < MAX_STEPS; step++) {
+    // eslint-disable-next-line no-await-in-loop
+    await yieldToBrowser();
     const current = loadout();
     const cost = costOf(current);
     const cap = Math.max(budget, cost);
@@ -205,6 +207,8 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   // (the Necklace of anguish for a slightly weaker helm). Two changes to one setup are rated together before they count.
   const rejected = new Set<string>();
   for (let step = 0; step < MAX_STEPS; step++) {
+    // eslint-disable-next-line no-await-in-loop
+    await yieldToBrowser();
     const current = loadout();
     const cap = Math.max(budget, costOf(current));
     // best gain first, so the first pair that fits for each move is its best and the search stops early

@@ -1,7 +1,7 @@
 'use client';
 
 import React, {
-  useCallback, useEffect, useMemo, useRef, useState,
+  useCallback, useEffect, useRef, useState,
 } from 'react';
 import { observer } from 'mobx-react-lite';
 import { toJS } from 'mobx';
@@ -44,6 +44,9 @@ const Bar: React.FC<{ label: string; value: number }> = ({ label, value }) => (
   </div>
 );
 
+/** How long the inputs stay unchanged before the page checks the cache and re-plans */
+export const SETTLE_MS = 300;
+
 const RaidPage: React.FC = observer(() => {
   const [store] = useState(() => new RaidStore());
   const [pools] = useState(() => ({
@@ -76,13 +79,17 @@ const RaidPage: React.FC = observer(() => {
 
   const { runKey, blockReason } = store;
   const ready = store.loaded && cacheLoaded && pricesState !== 'loading';
-  // searches the next run has to do; 0 means it only re-plans from cached searches
-  const needed = useMemo(
-    () => (ready ? searchesNeeded(toJS(store.settings), prices, cache) : 0),
+  // searches the next run has to do; 0 means it only re-plans from cached searches. Worked out once the inputs settle
+  // (typing a budget changes them on every key), null until then
+  const [needed, setNeeded] = useState<number | null>(null);
+  useEffect(() => {
+    setNeeded(null);
+    if (!ready) return undefined;
+    const timer = setTimeout(() => setNeeded(searchesNeeded(toJS(store.settings), prices, cache)), SETTLE_MS);
+    return () => clearTimeout(timer);
     // runKey stands for the settings
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ready, runKey, prices, cache, running],
-  );
+  }, [ready, runKey, prices, cache, running]);
 
   const run = useCallback(async () => {
     if (!ready || store.blockReason) return;
@@ -208,7 +215,7 @@ const RaidPage: React.FC = observer(() => {
                       </span>
                     </button>
                   )}
-                  {!blockReason && needed > 0 && (
+                  {!blockReason && needed !== null && needed > 0 && (
                     <span className="text-xs text-gray-500 dark:text-gray-300">{`${needed} search${needed === 1 ? '' : 'es'} to run`}</span>
                   )}
                   <button
@@ -231,7 +238,7 @@ const RaidPage: React.FC = observer(() => {
                       <span>
                         {progress && progress.searches > 0
                           ? `${progress.search} of ${progress.searches} searches done${progress.cached > 0 ? ` (${progress.cached} cached)` : ''}${progress.phaseLabel ? ` · running ${progress.phaseLabel}` : ''}`
-                          : 'Planning'}
+                          : 'Planning the loadout from the cached searches…'}
                       </span>
                       <Bar label="Searches" value={overall} />
                       <span className="text-xs text-gray-500 dark:text-gray-300">{progress?.inner ? PHASE_LABELS[progress.inner.phase] : ' '}</span>

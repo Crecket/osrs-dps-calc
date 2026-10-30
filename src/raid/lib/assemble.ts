@@ -10,6 +10,9 @@ export const THRALL_DPS = 0.625;
  * A phase nothing in the loadout can hit counts as killed at this DPS: slower than any real setup, so even a slow
  * setup on a big phase is always worth bringing (a flat penalty below a real kill time made melee look worthless)
  */
+/** Lets the browser paint and handle input between steps of the planning, which runs on the main thread */
+export const yieldToBrowser = () => new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+
 export const NO_SETUP_DPS = 0.5;
 
 /**
