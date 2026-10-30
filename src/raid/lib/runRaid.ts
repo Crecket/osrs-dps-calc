@@ -103,7 +103,47 @@ export interface RaidResult {
   options: Record<string, WeaponOption[]>;
   /** Per phase key, spec weapons by the spec's damage per second, best first */
   specs: Record<string, SpecRank[]>;
+  /** Per phase key, every searched weapon, fastest first; missing on results saved before it existed */
+  tiers?: Record<string, WeaponTier[]>;
 }
+
+/** A weapon the searches found for a phase, at its best setup there */
+export interface WeaponTier {
+  weaponId: number;
+  style: BestStyle;
+  /** Thralls included */
+  dps: number;
+  seconds: number;
+  /** The weapon's price, 0 when owned */
+  cost: number;
+  /** The loadout holds the weapon */
+  held: boolean;
+}
+
+/** Per phase, every searched weapon at its best setup, fastest first: the tier list behind a phase's weapons */
+export const weaponTiers = (
+  candidates: Candidate[],
+  hpByKey: Map<string, number>,
+  extraDps: number,
+  priceOf: (id: number) => number,
+  itemIds: number[],
+): Record<string, WeaponTier[]> => {
+  const held = new Set(itemIds.map(getCanonicalItemId));
+  const best = new Map<string, Map<number, Candidate>>();
+  candidates.forEach((c) => {
+    const weaponId = c.setup.player.equipment.weapon?.id;
+    if (weaponId === undefined || !hpByKey.has(c.phaseKey)) return;
+    const byWeapon = best.get(c.phaseKey) ?? new Map<number, Candidate>();
+    if (!byWeapon.has(weaponId) || byWeapon.get(weaponId)!.dps < c.dps) byWeapon.set(weaponId, c);
+    best.set(c.phaseKey, byWeapon);
+  });
+  return Object.fromEntries([...best.entries()].map(([key, byWeapon]) => [key, [...byWeapon.entries()].map(([weaponId, c]) => {
+    const dps = c.dps + extraDps;
+    return {
+      weaponId, style: c.style, dps, seconds: hpByKey.get(key)! / dps, cost: priceOf(weaponId), held: held.has(getCanonicalItemId(weaponId)),
+    };
+  }).sort((a, b) => b.dps - a.dps)]));
+};
 
 /** Per phase, the best fitting setup of each weapon the loadout holds */
 const weaponOptions = (candidates: Candidate[], itemIds: number[], hpByKey: Map<string, number>, extraDps: number) => {
@@ -265,5 +305,6 @@ export const runRaid = async (
     })),
     options: weaponOptions(all, plan.itemIds, hpByKey, extraDps),
     specs,
+    tiers: weaponTiers(all, hpByKey, extraDps, priceOf, plan.itemIds),
   };
 };

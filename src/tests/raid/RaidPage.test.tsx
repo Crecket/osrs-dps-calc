@@ -174,6 +174,40 @@ describe('RaidPage', () => {
     await unmount();
   });
 
+  test('clicking a weapon opens the tier list of its style on that phase, and clicking again closes it', async () => {
+    mockRunRaid.mockImplementation(async (settings) => ({
+      ...result(settings),
+      tiers: {
+        'bork:0': [
+          {
+            weaponId: 26374, style: 'ranged', dps: 12, seconds: 125, cost: 3e8, held: false,
+          },
+          {
+            weaponId: 20997, style: 'ranged', dps: 10, seconds: 150, cost: 1.5e9, held: true,
+          },
+          {
+            weaponId: 4151, style: 'slash', dps: 5, seconds: 300, cost: 1e6, held: true,
+          },
+        ],
+      },
+    }));
+    const { container, unmount } = await mount();
+    await act(async () => button(container, 'Find raid gear')!.click());
+    await wait(20);
+    const tbowCell = [...container.querySelectorAll<HTMLButtonElement>('[data-testid=option-cell]')].find((c) => c.getAttribute('aria-label')?.startsWith('Twisted bow'))!;
+    await act(async () => tbowCell.click());
+    const list = container.querySelector('[data-testid=tier-list]')!;
+    const rows = [...list.querySelectorAll('[data-testid=tier-row]')];
+    // only ranged weapons, fastest first
+    expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('Zaryte crossbow'), expect.stringContaining('Twisted bow')]);
+    expect(rows[0].textContent).toContain('300m');
+    expect(rows[1].textContent).toContain('in loadout');
+    expect(tbowCell.getAttribute('aria-expanded')).toBe('true');
+    await act(async () => tbowCell.click());
+    expect(container.querySelector('[data-testid=tier-list]')).toBeNull();
+    await unmount();
+  });
+
   test('a change that needs searches marks the result stale', async () => {
     const { container, unmount } = await mount();
     await act(async () => button(container, 'Find raid gear')!.click());

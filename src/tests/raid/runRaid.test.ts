@@ -9,8 +9,9 @@ import { basePlayer } from '@/best/lib/basePlayer';
 import { BulkRow } from '@/bulk/types';
 import { SearchCache } from '@/raid/lib/searchCache';
 import {
-  defaultSettings, raidBaseInputs, runRaid, searchesNeeded,
+  defaultSettings, raidBaseInputs, runRaid, searchesNeeded, weaponTiers,
 } from '@/raid/lib/runRaid';
+import { Candidate } from '@/raid/lib/candidates';
 
 const tbow = availableEquipment.find((e) => e.id === 20997)!;
 const rapid = getCombatStylesForCategory(tbow.category).find((s) => s.stance === 'Rapid')!;
@@ -48,6 +49,29 @@ beforeEach(() => {
       variants: {},
       runnersUp: [],
     }];
+  });
+});
+
+describe('weaponTiers', () => {
+  test('per phase every searched weapon at its best, fastest first, with its price and whether the loadout holds it', () => {
+    const c = (phaseKey: string, weaponId: number, style: Candidate['style'], dps: number) => ({
+      phaseKey, style, dps, itemIds: [weaponId], setup: { player: { equipment: { weapon: { id: weaponId } } } },
+    }) as unknown as Candidate;
+    const tiers = weaponTiers([
+      c('a', 20997, 'ranged', 10), c('a', 20997, 'ranged', 12), c('a', 26374, 'ranged', 11), c('a', 22325, 'slash', 9), c('b', 4151, 'slash', 5),
+    ], new Map([['a', 1200], ['b', 500]]), 0.5, (id) => (id === 20997 ? 1e9 : 0), [26374]);
+    expect(tiers.a).toEqual([
+      {
+        weaponId: 20997, style: 'ranged', dps: 12.5, seconds: 96, cost: 1e9, held: false,
+      },
+      {
+        weaponId: 26374, style: 'ranged', dps: 11.5, seconds: 1200 / 11.5, cost: 0, held: true,
+      },
+      {
+        weaponId: 22325, style: 'slash', dps: 9.5, seconds: 1200 / 9.5, cost: 0, held: false,
+      },
+    ]);
+    expect(tiers.b.map((t) => t.weaponId)).toEqual([4151]);
   });
 });
 
