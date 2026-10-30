@@ -2,6 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { toast } from 'react-toastify';
 import { IconX } from '@tabler/icons-react';
+import { GlobalState, StoreProvider } from '@/state';
+import EquipmentSelect from '@/app/components/player/equipment/EquipmentSelect';
+import { bestPool } from '@/best/lib/candidates';
+import { EquipmentPiece } from '@/types/Player';
 import { useRaidStore } from '@/raid/state/RaidStore';
 import { raidById } from '@/raid/raids';
 import { MagicOption } from '@/raid/types';
@@ -70,6 +74,45 @@ const ItemChips: React.FC<{ ids: number[]; onRemove: (id: number) => void; remov
   </div>
 );
 
+type AddMode = 'owned' | 'bring' | 'exclude';
+const ADD_MODES: [AddMode, string][] = [['owned', 'Mark owned'], ['bring', 'Always bring'], ['exclude', 'Exclude']];
+
+let poolIds: Set<number> | null = null;
+// only items the search could pick
+const inPool = (e: EquipmentPiece) => {
+  if (!poolIds) poolIds = new Set(bestPool().map((p) => p.id));
+  return poolIds.has(e.id);
+};
+
+/** An item search, like the best setup page's: the picked item is marked owned, always brought or excluded */
+const ItemSearch: React.FC = observer(() => {
+  const store = useRaidStore();
+  const [mode, setMode] = useState<AddMode>('owned');
+  // upstream's item search reads the monster from a calculator store, so give it a scratch one
+  const [scratch] = useState(() => new GlobalState());
+  const add = (id: number) => {
+    if (mode === 'owned') {
+      if (!store.settings.ownedIds.includes(id)) store.toggleOwned(id);
+    } else if (mode === 'bring') {
+      store.bring(id);
+    } else {
+      store.exclude(id);
+    }
+  };
+  return (
+    <div className="flex gap-2 items-center">
+      <select aria-label="What to do with the item" className={`${fieldClass} shrink-0`} value={mode} onChange={(e) => setMode(e.target.value as AddMode)}>
+        {ADD_MODES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+      </select>
+      <div className="grow min-w-0">
+        <StoreProvider store={scratch}>
+          <EquipmentSelect customAvailableEquipmentFilter={inPool} onSelectedItemChange={(item) => item && add(item.equipment.id)} />
+        </StoreProvider>
+      </div>
+    </div>
+  );
+});
+
 /** Raid, route, budget, supplies, magic, rules, and the owned and excluded items */
 const RaidInputs: React.FC = observer(() => {
   const store = useRaidStore();
@@ -121,10 +164,11 @@ const RaidInputs: React.FC = observer(() => {
           </FieldGrid>
           <p className="text-xs text-gray-500 dark:text-gray-300">Boss rules: Moia needs a Venator bow, the Dagon&apos;hai need elemental spells.</p>
         </Section>
-        <Section title="Owned items">
+        <Section title="Items">
           <p className="text-xs text-gray-500 dark:text-gray-300">
-            Owned items cost nothing. Paste a RuneLite Inventory Setups export, or right-click an item in the results.
+            Owned items cost nothing, always-brought items are in every loadout, excluded ones never. Search for an item, right-click one in the results, or paste a RuneLite Inventory Setups export to mark it owned.
           </p>
+          <ItemSearch />
           <textarea
             className={`${fieldClass} h-16 font-mono text-xs`}
             aria-label="Inventory Setups export"
@@ -138,7 +182,18 @@ const RaidInputs: React.FC = observer(() => {
               <button type="button" className={`${buttonClass} h-8 ${focusRing}`} onClick={store.clearOwned}>Clear owned</button>
             )}
           </div>
-          <ItemChips ids={settings.ownedIds} onRemove={store.toggleOwned} removeLabel="Unmark" />
+          {settings.ownedIds.length > 0 && (
+            <>
+              <h4 className="font-serif font-bold text-sm">Owned</h4>
+              <ItemChips ids={settings.ownedIds} onRemove={store.toggleOwned} removeLabel="Unmark" />
+            </>
+          )}
+          {settings.bringIds.length > 0 && (
+            <>
+              <h4 className="font-serif font-bold text-sm">Always bring</h4>
+              <ItemChips ids={settings.bringIds} onRemove={store.unbring} removeLabel="Stop bringing" />
+            </>
+          )}
           {settings.excludedIds.length > 0 && (
             <>
               <h4 className="font-serif font-bold text-sm">Excluded</h4>

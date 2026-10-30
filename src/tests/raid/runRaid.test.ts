@@ -57,6 +57,13 @@ describe('raidBaseInputs', () => {
     expect(raidBaseInputs({ ...defaultSettings(), styles: ['ranged'] }).styles).toEqual(['ranged']);
   });
 
+  test('the account\'s levels, prayers, potions and conditions go to the searches', () => {
+    const account = { ...defaultSettings().account, skills: { ...defaultSettings().account.skills, ranged: 80 } };
+    const inputs = raidBaseInputs({ ...defaultSettings(), account: { ...account, prayerOverrides: { ranged: [] } } });
+    expect(inputs.skills.ranged).toBe(80);
+    expect(inputs.prayerOverrides).toEqual({ ranged: [] });
+  });
+
   test('spellbooks follow the magic option', () => {
     expect(raidBaseInputs({ ...defaultSettings(), magic: 'thralls' }).spellbooks).toEqual([]);
     expect(raidBaseInputs({ ...defaultSettings(), magic: 'none' }).spellbooks).toEqual([]);

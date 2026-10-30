@@ -1,7 +1,7 @@
 import React, { useId } from 'react';
 import { observer } from 'mobx-react-lite';
 import { BestStyle } from '@/best/types';
-import { useBestStore } from '@/best/state/BestStore';
+import { useAccountEditor } from '@/best/state/AccountEditor';
 import {
   allUnlocked, bestPrayers, canUsePrayer, DEFENCE_LEVEL, PRAYER_LEVEL, prayerChoices, PrayerGroup, stylePrayers,
 } from '@/best/lib/loadout';
@@ -25,7 +25,7 @@ const choiceValue = (prayers: Prayer[]) => prayers.join(',');
  * with the icons of the prayers in use beside it.
  */
 const PrayerPicker: React.FC<{ group: PrayerGroup; label: string; style: BestStyle }> = observer(({ group, label, style }) => {
-  const store = useBestStore();
+  const store = useAccountEditor();
   const { skills, prayerOverrides = {} } = store.inputs;
   const unlocks = allUnlocked(store.inputs.unlocks);
   const id = useId();

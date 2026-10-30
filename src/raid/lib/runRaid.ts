@@ -7,8 +7,9 @@ import { BestRunDeps, runBestSetup } from '@/best/lib/run';
 import { bestPool } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
 import {
-  BestInputs, BEST_STYLES, BestStyle, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS,
+  AccountInputs, BestInputs, BEST_STYLES, BestStyle,
 } from '@/best/types';
+import { defaultAccount } from '@/best/lib/account';
 import { EquipmentPiece, Player } from '@/types/Player';
 import { Spellbook } from '@/types/Spell';
 import {
@@ -40,6 +41,10 @@ export interface RaidSettings {
   budget: number;
   ownedIds: number[];
   excludedIds: number[];
+  /** Items the loadout always holds */
+  bringIds: number[];
+  /** Levels, prayers, potions and conditions, as on the best setup page */
+  account: Required<AccountInputs>;
   /** Per phase key, specs that differ from the phase's defaults */
   counts: Record<string, Partial<DefenceCounts>>;
   supplies: Supplies;
@@ -61,6 +66,8 @@ export const defaultSettings = (): RaidSettings => {
     budget: 500_000_000,
     ownedIds: [],
     excludedIds: [],
+    bringIds: [],
+    account: defaultAccount(),
     counts: {},
     supplies: { brews: 6, restores: 5, reserved: 4 },
     magic: 'thralls',
@@ -120,17 +127,11 @@ const SPELLBOOKS: Record<MagicOption, Spellbook[]> = {
   thralls: [], none: [], ancients: ['ancient'], standard: ['standard'],
 };
 
-/** The best setup search's inputs for the raid: maxed stats, every style, the spellbook the magic option allows */
+/** The best setup search's inputs for the raid: the account, the chosen styles, the spellbook the magic option allows */
 export const raidBaseInputs = (settings: RaidSettings): BestInputs => ({
-  skills: {
-    atk: 99, def: 99, hp: 99, magic: 99, prayer: 99, ranged: 99, str: 99, mining: 99, herblore: 99,
-  },
-  unlocks: { ...DEFAULT_UNLOCKS },
-  conditions: { ...DEFAULT_CONDITIONS },
-  potions: {},
+  ...settings.account,
   styles: BEST_STYLES.filter((st) => settings.styles.includes(st)),
   topN: 1,
-  prayerOverrides: {},
   spellbooks: SPELLBOOKS[settings.magic],
 });
 
@@ -142,12 +143,13 @@ export const blockReason = (settings: RaidSettings): string | null => {
   return boss?.rules?.forbiddenMagic?.reason ?? null;
 };
 
-/** Items the loadout must hold: boss requirements (with rules on), defence weapons in use, the book for thralls */
+/** Items the loadout must hold: the always-bring items, boss requirements (with rules on), defence weapons in use, the book for thralls */
 export const requiredItems = (settings: RaidSettings): number[] => {
   const raid = raidById(settings.raidId);
   const excluded = new Set(settings.excludedIds.map(getCanonicalItemId));
   const phases = routePhases(raid, settings.route, settings.counts, settings.excludedIds);
   const ids = [
+    ...settings.bringIds,
     ...(settings.rulesOn ? routeBosses(raid, settings.route).flatMap((b) => b.rules?.requiredItemIds ?? []) : []),
     ...DEFENCE_WEAPONS.filter((w) => phases.some((p) => p.counts[w] > 0)).map((w) => DEFENCE_WEAPON_IDS[w]),
     ...(settings.magic === 'thralls' ? [BOOK_OF_THE_DEAD] : []),

@@ -2,14 +2,14 @@ import { createContext, useContext } from 'react';
 import localforage from 'localforage';
 import { makeAutoObservable, toJS } from 'mobx';
 import Potion from '@/enums/Potion';
-import { Prayer, PrayerMap } from '@/enums/Prayer';
+import { Prayer } from '@/enums/Prayer';
 import { PlayerSkills } from '@/types/Player';
-import { PotionMap } from '@/utils';
 import { availableEquipment, getCanonicalItemId } from '@/lib/Equipment';
 import {
-  BEST_STYLES, BestInputs, BestStyle, CombatConditions, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS, PrayerUnlocks,
+  BEST_STYLES, BestInputs, BestStyle, CombatConditions, PrayerUnlocks,
 } from '@/best/types';
-import { isPrayerChoice, PRAYER_GROUPS, PrayerGroup } from '@/best/lib/loadout';
+import { PRAYER_GROUPS, PrayerGroup } from '@/best/lib/loadout';
+import { defaultAccount, readAccount } from '@/best/lib/account';
 import { BulkMonster } from '@/bulk/types';
 import type { PresetStorage } from '@/bulk/state/BulkStore';
 import type { TargetHolder } from '@/bulk/state/TargetSync';
@@ -22,31 +22,15 @@ interface SavedBest {
 }
 
 const defaultInputs = (): BestInputs => ({
-  skills: {
-    atk: 99, def: 99, hp: 99, magic: 99, prayer: 99, ranged: 99, str: 99, mining: 99, herblore: 99,
-  },
-  unlocks: { ...DEFAULT_UNLOCKS },
-  conditions: { ...DEFAULT_CONDITIONS },
-  potions: {},
+  ...defaultAccount(),
   styles: [...BEST_STYLES],
   topN: 5,
-  prayerOverrides: {},
   excludedItemIds: [],
 });
 
 const POTION_GROUPS = ['melee', 'ranged', 'magic'] as const;
 
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
-
-/** Keeps the fields of `base` that `raw` has with the same type as the default; nothing else is copied */
-const mergeTyped = <T extends object>(base: T, raw: unknown, valid: (k: keyof T, v: unknown) => boolean): T => {
-  const out = { ...base };
-  if (!isRecord(raw)) return out;
-  for (const k of Object.keys(base) as (keyof T)[]) {
-    if (k in raw && valid(k, raw[k as string])) out[k] = raw[k as string] as T[keyof T];
-  }
-  return out;
-};
 
 const isNum = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 
@@ -63,25 +47,6 @@ const readSaved = (raw: unknown): SavedBest => {
   const base = defaultInputs();
 
   const styles = Array.isArray(i.styles) ? BEST_STYLES.filter((s) => (i.styles as unknown[]).includes(s)) : [];
-  const potions: BestInputs['potions'] = {};
-  if (isRecord(i.potions)) {
-    for (const g of POTION_GROUPS) {
-      const p = i.potions[g];
-      if (Array.isArray(p)) potions[g] = p.filter((x): x is Potion => typeof x === 'number' && x in PotionMap);
-    }
-  }
-
-  // only known groups, and only prayer combinations of that group
-  const prayerOverrides: BestInputs['prayerOverrides'] = {};
-  if (isRecord(i.prayerOverrides)) {
-    for (const g of PRAYER_GROUPS) {
-      const p = i.prayerOverrides[g];
-      if (Array.isArray(p) && p.every((x) => typeof x === 'number' && x in PrayerMap) && isPrayerChoice(g, p as Prayer[])) {
-        prayerOverrides[g] = p as Prayer[];
-      }
-    }
-  }
-
   const excludedItemIds = Array.isArray(i.excludedItemIds)
     ? [...new Set((i.excludedItemIds as unknown[]).filter((x): x is number => isNum(x) && knownItemIds().has(x as number)))]
     : [];
@@ -93,16 +58,9 @@ const readSaved = (raw: unknown): SavedBest => {
 
   return {
     inputs: {
-      skills: mergeTyped(base.skills, i.skills, (_, v) => isNum(v)),
-      unlocks: mergeTyped(base.unlocks, i.unlocks, (k, v) => (k === 'prayerLevel' ? isNum(v) : typeof v === 'boolean')),
-      conditions: mergeTyped(base.conditions, i.conditions, (k, v) => {
-        if (k === 'currentHp') return v === null || isNum(v);
-        return k === 'soulreaperStacks' ? isNum(v) : typeof v === 'boolean';
-      }),
-      potions,
+      ...readAccount(i),
       styles: styles.length > 0 ? styles : base.styles,
       topN: typeof i.topN === 'number' && Number.isInteger(i.topN) && i.topN > 0 ? i.topN : base.topN,
-      prayerOverrides,
       excludedItemIds,
     },
     monster,

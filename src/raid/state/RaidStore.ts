@@ -3,7 +3,15 @@ import localforage from 'localforage';
 import { makeAutoObservable, toJS } from 'mobx';
 import { availableEquipment, getCanonicalItemId } from '@/lib/Equipment';
 import type { PresetStorage } from '@/bulk/state/BulkStore';
-import { BEST_STYLES, BestStyle } from '@/best/types';
+import Potion from '@/enums/Potion';
+import { Prayer } from '@/enums/Prayer';
+import { PlayerSkills } from '@/types/Player';
+import {
+  AccountInputs, BEST_STYLES, BestStyle, CombatConditions, PrayerUnlocks,
+} from '@/best/types';
+import { readAccount } from '@/best/lib/account';
+import { PrayerGroup } from '@/best/lib/loadout';
+import type { AccountEditor } from '@/best/state/AccountEditor';
 import {
   DEFENCE_WEAPONS, DefenceCounts, DefenceWeapon, MagicOption,
 } from '@/raid/types';
@@ -62,6 +70,8 @@ const readSettings = (raw: unknown): RaidSettings => {
     budget: typeof r.budget === 'number' && Number.isFinite(r.budget) && r.budget >= 0 ? r.budget : base.budget,
     ownedIds: readIds(r.ownedIds),
     excludedIds: readIds(r.excludedIds),
+    bringIds: readIds(r.bringIds),
+    account: readAccount(r.account),
     counts,
     supplies,
     magic: MAGIC_OPTIONS.includes(r.magic as MagicOption) ? r.magic as MagicOption : base.magic,
@@ -77,7 +87,7 @@ interface SavedResult {
   key: string;
 }
 
-export class RaidStore {
+export class RaidStore implements AccountEditor {
   settings: RaidSettings = defaultSettings();
 
   /** The last finished run and the settings key it was run with */
@@ -145,6 +155,10 @@ export class RaidStore {
       ...s,
       ownedIds: sorted(s.ownedIds),
       excludedIds: sorted(s.excludedIds),
+      bringIds: sorted(s.bringIds),
+      account: {
+        ...s.account, potions: Object.entries(s.account.potions).sort(), prayerOverrides: Object.entries(s.account.prayerOverrides).sort(),
+      },
       route: Object.entries(s.route).sort(),
       counts: Object.entries(s.counts).sort(),
     });
@@ -230,6 +244,58 @@ export class RaidStore {
     this.settings.ownedIds = [...this.settings.ownedIds, ...added];
     this.save();
     return added.length;
+  }
+
+  /** The account inputs, for the shared account fields */
+  get inputs(): AccountInputs {
+    return this.settings.account;
+  }
+
+  setSkills(s: Partial<PlayerSkills>) {
+    this.settings.account.skills = { ...this.settings.account.skills, ...s };
+    this.save();
+  }
+
+  setUnlocks(u: Partial<PrayerUnlocks>) {
+    this.settings.account.unlocks = { ...this.settings.account.unlocks, ...u };
+    this.save();
+  }
+
+  setConditions(c: Partial<CombatConditions>) {
+    this.settings.account.conditions = { ...this.settings.account.conditions, ...c };
+    this.save();
+  }
+
+  /** null removes the override, so the group goes back to its default potion */
+  setPotions(group: 'melee' | 'ranged' | 'magic', p: Potion[] | null) {
+    const potions = { ...this.settings.account.potions };
+    if (p === null) delete potions[group];
+    else potions[group] = [...p];
+    this.settings.account.potions = potions;
+    this.save();
+  }
+
+  /** null removes the override, so the group goes back to Auto; [] is no prayer */
+  setPrayerOverride(group: PrayerGroup, prayers: Prayer[] | null) {
+    const overrides = { ...this.settings.account.prayerOverrides };
+    if (prayers === null) delete overrides[group];
+    else overrides[group] = [...prayers];
+    this.settings.account.prayerOverrides = overrides;
+    this.save();
+  }
+
+  /** The loadout always holds the item */
+  bring(id: number) {
+    const canonical = getCanonicalItemId(id);
+    if (this.settings.bringIds.includes(canonical)) return;
+    this.settings.bringIds = [...this.settings.bringIds, canonical];
+    this.save();
+  }
+
+  unbring(id: number) {
+    const canonical = getCanonicalItemId(id);
+    this.settings.bringIds = this.settings.bringIds.filter((x) => x !== canonical);
+    this.save();
   }
 
   setResult(result: RaidResult, key: string) {

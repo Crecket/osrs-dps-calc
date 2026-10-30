@@ -22,6 +22,8 @@ import { RaidProgress } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
 import { fetchPrices, Prices } from '@/raid/lib/prices';
 import RaidInputs from '@/raid/components/RaidInputs';
+import { AccountFields } from '@/best/components/InputsPanel';
+import { AccountEditorContext } from '@/best/state/AccountEditor';
 import BossStrip from '@/raid/components/BossStrip';
 import LoadoutView from '@/raid/components/LoadoutView';
 import BossResults from '@/raid/components/BossResults';
@@ -152,6 +154,13 @@ const RaidPage: React.FC = observer(() => {
         {store.loaded ? (
           <>
             <RaidInputs />
+            <AccountEditorContext.Provider value={store}>
+              <Panel title="Your account" className="min-w-0">
+                <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
+                  <AccountFields />
+                </div>
+              </Panel>
+            </AccountEditorContext.Provider>
             <Panel
               title="Raid gear"
               stickyHeader

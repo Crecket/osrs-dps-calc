@@ -160,6 +160,19 @@ describe('RaidPage', () => {
     await unmount();
   });
 
+  test('the account fields set the levels the searches use, and mark the result stale', async () => {
+    const { container, unmount } = await mount();
+    await act(async () => button(container, 'Find raid gear')!.click());
+    await wait(20);
+    const label = [...container.querySelectorAll('label')].find((l) => l.textContent?.trim() === 'Ranged')!;
+    const ranged = container.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`)!;
+    await change(ranged, '80');
+    await wait(20);
+    expect((mockData.get('dps-raid-state') as { settings: RaidSettings }).settings.account.skills.ranged).toBe(80);
+    expect(container.textContent).toContain('Inputs changed');
+    await unmount();
+  });
+
   test('the budget field keeps what is typed and saves on blur', async () => {
     const { container, unmount } = await mount();
     const field = container.querySelector<HTMLInputElement>('#raid-budget')!;

@@ -46,6 +46,9 @@ export interface BestInputs {
   spellbooks?: Spellbook[] | null;
 }
 
+/** The account part of the inputs: levels, prayers, potions and conditions, shared by the best setup and raid pages */
+export type AccountInputs = Pick<BestInputs, 'skills' | 'unlocks' | 'conditions' | 'potions' | 'prayerOverrides'>;
+
 // not on slayer task: upstream defaults to on, which would make the slayer helm win every boss
 export const DEFAULT_CONDITIONS: CombatConditions = {
   onSlayerTask: false,

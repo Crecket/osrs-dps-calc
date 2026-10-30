@@ -76,6 +76,31 @@ describe('RaidStore', () => {
     expect(store.requiredIds).not.toContain(27610);
   });
 
+  test('always-bring items are required, unless excluded', async () => {
+    const store = await loaded();
+    store.bring(26374);
+    expect(store.settings.bringIds).toEqual([26374]);
+    expect(store.requiredIds).toContain(26374);
+    store.exclude(26374);
+    expect(store.requiredIds).not.toContain(26374);
+    store.unbring(26374);
+    expect(store.settings.bringIds).toEqual([]);
+  });
+
+  test('account inputs are saved and invalid ones fall back', async () => {
+    const storage = memoryStorage();
+    const store = await loaded(storage);
+    store.setSkills({ ranged: 85 });
+    store.setPrayerOverride('ranged', []);
+    store.setConditions({ soulreaperStacks: 3 });
+    const again = await loaded(storage);
+    expect(again.inputs.skills.ranged).toBe(85);
+    expect(again.inputs.prayerOverrides).toEqual({ ranged: [] });
+    expect(again.inputs.conditions.soulreaperStacks).toBe(3);
+    await storage.setItem(RAID_STORAGE_KEY, { settings: { account: { skills: { ranged: 'x' } } } });
+    expect((await loaded(storage)).inputs.skills.ranged).toBe(99);
+  });
+
   test('rules off drops boss requirements', async () => {
     const store = await loaded();
     store.setRoute('third', 'moia');
