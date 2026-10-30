@@ -26,6 +26,14 @@ export interface RaidPhase {
   allowedStyles?: BestStyle[];
   /** Shares of the health bar that only some styles can deal; missing means one setup does it all */
   parts?: PhasePart[];
+  /** The share of the monster's health dealt in this phase, when one monster is fought in several states */
+  hpShare?: number;
+  /** The monster in this state, where the data has one version for all of them */
+  state?: {
+    flatArmour?: number;
+    /** Every hit lands (a stunned boss): no Defence level or defence bonuses */
+    alwaysHit?: boolean;
+  };
 }
 
 /** A share of a health bar, dealt by the fastest setup of `styles` (any style when missing) */

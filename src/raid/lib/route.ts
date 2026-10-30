@@ -3,7 +3,7 @@ import { getCanonicalItemId } from '@/lib/Equipment';
 import { Monster } from '@/types/Monster';
 import { prepareMonster } from '@/bulk/lib/compute';
 import {
-  DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS, DefenceCounts, RaidBoss, RaidDef, Route, RoutePhase,
+  DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS, DefenceCounts, RaidBoss, RaidDef, RaidPhase, Route, RoutePhase,
 } from '@/raid/types';
 
 /** One boss per stop: the route's choice, or the stop's first option when it is missing or unknown */
@@ -17,6 +17,28 @@ const findMonster = (id: number, version: string) => {
   const m = monsters.find((x) => x.id === id && x.version === version);
   if (!m) throw new Error(`Unknown monster ${id} (${version})`);
   return m;
+};
+
+/** The monster as the phase fights it: its share of the health and its state's armour */
+const inState = <M extends Omit<Monster, 'inputs'>>(m: M, phase: RaidPhase): M => {
+  const { hpShare, state } = phase;
+  if (hpShare === undefined && !state) return m;
+  const defensive = { ...m.defensive };
+  if (state?.flatArmour !== undefined) defensive.flat_armour = state.flatArmour;
+  if (state?.alwaysHit) {
+    (Object.keys(defensive) as (keyof typeof defensive)[]).forEach((k) => {
+      if (k !== 'flat_armour') defensive[k] = -64;
+    });
+  }
+  return {
+    ...m,
+    skills: {
+      ...m.skills,
+      hp: hpShare === undefined ? m.skills.hp : Math.round(m.skills.hp * hpShare),
+      def: state?.alwaysHit ? 0 : m.skills.def,
+    },
+    defensive,
+  };
 };
 
 /**
@@ -35,7 +57,7 @@ export const routePhases = (
     DEFENCE_WEAPONS.forEach((w) => {
       if (leftOut.has(getCanonicalItemId(DEFENCE_WEAPON_IDS[w]))) merged[w] = 0;
     });
-    const monster = prepareMonster(findMonster(phase.monsterId, phase.version), {
+    const monster = prepareMonster(inState(findMonster(phase.monsterId, phase.version), phase), {
       defenceReductions: { elderMaul: merged.elderMaul, dwh: merged.dwh, tonalztic: merged.tonalztic },
     });
     return {

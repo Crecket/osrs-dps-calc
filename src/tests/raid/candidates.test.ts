@@ -169,7 +169,7 @@ describe('raidCandidates', () => {
       active -= 1;
       return outcome();
     });
-    const four = routePhases(fa, fa.defaultRoute, {}, []).slice(0, 4);
+    const four = routePhases(fa, fa.defaultRoute, {}, []).filter((p) => !p.phase.allowedStyles).slice(0, 4);
     const result = await raidCandidates(four, inputs, [[1], [1, 2]], deps, () => {}, new SearchCache(memoryStorage()), search);
     expect(mockRun).toHaveBeenCalledTimes(8);
     expect(most).toBe(RAID_PARALLEL);

@@ -25,7 +25,7 @@ describe('raid definitions', () => {
 
   test('defence reductions applied', () => {
     const phases = routePhases(fa, fa.defaultRoute, { 'bork:0': { elderMaul: 1 } }, []);
-    expect(phases).toHaveLength(9);
+    expect(phases).toHaveLength(10);
     expect(phases.find((p) => p.phase.key === 'bork:1')?.monster.monster.name).toBe('The Smorks');
     const bork = phases.find((p) => p.phase.key === 'bork:0')!;
     expect(bork.monster.monster.inputs.defenceReductions.elderMaul).toBe(1);
@@ -34,11 +34,26 @@ describe('raid definitions', () => {
     expect(flying.monster.monster.version).toBe('Flying');
   });
 
+  test('Bork walks with flat armour and is stunned for part of his health bar, when every melee hit lands', () => {
+    const phases = routePhases(fa, fa.defaultRoute, {}, []);
+    const walking = phases.find((p) => p.phase.key === 'bork:0')!;
+    const stunned = phases.find((p) => p.phase.key === 'bork:2')!;
+    expect(phases.map((p) => p.phase.key).filter((k) => k.startsWith('bork'))).toEqual(['bork:0', 'bork:2', 'bork:1']);
+    expect(walking.monster.monster.skills.hp).toBe(900);
+    expect(walking.monster.monster.defensive.flat_armour).toBe(10);
+    expect(walking.phase.allowedStyles).toEqual(['ranged']);
+    expect(stunned.monster.monster.skills.hp).toBe(600);
+    expect(stunned.monster.monster.defensive.flat_armour).toBe(0);
+    expect(stunned.monster.monster.skills.def).toBe(0);
+    expect(stunned.monster.monster.defensive.crush).toBe(-64);
+    expect(stunned.phase.allowedStyles).toEqual(['stab', 'slash', 'crush']);
+  });
+
   test('style rules from the strategy', () => {
     const phase = (key: string) => routePhases(fa, fa.defaultRoute, {}, []).find((p) => p.phase.key === key)!.phase;
     expect(phase('ocellus:1').allowedStyles).toEqual(['ranged']);
     expect(phase('ocellus:2').parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { styles: ['stab', 'slash', 'crush'], share: 0.5 }]);
-    ['bork:0', 'dreadnoth:0', 'xarth:0', 'ocellus:0'].forEach((key) => expect(phase(key).parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }]));
+    ['dreadnoth:0', 'xarth:0', 'ocellus:0'].forEach((key) => expect(phase(key).parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }]));
   });
 
   test('excluded weapon zeroes its defence reduction', () => {
@@ -55,6 +70,8 @@ describe('raid definitions', () => {
       'guardian:0': 156,
       'guardian:1': 156,
       'bork:0': 180,
+      // stunned: every hit lands
+      'bork:2': 0,
       'bork:1': 1,
       // the list says 120; the engine's data floors Ezekiel at 78 (60% of 130)
       'ezekiel:0': 78,

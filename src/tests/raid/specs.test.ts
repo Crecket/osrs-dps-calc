@@ -101,8 +101,8 @@ describe('specRanking', () => {
   test('melee spec weapons are ranked on the phase\'s melee setup', async () => {
     const calls: string[][] = [];
     const deps = { search: { run: async () => [], cancel: () => {} }, rows: rows(calls) } as never;
-    const [bork] = routePhases(fa, fa.defaultRoute, {}, []).filter((p) => p.phase.key === 'bork:0');
-    await specRanking([bork], [{ ...candidate, phaseKey: 'bork:0', style: 'slash' }], [], deps, new SearchCache(memoryStorage()));
+    const [bork] = routePhases(fa, fa.defaultRoute, {}, []).filter((p) => p.phase.key === 'bork:2');
+    await specRanking([bork], [{ ...candidate, phaseKey: 'bork:2', style: 'slash' }], [], deps, new SearchCache(memoryStorage()));
     expect(calls.flat()).toContain('Crimson kisten');
   });
 
@@ -132,8 +132,8 @@ describe('specRanking', () => {
   test('the Dual macuahuitl is never ranked: not worth bringing for its spec', async () => {
     const calls: string[][] = [];
     const deps = { search: { run: async () => [], cancel: () => {} }, rows: rows(calls) } as never;
-    const [bork] = routePhases(fa, fa.defaultRoute, {}, []).filter((p) => p.phase.key === 'bork:0');
-    await specRanking([bork], [{ ...candidate, phaseKey: 'bork:0', style: 'crush' }], [], deps, new SearchCache(memoryStorage()));
+    const [bork] = routePhases(fa, fa.defaultRoute, {}, []).filter((p) => p.phase.key === 'bork:2');
+    await specRanking([bork], [{ ...candidate, phaseKey: 'bork:2', style: 'crush' }], [], deps, new SearchCache(memoryStorage()));
     expect(calls.flat()).not.toContain('Dual macuahuitl');
     expect(calls.flat()).toContain('Dragon claws');
   });

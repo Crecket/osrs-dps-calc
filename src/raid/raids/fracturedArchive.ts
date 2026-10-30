@@ -39,8 +39,28 @@ const fracturedArchive: RaidDef = {
           id: 'bork',
           name: 'Bork',
           phases: [
+            // Bork walks with 8-14 flat armour (more as the Smorks lose health), ranged; a heavy cannonball stuns him,
+            // with no flat armour and every melee hit landing: about 40% of his health is dealt then
             {
-              key: 'bork:0', label: 'Bork', monsterId: 16640, version: '', defaults: specs(2, 0), parts: HALF_RANGED,
+              key: 'bork:0',
+              label: 'Bork',
+              monsterId: 16640,
+              version: '',
+              defaults: specs(2, 0),
+              allowedStyles: ['ranged'],
+              hpShare: 0.6,
+              state: { flatArmour: 10 },
+            },
+            {
+              key: 'bork:2',
+              label: 'Bork (stunned)',
+              monsterId: 16640,
+              version: '',
+              // no Defence to lower: the specs are on the walking part
+              defaults: specs(0, 0),
+              allowedStyles: ['stab', 'slash', 'crush'],
+              hpShare: 0.4,
+              state: { flatArmour: 0, alwaysHit: true },
             },
             {
               key: 'bork:1', label: 'The Smorks', monsterId: 16641, version: '', defaults: specs(2, 4),
