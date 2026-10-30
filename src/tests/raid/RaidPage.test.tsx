@@ -309,6 +309,17 @@ describe('RaidPage', () => {
     await unmount();
   });
 
+  test('the cost breakdown lists each item of the loadout once', async () => {
+    const { container, unmount } = await mount();
+    await act(async () => button(container, 'Find raid gear')!.click());
+    await wait(20);
+    const rows = [...container.querySelectorAll('[data-testid=cost-row]')].map((r) => r.textContent);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.some((r) => r?.includes('Twisted bow'))).toBe(true);
+    expect(new Set(rows).size).toBe(rows.length);
+    await unmount();
+  });
+
   test('boss rows show the best spec weapons by damage per 1% energy', async () => {
     const { container, unmount } = await mount();
     await act(async () => button(container, 'Find raid gear')!.click());

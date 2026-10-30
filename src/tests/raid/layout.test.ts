@@ -24,18 +24,18 @@ describe('freeSwitchSlots', () => {
 });
 
 describe('layoutLoadout', () => {
-  test('places switches then supplies', () => {
+  test('places switches, then empty cells, then supplies with the rune pouch in the bottom right', () => {
     const main = setup({ head: 27235 });
     // worn: Twisted bow, dragon arrows, Masori mask; switches: Abyssal whip, Elder maul
     const layout = layoutLoadout([20997, 11212, 27235, 4151, 21003], main, { brews: 6, restores: 5, reserved: 4 }, 'ancients');
     expect(layout.worn).toMatchObject({ weapon: 20997, ammo: 11212, head: 27235 });
     expect(layout.inventory).toHaveLength(28);
     expect(layout.inventory.slice(0, 2)).toEqual([{ kind: 'item', itemId: 4151 }, { kind: 'item', itemId: 21003 }]);
-    expect(layout.inventory[2]).toEqual({ kind: 'supply', label: 'Rune pouch' });
-    expect(layout.inventory.slice(3, 7).every((c) => c?.kind === 'supply' && c.label === 'Reserved')).toBe(true);
-    expect(layout.inventory.slice(7, 12).every((c) => c?.kind === 'supply' && c.label === 'Restore')).toBe(true);
-    expect(layout.inventory.slice(12, 18).every((c) => c?.kind === 'supply' && c.label === 'Brew')).toBe(true);
-    expect(layout.inventory.slice(18).every((c) => c === null)).toBe(true);
+    expect(layout.inventory.slice(2, 12).every((c) => c === null)).toBe(true);
+    expect(layout.inventory.slice(12, 16).every((c) => c?.kind === 'supply' && c.label === 'Reserved')).toBe(true);
+    expect(layout.inventory.slice(16, 21).every((c) => c?.kind === 'supply' && c.label === 'Restore')).toBe(true);
+    expect(layout.inventory.slice(21, 27).every((c) => c?.kind === 'supply' && c.label === 'Brew')).toBe(true);
+    expect(layout.inventory[27]).toEqual({ kind: 'supply', label: 'Rune pouch' });
     expect(layout.overflow).toBe(0);
   });
 

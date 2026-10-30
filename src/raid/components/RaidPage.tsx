@@ -260,7 +260,7 @@ const RaidPage: React.FC = observer(() => {
                 {result ? (
                   // the loadout beside the boss results on wide screens, staying in view while they scroll
                   <div className="flex flex-col xl:flex-row gap-6 items-start">
-                    <div className="w-full xl:w-[26rem] shrink-0 xl:sticky xl:top-16">
+                    <div className="w-full xl:w-[26rem] shrink-0 xl:sticky xl:top-16 xl:max-h-[calc(100vh-5rem)] flex flex-col">
                       <LoadoutView result={result} prices={prices} />
                     </div>
                     <div className="w-full min-w-0 grow">

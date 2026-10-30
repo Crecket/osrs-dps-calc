@@ -40,8 +40,8 @@ const itemById = (id: number) => {
 /**
  * The loadout as worn gear and a 28-slot inventory: `main`'s gear is worn, a switch fills each slot it leaves empty
  * (the shield slot only beside a one-handed weapon), and an ammo switch the quiver slot when a Dizana's quiver (or its
- * max cape) is brought; every other item is an inventory switch, in `itemIds` order, followed by
- * the rune pouch, reserved slots, restores and brews. Switches that don't fit are counted in `overflow`, supplies never.
+ * max cape) is brought; every other item is an inventory switch, in `itemIds` order, followed by any
+ * empty cells, reserved slots, restores, brews and the rune pouch in the last cell. Switches that don't fit are counted in `overflow`, supplies never.
  */
 export const layoutLoadout = (itemIds: number[], main: BulkSetup | null, supplies: Supplies, magic: MagicOption): Layout => {
   const worn: Layout['worn'] = {};
@@ -81,15 +81,16 @@ export const layoutLoadout = (itemIds: number[], main: BulkSetup | null, supplie
   }
 
   const supplyCells: InvCell[] = [
-    ...Array<SupplyLabel>(runePouchSlots(magic)).fill('Rune pouch'),
     ...Array<SupplyLabel>(supplies.reserved).fill('Reserved'),
     ...Array<SupplyLabel>(supplies.restores).fill('Restore'),
     ...Array<SupplyLabel>(supplies.brews).fill('Brew'),
+    ...Array<SupplyLabel>(runePouchSlots(magic)).fill('Rune pouch'),
   ].map((label) => ({ kind: 'supply', label }));
   const room = Math.max(0, INVENTORY_SIZE - supplyCells.length);
   const placed = switches.slice(0, room).map((itemId): InvCell => ({ kind: 'item', itemId }));
-  const inventory = [...placed, ...supplyCells].slice(0, INVENTORY_SIZE);
-  while (inventory.length < INVENTORY_SIZE) inventory.push(null);
+  // empty cells sit between the switches and the supplies, the rune pouch in the bottom right
+  const empty = Array<InvCell>(Math.max(0, room - placed.length)).fill(null);
+  const inventory = [...placed, ...empty, ...supplyCells].slice(-INVENTORY_SIZE);
   return { worn, inventory, overflow: Math.max(0, switches.length - room) };
 };
 

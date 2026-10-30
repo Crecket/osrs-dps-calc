@@ -67,8 +67,14 @@ const LoadoutView: React.FC<{ result: RaidResult; prices: Prices | null }> = obs
     );
   };
 
+  // what the loadout costs, the dearest item first; owned items cost nothing
+  const ownedIds = new Set(owned.map(getCanonicalItemId));
+  const costs = plan.itemIds
+    .map((id) => ({ id, price: ownedIds.has(getCanonicalItemId(id)) ? 0 : itemPrice(id, prices, new Set()) }))
+    .sort((a, b) => b.price - a.price);
+
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 min-h-0">
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
         <span>
           Raid time
@@ -119,6 +125,18 @@ const LoadoutView: React.FC<{ result: RaidResult; prices: Prices | null }> = obs
         <div className="p-2 rounded bg-[#5a4d3c] grid grid-cols-4 gap-1.5" data-testid="inventory-grid" aria-label="Inventory">
           {layout.inventory.map(invCell)}
         </div>
+      </div>
+      <div className="min-h-0 flex flex-col gap-1">
+        <h3 className="text-sm font-bold">Cost breakdown</h3>
+        <ul className="min-h-0 overflow-y-auto max-h-80 xl:max-h-none rounded border border-body-200 dark:border-dark-300 divide-y divide-body-200 dark:divide-dark-300 text-sm" data-testid="cost-list">
+          {costs.map(({ id, price }) => (
+            <li key={id} className="flex items-center gap-2 px-2 py-1" data-testid="cost-row" onContextMenu={menu.open(id)}>
+              <ItemImage id={id} size={20} />
+              <span className="grow truncate">{itemById(id)?.name ?? id}</span>
+              <span className="tabular-nums text-gray-500 dark:text-gray-300 shrink-0">{price > 0 ? `${formatGp(price)} gp` : priceLabel(id, prices, owned).replace(' (untradeable or no price)', '')}</span>
+            </li>
+          ))}
+        </ul>
       </div>
       <ItemMenu target={menu.target} onClose={menu.close} />
     </div>
