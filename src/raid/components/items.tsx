@@ -6,6 +6,8 @@ import { getCdnImage } from '@/utils';
 import { useRaidStore } from '@/raid/state/RaidStore';
 import { itemPrice, Prices } from '@/raid/lib/prices';
 import { formatGp } from '@/raid/lib/format';
+import { RAIDS } from '@/raid/raids';
+import { bossImage } from '@/raid/lib/route';
 
 let itemsById: Map<number, EquipmentPiece> | null = null;
 export const itemById = (id: number) => {
@@ -17,6 +19,18 @@ export const ItemImage: React.FC<{ id: number; size?: number }> = ({ id, size = 
   const item = itemById(id);
   if (!item?.image) return null;
   return <img style={{ maxWidth: size, maxHeight: size }} src={getCdnImage(`equipment/${item.image}`)} alt={item.name} loading="lazy" />;
+};
+
+/** A boss's picture, fitted in a square */
+export const BossImage: React.FC<{ bossId: string; size?: number }> = ({ bossId, size = 28 }) => {
+  const boss = RAIDS.flatMap((r) => r.stops.flatMap((st) => st.options)).find((b) => b.id === bossId);
+  const image = boss && bossImage(boss);
+  if (!image) return null;
+  return (
+    <span className="shrink-0 flex items-center justify-center" style={{ width: size, height: size }}>
+      <img className="max-w-full max-h-full object-contain" src={getCdnImage(`monsters/${image}`)} alt={boss.name} loading="lazy" />
+    </span>
+  );
 };
 
 /** "Owned", "Untradeable or no price" or the GP price */

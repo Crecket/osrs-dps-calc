@@ -18,6 +18,12 @@ const findMonster = (id: number, version: string) => {
   return m;
 };
 
+/** The boss's picture among the calculator's monster images: its first phase's monster's */
+export const bossImage = (boss: RaidBoss): string | null => {
+  const [first] = boss.phases;
+  return first ? findMonster(first.monsterId, first.version).image ?? null : null;
+};
+
 /** The monster as the phase fights it: its share of the health and its state's armour */
 const inState = <M extends Omit<Monster, 'inputs'>>(m: M, phase: RaidPhase): M => {
   const { hpShare, state } = phase;

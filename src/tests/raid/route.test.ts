@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { getMonsters } from '@/lib/Monsters';
 import { scaleMonster } from '@/lib/MonsterScaling';
 import { RAIDS, raidById } from '@/raid/raids';
-import { routeBosses, routePhases } from '@/raid/lib/route';
+import { bossImage, routeBosses, routePhases } from '@/raid/lib/route';
 
 const fa = raidById('fractured-archive');
 
@@ -67,6 +67,12 @@ describe('raid definitions', () => {
     expect(counts['guardian:0']).toBe(0);
     expect(counts['bork:1']).toBe(1);
     expect(phases.find((p) => p.phase.key === 'bork:0')!.monster.monster.inputs.defenceReductions).toMatchObject({ dwh: 2, elderMaul: 0, tonalztic: 0 });
+  });
+
+  test('each boss has a picture: its first phase\'s monster image', () => {
+    const bosses = fa.stops.flatMap((st) => st.options);
+    expect(bossImage(bosses.find((b) => b.id === 'bork')!)).toBe('Bork.png');
+    bosses.forEach((b) => expect(bossImage(b)).toMatch(/\.png$/));
   });
 
   test('default specs reach the optimal defence from the strategy list', () => {

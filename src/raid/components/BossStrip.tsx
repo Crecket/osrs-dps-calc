@@ -6,7 +6,7 @@ import { routeBosses, routePhases } from '@/raid/lib/route';
 import {
   DEFENCE_WEAPON_IDS, DEFENCE_WEAPON_NAMES, DEFENCE_WEAPONS,
 } from '@/raid/types';
-import { ItemImage } from '@/raid/components/items';
+import { BossImage, ItemImage } from '@/raid/components/items';
 import { fieldClass } from '@/best/components/fields';
 
 /** The route's bosses in a row that scrolls sideways, each phase with its defence reduction specs */
@@ -20,7 +20,10 @@ const BossStrip: React.FC = observer(() => {
     <div className="flex flex-wrap gap-3" aria-label="Defence reduction per boss">
       {routeBosses(raid, settings.route).map((boss) => (
         <div key={boss.id} className="shrink-0 rounded border border-body-300 dark:border-dark-200 p-2 flex flex-col gap-1.5">
-          <h4 className="font-serif font-bold text-sm">{boss.name}</h4>
+          <h4 className="font-serif font-bold text-sm flex items-center gap-2">
+            <BossImage bossId={boss.id} />
+            {boss.name}
+          </h4>
           {phases.filter((p) => p.boss.id === boss.id).map((p) => (
             <div key={p.phase.key} className="flex items-center gap-2 text-xs">
               {boss.phases.length > 1 && <span className="w-20 truncate">{p.phase.label}</span>}

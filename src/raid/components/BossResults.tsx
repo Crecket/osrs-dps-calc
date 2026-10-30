@@ -4,7 +4,7 @@ import { BestStyle } from '@/best/types';
 import { attackLabel, RaidResult, WeaponTier } from '@/raid/lib/runRaid';
 import { formatGp, formatTime } from '@/raid/lib/format';
 import {
-  ItemImage, ItemMenu, itemById, useItemMenu,
+  BossImage, ItemImage, ItemMenu, itemById, useItemMenu,
 } from '@/raid/components/items';
 import { focusRing } from '@/best/components/fields';
 import { DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS, PhasePart } from '@/raid/types';
@@ -148,7 +148,10 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
         return (
           <section key={bossId} className="rounded border border-body-300 dark:border-dark-200" data-testid="boss-row">
             <header className="flex items-baseline justify-between gap-3 px-3 py-2 border-b border-body-300 dark:border-dark-200 bg-body-100/60 dark:bg-dark-500/60">
-              <strong className="font-serif text-sm">{bossName}</strong>
+              <strong className="font-serif text-sm flex items-center gap-2 self-center">
+                <BossImage bossId={bossId} size={32} />
+                {bossName}
+              </strong>
               <span className="tabular-nums text-sm text-gray-500 dark:text-gray-300">{formatTime(seconds)}</span>
             </header>
             <div className="flex flex-col divide-y divide-body-300 dark:divide-dark-200">
