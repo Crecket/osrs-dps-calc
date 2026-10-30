@@ -4,7 +4,9 @@ import { getCombatStylesForCategory } from '@/utils';
 import { generateEmptyPlayer } from '@/state';
 import { buildPlayer } from '@/best/lib/search';
 import { BulkSetup } from '@/bulk/types';
-import { freeSwitchSlots, layoutLoadout, slotEfficientLayout } from '@/raid/lib/layout';
+import {
+  freeSwitchSlots, layoutLoadout, reservedPotions, slotEfficientLayout,
+} from '@/raid/lib/layout';
 
 const tbow = availableEquipment.find((e) => e.id === 20997)!;
 const rapid = getCombatStylesForCategory(tbow.category).find((s) => s.stance === 'Rapid')!;
@@ -23,8 +25,19 @@ describe('freeSwitchSlots', () => {
   });
 });
 
+describe('reservedPotions', () => {
+  test('a divine and a regular super combat and ranging potion, regular ones dropped first, more divine super combats added', () => {
+    expect(reservedPotions(4)).toEqual(['Divine super combat potion', 'Super combat potion', 'Ranging potion', 'Divine ranging potion']);
+    expect(reservedPotions(3)).toEqual(['Divine super combat potion', 'Super combat potion', 'Divine ranging potion']);
+    expect(reservedPotions(2)).toEqual(['Divine super combat potion', 'Divine ranging potion']);
+    expect(reservedPotions(1)).toEqual(['Divine super combat potion']);
+    expect(reservedPotions(0)).toEqual([]);
+    expect(reservedPotions(6)).toEqual(['Divine super combat potion', 'Divine super combat potion', 'Divine super combat potion', 'Super combat potion', 'Ranging potion', 'Divine ranging potion']);
+  });
+});
+
 describe('layoutLoadout', () => {
-  test('places switches, then empty cells, then supplies with the rune pouch in the bottom right', () => {
+  test('places switches, then empty cells, then supplies with the reserved slots and the rune pouch on the bottom row', () => {
     const main = setup({ head: 27235 });
     // worn: Twisted bow, dragon arrows, Masori mask; switches: Abyssal whip, Elder maul
     const layout = layoutLoadout([20997, 11212, 27235, 4151, 21003], main, { brews: 6, restores: 5, reserved: 4 }, 'ancients');
@@ -32,9 +45,9 @@ describe('layoutLoadout', () => {
     expect(layout.inventory).toHaveLength(28);
     expect(layout.inventory.slice(0, 2)).toEqual([{ kind: 'item', itemId: 4151 }, { kind: 'item', itemId: 21003 }]);
     expect(layout.inventory.slice(2, 12).every((c) => c === null)).toBe(true);
-    expect(layout.inventory.slice(12, 16).every((c) => c?.kind === 'supply' && c.label === 'Reserved')).toBe(true);
-    expect(layout.inventory.slice(16, 21).every((c) => c?.kind === 'supply' && c.label === 'Restore')).toBe(true);
-    expect(layout.inventory.slice(21, 27).every((c) => c?.kind === 'supply' && c.label === 'Brew')).toBe(true);
+    expect(layout.inventory.slice(12, 17).every((c) => c?.kind === 'supply' && c.label === 'Restore')).toBe(true);
+    expect(layout.inventory.slice(17, 23).every((c) => c?.kind === 'supply' && c.label === 'Brew')).toBe(true);
+    expect(layout.inventory.slice(23, 27).every((c) => c?.kind === 'supply' && c.label === 'Reserved')).toBe(true);
     expect(layout.inventory[27]).toEqual({ kind: 'supply', label: 'Rune pouch' });
     expect(layout.overflow).toBe(0);
   });

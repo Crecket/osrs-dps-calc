@@ -4,10 +4,11 @@ import { IconAlertTriangle } from '@tabler/icons-react';
 import { PlayerEquipment } from '@/types/Player';
 import { useRaidStore } from '@/raid/state/RaidStore';
 import { RaidResult } from '@/raid/lib/runRaid';
-import { InvCell, SupplyLabel, WornSlot } from '@/raid/lib/layout';
+import {
+  InvCell, reservedPotions, SupplyLabel, WornSlot,
+} from '@/raid/lib/layout';
 import { itemPrice, Prices } from '@/raid/lib/prices';
 import { getCanonicalItemId } from '@/lib/Equipment';
-import superCombatIcon from '@/public/img/potions/Super combat.png';
 import { formatGp, formatTime } from '@/raid/lib/format';
 import {
   ItemImage, ItemMenu, itemById, priceLabel, useItemMenu,
@@ -22,13 +23,13 @@ const EQUIPMENT_GRID: (WornSlot | null)[] = [
   'hands', 'feet', 'ring',
 ];
 
-// the OSRS Wiki's item icons; reserved slots (boost potions and the like) show a faded potion
+// the OSRS Wiki's item icons; reserved slots (boost potions and the like) show placeholder boost potions
 const WIKI_IMAGES = 'https://oldschool.runescape.wiki/images';
-const SUPPLY_ICON: Record<SupplyLabel, { src: string; alt: string; faded?: boolean }> = {
+const wikiIcon = (name: string) => `${WIKI_IMAGES}/${name.replace(/ /g, '_')}(4).png`;
+const SUPPLY_ICON: Record<Exclude<SupplyLabel, 'Reserved'>, { src: string; alt: string }> = {
   Brew: { src: `${WIKI_IMAGES}/Saradomin_brew(4).png`, alt: 'Saradomin brew(4)' },
   Restore: { src: `${WIKI_IMAGES}/Super_restore(4).png`, alt: 'Super restore(4)' },
   'Rune pouch': { src: `${WIKI_IMAGES}/Rune_pouch.png`, alt: 'Rune pouch' },
-  Reserved: { src: superCombatIcon.src, alt: 'Reserved slot', faded: true },
 };
 const SUPPLY_TOOLTIP: Record<SupplyLabel, string> = {
   Brew: 'Saradomin brew', Restore: 'Super restore', 'Rune pouch': 'Rune pouch', Reserved: 'Reserved (boost potions and the like)',
@@ -56,13 +57,17 @@ const LoadoutView: React.FC<{ result: RaidResult; prices: Prices | null }> = obs
     </div>
   );
 
+  const firstReserved = layout.inventory.findIndex((c) => c?.kind === 'supply' && c.label === 'Reserved');
+  const potions = reservedPotions(layout.inventory.filter((c) => c?.kind === 'supply' && c.label === 'Reserved').length);
   const invCell = (cell: InvCell, i: number) => {
     if (cell === null) return <div key={i} className={cellClass} data-testid="inv-cell" />;
     if (cell.kind === 'item') return <div key={i} data-testid="inv-cell">{itemCell(cell.itemId, `i${i}`)}</div>;
-    const icon = SUPPLY_ICON[cell.label];
+    const potion = cell.label === 'Reserved' ? potions[i - firstReserved] : null;
+    const icon = potion ? { src: wikiIcon(potion), alt: `${potion}(4)` } : SUPPLY_ICON[cell.label as Exclude<SupplyLabel, 'Reserved'>];
+    const tooltip = potion ? `Reserved: ${potion} (or any other boost)` : SUPPLY_TOOLTIP[cell.label];
     return (
-      <div key={i} data-testid="inv-cell" className={cellClass} data-tooltip-id="tooltip" data-tooltip-content={SUPPLY_TOOLTIP[cell.label]}>
-        <img style={{ maxWidth: ICON_SIZE, maxHeight: ICON_SIZE }} className={icon.faded ? 'opacity-40 grayscale' : ''} src={icon.src} alt={icon.alt} loading="lazy" />
+      <div key={i} data-testid="inv-cell" className={cellClass} data-tooltip-id="tooltip" data-tooltip-content={tooltip}>
+        <img style={{ maxWidth: ICON_SIZE, maxHeight: ICON_SIZE }} src={icon.src} alt={icon.alt} loading="lazy" />
       </div>
     );
   };

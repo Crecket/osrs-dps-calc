@@ -306,6 +306,9 @@ describe('RaidPage', () => {
     expect(inv.querySelectorAll('img[alt="Saradomin brew(4)"]')).toHaveLength(6);
     expect(inv.querySelectorAll('img[alt="Super restore(4)"]')).toHaveLength(5);
     expect(inv.querySelectorAll('img[alt="Rune pouch"]')).toHaveLength(1);
+    expect([...inv.querySelectorAll('img')].slice(-5).map((img) => img.getAttribute('alt'))).toEqual([
+      'Divine super combat potion(4)', 'Super combat potion(4)', 'Ranging potion(4)', 'Divine ranging potion(4)', 'Rune pouch',
+    ]);
     await unmount();
   });
 
