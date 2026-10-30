@@ -229,7 +229,7 @@ export const blockReason = (settings: RaidSettings): string | null => {
 export const requiredItems = (settings: RaidSettings): number[] => {
   const raid = raidById(settings.raidId);
   const excluded = new Set(excludedOf(settings));
-  const phases = routePhases(raid, settings.route, settings.counts, settings.excludedIds, settings.dwhOnly);
+  const phases = routePhases(raid, settings.route, settings.counts, settings.dwhOnly);
   const ids = [
     ...settings.bringIds,
     ...(settings.rulesOn ? routeBosses(raid, settings.route).flatMap((b) => b.rules?.requiredItemIds ?? []) : []),
@@ -243,7 +243,7 @@ let pool: EquipmentPiece[] | null = null;
 const prepare = (settings: RaidSettings, prices: Prices | null) => {
   if (!pool) pool = bestPool();
   const raid = raidById(settings.raidId);
-  const phases = routePhases(raid, settings.route, settings.counts, settings.excludedIds, settings.dwhOnly);
+  const phases = routePhases(raid, settings.route, settings.counts, settings.dwhOnly);
   const owned = new Set(settings.ownedIds.map(getCanonicalItemId));
   const priceOf = (id: number) => itemPrice(id, prices, owned);
   const excluded = excludedOf(settings);

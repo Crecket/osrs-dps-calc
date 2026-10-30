@@ -63,7 +63,7 @@ const memoryStorage = () => {
 };
 
 const fa = raidById('fractured-archive');
-const phases = routePhases(fa, fa.defaultRoute, {}, []).slice(0, 2);
+const phases = routePhases(fa, fa.defaultRoute, {}).slice(0, 2);
 const deps = { search: { run: jest.fn(), cancel: jest.fn() }, rows: { run: jest.fn(), cancel: jest.fn() } } as never;
 
 beforeEach(() => {
@@ -169,7 +169,7 @@ describe('raidCandidates', () => {
       active -= 1;
       return outcome();
     });
-    const four = routePhases(fa, fa.defaultRoute, {}, []).filter((p) => !p.phase.allowedStyles).slice(0, 4);
+    const four = routePhases(fa, fa.defaultRoute, {}).filter((p) => !p.phase.allowedStyles).slice(0, 4);
     const result = await raidCandidates(four, inputs, [[1], [1, 2]], deps, () => {}, new SearchCache(memoryStorage()), search);
     expect(mockRun).toHaveBeenCalledTimes(8);
     expect(most).toBe(RAID_PARALLEL);
@@ -207,7 +207,7 @@ describe('per-style searches', () => {
   });
 
   test('a phase that can\'t be meleed gets no melee search', async () => {
-    const flying = routePhases(fa, fa.defaultRoute, {}, []).filter((p) => p.phase.key === 'guardian:0');
+    const flying = routePhases(fa, fa.defaultRoute, {}).filter((p) => p.phase.key === 'guardian:0');
     await raidCandidates(flying, twoStyles, [[1]], deps, () => {}, new SearchCache(memoryStorage()), search);
     expect(mockRun.mock.calls.map((c) => (c[0] as BestInputs).styles)).toEqual([['ranged']]);
   });

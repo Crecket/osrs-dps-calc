@@ -24,7 +24,7 @@ describe('raid definitions', () => {
   });
 
   test('defence reductions applied', () => {
-    const phases = routePhases(fa, fa.defaultRoute, { 'bork:0': { elderMaul: 1 } }, []);
+    const phases = routePhases(fa, fa.defaultRoute, { 'bork:0': { elderMaul: 1 } });
     expect(phases).toHaveLength(10);
     expect(phases.find((p) => p.phase.key === 'bork:1')?.monster.monster.name).toBe('The Smorks');
     const bork = phases.find((p) => p.phase.key === 'bork:0')!;
@@ -35,7 +35,7 @@ describe('raid definitions', () => {
   });
 
   test('Bork walks with flat armour and is stunned for part of his health bar, when every melee hit lands', () => {
-    const phases = routePhases(fa, fa.defaultRoute, {}, []);
+    const phases = routePhases(fa, fa.defaultRoute, {});
     const walking = phases.find((p) => p.phase.key === 'bork:0')!;
     const stunned = phases.find((p) => p.phase.key === 'bork:2')!;
     expect(phases.map((p) => p.phase.key).filter((k) => k.startsWith('bork'))).toEqual(['bork:0', 'bork:2', 'bork:1']);
@@ -50,14 +50,14 @@ describe('raid definitions', () => {
   });
 
   test('style rules from the strategy', () => {
-    const phase = (key: string) => routePhases(fa, fa.defaultRoute, {}, []).find((p) => p.phase.key === key)!.phase;
+    const phase = (key: string) => routePhases(fa, fa.defaultRoute, {}).find((p) => p.phase.key === key)!.phase;
     expect(phase('ocellus:1').allowedStyles).toEqual(['ranged']);
     expect(phase('ocellus:2').parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { styles: ['stab', 'slash', 'crush'], share: 0.5 }]);
     ['dreadnoth:0', 'xarth:0', 'ocellus:0'].forEach((key) => expect(phase(key).parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }]));
   });
 
   test('with the Dragon warhammer instead, its specs take the Elder maul\'s and nothing drains Defence at range', () => {
-    const phases = routePhases(fa, fa.defaultRoute, { 'bork:1': { dwh: 1 } }, [], true);
+    const phases = routePhases(fa, fa.defaultRoute, { 'bork:1': { dwh: 1 } }, true);
     phases.forEach((p) => {
       expect(p.counts.elderMaul).toBe(0);
       expect(p.counts.tonalztic).toBe(0);
@@ -67,28 +67,6 @@ describe('raid definitions', () => {
     expect(counts['guardian:0']).toBe(0);
     expect(counts['bork:1']).toBe(1);
     expect(phases.find((p) => p.phase.key === 'bork:0')!.monster.monster.inputs.defenceReductions).toMatchObject({ dwh: 2, elderMaul: 0, tonalztic: 0 });
-  });
-
-  test('excluded weapon zeroes its defence reduction', () => {
-    const phases = routePhases(fa, fa.defaultRoute, {}, [21003]);
-    phases.forEach((p) => {
-      expect(p.counts.elderMaul).toBe(0);
-      expect(p.monster.monster.inputs.defenceReductions.elderMaul).toBe(0);
-    });
-  });
-
-  test('an excluded Elder maul hands its specs to the Dragon warhammer', () => {
-    const phases = routePhases(fa, fa.defaultRoute, { 'bork:1': { dwh: 1 } }, [21003]);
-    const bork = phases.find((p) => p.phase.key === 'bork:0')!;
-    expect(bork.counts).toMatchObject({ elderMaul: 0, dwh: 2 });
-    expect(phases.find((p) => p.phase.key === 'bork:1')!.counts.dwh).toBe(1);
-    // the Tonalztics stay unless excluded too
-    expect(phases.some((p) => p.counts.tonalztic > 0)).toBe(true);
-  });
-
-  test('with both defence weapons excluded, nothing lowers Defence by melee', () => {
-    const phases = routePhases(fa, fa.defaultRoute, {}, [21003, 13576]);
-    phases.forEach((p) => expect(p.counts).toMatchObject({ elderMaul: 0, dwh: 0 }));
   });
 
   test('default specs reach the optimal defence from the strategy list', () => {
@@ -113,8 +91,8 @@ describe('raid definitions', () => {
       'ocellus:2': 150,
     };
     const all = [
-      ...routePhases(fa, { second: 'bork', third: 'moia', fourth: 'dagonhai' }, {}, []),
-      ...routePhases(fa, { second: 'ezekiel', third: 'dreadnoth', fourth: 'xarth' }, {}, []),
+      ...routePhases(fa, { second: 'bork', third: 'moia', fourth: 'dagonhai' }, {}),
+      ...routePhases(fa, { second: 'ezekiel', third: 'dreadnoth', fourth: 'xarth' }, {}),
     ];
     const got = Object.fromEntries(all.map((p) => [p.phase.key, scaleMonster(p.monster.monster).skills.def]));
     expect(got).toEqual(expected);

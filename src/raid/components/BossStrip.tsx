@@ -14,7 +14,7 @@ const BossStrip: React.FC = observer(() => {
   const store = useRaidStore();
   const { settings } = store;
   const raid = raidById(settings.raidId);
-  const phases = routePhases(raid, settings.route, settings.counts, settings.excludedIds, settings.dwhOnly);
+  const phases = routePhases(raid, settings.route, settings.counts, settings.dwhOnly);
 
   return (
     <div className="flex flex-wrap gap-3" aria-label="Defence reduction per boss">

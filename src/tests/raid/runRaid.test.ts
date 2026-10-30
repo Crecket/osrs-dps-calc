@@ -9,9 +9,11 @@ import { basePlayer } from '@/best/lib/basePlayer';
 import { BulkRow } from '@/bulk/types';
 import { SearchCache } from '@/raid/lib/searchCache';
 import {
-  attackLabel, dartOptions, defaultSettings, excludedOf, raidBaseInputs, runRaid, searchesNeeded, weaponTiers,
+  attackLabel, dartOptions, defaultSettings, excludedOf, raidBaseInputs, requiredItems, runRaid, searchesNeeded, weaponTiers,
 } from '@/raid/lib/runRaid';
 import { Candidate } from '@/raid/lib/candidates';
+import { routePhases } from '@/raid/lib/route';
+import { raidById } from '@/raid/raids';
 
 const tbow = availableEquipment.find((e) => e.id === 20997)!;
 const rapid = getCombatStylesForCategory(tbow.category).find((s) => s.stance === 'Rapid')!;
@@ -95,6 +97,20 @@ describe('excludedOf', () => {
     expect(excluded).toEqual(expect.arrayContaining([4151, darts[0].id]));
     expect(excluded).not.toContain(amethyst);
     expect(excludedOf({ ...defaultSettings(), bestDart: null })).toEqual([]);
+  });
+});
+
+const fa = raidById('fractured-archive');
+
+describe('requiredItems', () => {
+  test('an excluded defence weapon stays out of the bag, though a teammate still lowers Defence with it', () => {
+    const settings = { ...defaultSettings(), excludedIds: [21003, 28922] };
+    const ids = requiredItems(settings);
+    expect(ids).not.toContain(21003);
+    expect(ids).not.toContain(28922);
+    expect(ids).not.toContain(13576);
+    const bork = routePhases(fa, settings.route, settings.counts).find((p) => p.phase.key === 'bork:0')!;
+    expect(bork.counts.elderMaul).toBe(2);
   });
 });
 
