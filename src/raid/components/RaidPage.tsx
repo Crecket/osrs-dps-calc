@@ -258,10 +258,15 @@ const RaidPage: React.FC = observer(() => {
               <div className={`p-4 flex flex-col gap-4 ${running ? 'opacity-60' : ''}`}>
                 <BossStrip />
                 {result ? (
-                  <>
-                    <LoadoutView result={result} prices={prices} />
-                    <BossResults result={result} />
-                  </>
+                  // the loadout beside the boss results on wide screens, staying in view while they scroll
+                  <div className="flex flex-col xl:flex-row gap-6 items-start">
+                    <div className="w-full xl:w-[26rem] shrink-0 xl:sticky xl:top-16">
+                      <LoadoutView result={result} prices={prices} />
+                    </div>
+                    <div className="w-full min-w-0 grow">
+                      <BossResults result={result} />
+                    </div>
+                  </div>
                 ) : (
                   <p className="text-sm text-gray-500 dark:text-gray-300 text-center py-6">Click Find raid gear to plan a loadout.</p>
                 )}

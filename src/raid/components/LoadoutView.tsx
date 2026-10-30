@@ -69,7 +69,7 @@ const LoadoutView: React.FC<{ result: RaidResult; prices: Prices | null }> = obs
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
         <span>
           Raid time
           {' '}
@@ -103,7 +103,7 @@ const LoadoutView: React.FC<{ result: RaidResult; prices: Prices | null }> = obs
           </span>
         )}
       </div>
-      <div className="flex flex-wrap gap-6 items-start">
+      <div className="flex flex-wrap gap-3 items-start">
         <div className="p-2 rounded bg-[#5a4d3c] grid grid-cols-3 gap-1.5" data-testid="equipment-grid" aria-label="Worn equipment">
           {EQUIPMENT_GRID.map((slot, i) => {
             const id = slot ? layout.worn[slot] : undefined;
