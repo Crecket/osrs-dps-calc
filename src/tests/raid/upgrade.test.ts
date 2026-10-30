@@ -75,6 +75,24 @@ const input = (over: Partial<UpgradeInput>): UpgradeInput => {
 };
 
 describe('upgradeLoadout', () => {
+  test('two variants of one item merge into the one that has both: Avernic treads (pe) and (pr) become (max)', async () => {
+    const [PE, PR, MAX] = [31092, 31091, 31097];
+    const withFeet = (c: Candidate, feet: number): Candidate => {
+      const player = buildPlayer(playerFor(), {
+        style: 'ranged', weaponId: TBOW, combatStyle: rapid, ammoId: DRAGON_ARROW, spellName: null, dartId: null,
+      }, { head: MASK, neck: BONECRUSHER, feet });
+      return { ...c, setup: { ...c.setup, player }, itemIds: [...c.itemIds, feet] };
+    };
+    const picks = [withFeet(candidate('a', 10), PE), withFeet(candidate('b', 10), PR)];
+    const result = await upgradeLoadout(input({
+      plan: plan(picks), candidates: picks, pool: [...pool, item(PE), item(PR), item(MAX)], priceOf: () => 0,
+    }), async (setups) => setups.map(() => 10));
+    expect(result.itemIds).toContain(MAX);
+    expect(result.itemIds).not.toContain(PE);
+    expect(result.itemIds).not.toContain(PR);
+    result.picks.forEach((p) => expect(p.candidate?.setup.player.equipment.feet?.id).toBe(MAX));
+  });
+
   test('puts a better item into a slot when the budget allows', async () => {
     const result = await upgradeLoadout(input({}), rate);
     expect(result.itemIds).toContain(ANGUISH);

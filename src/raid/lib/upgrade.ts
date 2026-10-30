@@ -71,6 +71,13 @@ interface Move {
   next: Candidate[];
 }
 
+/** The item's name without its trailing variant marks: "Avernic treads (pr)(pe)" -> "Avernic treads" */
+const familyOf = (e: EquipmentPiece) => e.name.replace(/(\s*\([^)]*\))+$/, '');
+/** At least as good as `b` in every offence and bonus */
+const covers = (a: EquipmentPiece, b: EquipmentPiece) => (Object.keys(b.offensive) as (keyof EquipmentPiece['offensive'])[])
+  .every((k) => a.offensive[k] >= b.offensive[k])
+  && (Object.keys(b.bonuses) as (keyof EquipmentPiece['bonuses'])[]).every((k) => a.bonuses[k] >= b.bonuses[k]);
+
 const setKey = (ids: number[]) => [...ids].sort((a, b) => a - b).join(',');
 const isBlowpipe = (w: EquipmentPiece) => w.itemVars?.blowpipeDartId !== undefined || /blowpipe/i.test(w.name);
 
@@ -184,6 +191,48 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     group.items = items;
     // eslint-disable-next-line no-await-in-loop
     group.moves = await movesFor(group);
+  }
+
+  // variants of one item worn in different setups (Avernic treads (pe) for ranged, (pr) for melee) become the one
+  // variant that covers them all, when there is one: one item instead of several, never weaker
+  const units = groups.flatMap((g) => g.units);
+  const worn = new Map<string, Map<number, EquipmentPiece>>();
+  units.forEach((u) => SLOTS.forEach((slot) => {
+    const e = u.candidate.setup.player.equipment[slot];
+    if (!e) return;
+    const key = `${slot}:${familyOf(e)}`;
+    worn.set(key, (worn.get(key) ?? new Map()).set(e.id, e));
+  }));
+  for (const [key, variants] of worn) {
+    if (variants.size < 2) continue;
+    const slot = key.slice(0, key.indexOf(':')) as GearSlot;
+    const family = key.slice(key.indexOf(':') + 1);
+    const current = loadout();
+    const without = new Set([...current].filter((id) => ![...variants.keys()].some((v) => getCanonicalItemId(v) === id)));
+    const merged = (bySlot.get(slot) ?? []).filter((e) => familyOf(e) === family && [...variants.values()].every((v) => covers(e, v)))
+      .map((e) => ({ e, cost: costOf(new Set([...without, getCanonicalItemId(e.id)])) }))
+      .filter((m) => m.cost <= Math.max(budget, costOf(current)))
+      .sort((a, b) => a.cost - b.cost)[0];
+    if (!merged) continue;
+    const changed = units.filter((u) => variants.has(u.candidate.setup.player.equipment[slot]?.id ?? -1));
+    const first = variant;
+    variant += changed.length;
+    const next = changed.map((u, i) => {
+      const stored = toStored(u.candidate.setup, u.candidate.style, 0);
+      const built = fromStored({ ...stored, gear: { ...stored.gear, [slot]: merged.e.id } }, u.pick.key, input.playerFor(u.candidate.style));
+      return built ? { ...built, setup: { ...built.setup, id: `upgrade-${first + i + 1}` } } : null;
+    });
+    if (next.some((n) => n === null)) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const dps = await Promise.all(changed.map((u, i) => rate([next[i]!.setup], u.monster).then(([d]) => d)));
+    changed.forEach((u, i) => {
+      // eslint-disable-next-line no-param-reassign
+      u.candidate = { ...next[i]!, dps: Math.max(dps[i], 0) };
+    });
+    groups.forEach((g) => {
+      // eslint-disable-next-line no-param-reassign
+      g.items = [...g.units[0].candidate.itemIds];
+    });
   }
 
   const upgraded = new Map(groups.flatMap((g) => g.units.map((u) => [u.pick, u.candidate] as const)));

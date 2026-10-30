@@ -46,6 +46,22 @@ describe('layoutLoadout', () => {
     expect(layout.inventory.every((c) => c === null)).toBe(true);
   });
 
+  test('an empty ammo slot is filled with an ammo switch, and the quiver holds the next', () => {
+    const scythe = availableEquipment.find((e) => e.id === 22325)!;
+    const main: BulkSetup = {
+      id: 'main',
+      name: 'main',
+      player: buildPlayer(generateEmptyPlayer(), {
+        style: 'slash', weaponId: 22325, combatStyle: getCombatStylesForCategory(scythe.category).find((s) => s.type === 'slash')!, ammoId: null, spellName: null, dartId: null,
+      }, {}),
+    };
+    // the quiver is a switch: it keeps its ammo when not worn
+    const layout = layoutLoadout([22325, 20997, 11212, 21944, 28951], main, { brews: 0, restores: 0, reserved: 0 }, 'none');
+    expect(layout.worn.ammo).toBe(11212);
+    expect(layout.worn.quiverAmmo).toBe(21944);
+    expect(layout.inventory.filter((c) => c !== null)).toEqual([{ kind: 'item', itemId: 20997 }, { kind: 'item', itemId: 28951 }]);
+  });
+
   test('without a quiver a second ammo goes in the inventory', () => {
     const layout = layoutLoadout([20997, 11212, 21944], setup({}), { brews: 0, restores: 0, reserved: 0 }, 'none');
     expect(layout.worn.quiverAmmo).toBeUndefined();

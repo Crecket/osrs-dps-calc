@@ -38,8 +38,8 @@ const itemById = (id: number) => {
 };
 
 /**
- * The loadout as worn gear and a 28-slot inventory: `main`'s gear is worn, with a second ammo in the quiver slot when
- * a Dizana's quiver (or its max cape) is worn; every other item is an inventory switch, in `itemIds` order, followed by
+ * The loadout as worn gear and a 28-slot inventory: `main`'s gear is worn, an ammo switch fills an empty ammo slot and
+ * another the quiver slot when a Dizana's quiver (or its max cape) is brought; every other item is an inventory switch, in `itemIds` order, followed by
  * the rune pouch, reserved slots, restores and brews. Switches that don't fit are counted in `overflow`, supplies never.
  */
 export const layoutLoadout = (itemIds: number[], main: BulkSetup | null, supplies: Supplies, magic: MagicOption): Layout => {
@@ -51,12 +51,21 @@ export const layoutLoadout = (itemIds: number[], main: BulkSetup | null, supplie
   const wornIds = new Set(Object.values(worn).map(getCanonicalItemId));
   let switches = itemIds.filter((id) => !wornIds.has(getCanonicalItemId(id)));
 
-  if (main?.player.equipment.cape?.name.includes('Dizana\'s')) {
-    const second = switches.find((id) => itemById(id)?.slot === 'ammo');
-    if (second !== undefined) {
-      worn.quiverAmmo = second;
-      switches = switches.filter((id) => id !== second);
-    }
+  // ammo is never an inventory switch while a slot can hold it: an empty ammo slot first, then the quiver's (shown like
+  // the game does, its stored ammo next to the worn one, whether the quiver is worn or a switch: it keeps its ammo)
+  const nextAmmo = () => {
+    const ammo = switches.find((id) => itemById(id)?.slot === 'ammo');
+    if (ammo !== undefined) switches = switches.filter((id) => id !== ammo);
+    return ammo;
+  };
+  if (worn.ammo === undefined) {
+    const ammo = nextAmmo();
+    if (ammo !== undefined) worn.ammo = ammo;
+  }
+  const quiver = [main?.player.equipment.cape?.id, ...switches].some((id) => id !== undefined && itemById(id)?.name.includes('Dizana\'s'));
+  if (quiver) {
+    const ammo = nextAmmo();
+    if (ammo !== undefined) worn.quiverAmmo = ammo;
   }
 
   const supplyCells: InvCell[] = [
