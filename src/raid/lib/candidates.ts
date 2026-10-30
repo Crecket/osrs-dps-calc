@@ -37,6 +37,8 @@ export interface RaidProgress {
 
 /** Weapons searched per style and phase */
 export const RAID_TOP_K = 3;
+/** Next-best weapons per style and phase whose descent result comes along for free, for the planner to try */
+export const RAID_RUNNERS_UP = 10;
 /** Searches run at once */
 export const RAID_PARALLEL = 3;
 
@@ -218,8 +220,11 @@ export const raidCandidates = async (
       const outcomes = await search(inputs, phase.monster, deps, (d, total, p) => {
         latest.inner = { done: d, total, phase: p };
         report();
-      }, { topK: RAID_TOP_K, concurrent: true });
-      stored[i] = outcomes.flatMap((o) => o.setups.map((setup, n) => ({ setup, dps: o.rows[n]?.dps ?? 0, style: o.style })))
+      }, { topK: RAID_TOP_K, runnersUp: RAID_RUNNERS_UP, concurrent: true });
+      stored[i] = outcomes.flatMap((o) => [
+        ...o.setups.map((setup, n) => ({ setup, dps: o.rows[n]?.dps ?? 0, style: o.style })),
+        ...o.runnersUp.map((r) => ({ ...r, style: o.style })),
+      ])
         .filter((x) => x.dps > 0)
         .map((x) => toStored(x.setup, x.style, x.dps));
       cache.set(key, stored[i]);

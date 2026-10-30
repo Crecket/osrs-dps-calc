@@ -12,7 +12,7 @@ import { BulkRow } from '@/bulk/types';
 import { raidById } from '@/raid/raids';
 import { routePhases } from '@/raid/lib/route';
 import {
-  fromStored, missingSearches, RAID_PARALLEL, raidCandidates, RaidProgress, tierExclusions, toStored,
+  fromStored, missingSearches, RAID_PARALLEL, RAID_RUNNERS_UP, raidCandidates, RaidProgress, tierExclusions, toStored,
 } from '@/raid/lib/candidates';
 import { cacheVersion, SearchCache } from '@/raid/lib/searchCache';
 
@@ -46,6 +46,7 @@ const outcome = (): StyleOutcome[] => {
     approximate: false,
     message: null,
     variants: {},
+    runnersUp: [],
   }];
 };
 
@@ -127,6 +128,23 @@ describe('raidCandidates', () => {
     expect(mockRun).toHaveBeenCalledTimes(4);
     expect(result.map((c) => c.phaseKey).sort()).toEqual(['guardian:0', 'guardian:0', 'guardian:1', 'guardian:1']);
     expect(progress[progress.length - 1]).toMatchObject({ search: 4, searches: 4, cached: 0 });
+  });
+
+  test('the search\'s next-best weapons come along as candidates, so the planner can try them', async () => {
+    const zcb = item(26374);
+    const player = buildPlayer(basePlayer(inputs, 'ranged'), {
+      style: 'ranged', weaponId: 26374, combatStyle: getCombatStylesForCategory(zcb.category).find((s) => s.stance === 'Rapid')!, ammoId: 21944, spellName: null, dartId: null,
+    }, { head: 27235 });
+    mockRun.mockImplementation(async () => [{ ...outcome()[0], runnersUp: [{ setup: { id: 'best-ranged-next-0', name: 'Zaryte crossbow', player }, dps: 7 }] }]);
+    const optsSeen: unknown[] = [];
+    mockRun.mockImplementationOnce(async (...args: unknown[]) => {
+      optsSeen.push(args[4]);
+      return [{ ...outcome()[0], runnersUp: [{ setup: { id: 'best-ranged-next-0', name: 'Zaryte crossbow', player }, dps: 7 }] }];
+    });
+    const result = await raidCandidates(phases.slice(0, 1), inputs, [[1]], deps, () => {}, new SearchCache(memoryStorage()), search);
+    expect((optsSeen[0] as { runnersUp?: number }).runnersUp).toBe(RAID_RUNNERS_UP);
+    expect(result.map((c) => c.setup.player.equipment.weapon?.id)).toEqual([20997, 26374]);
+    expect(result[1].dps).toBe(7);
   });
 
   test('runs several searches at once, concurrently on the pools, keeping phase order', async () => {

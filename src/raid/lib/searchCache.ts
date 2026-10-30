@@ -10,7 +10,7 @@ import type { PresetStorage } from '@/bulk/state/BulkStore';
 
 export const SEARCH_CACHE_KEY = 'dps-raid-searches';
 // bump when the search or the stored form changes, so old results aren't reused
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 
 /** A search result small enough to keep: the setup as ids, rebuilt into a player when used */
 export interface StoredCandidate {

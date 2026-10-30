@@ -27,6 +27,8 @@ export interface StyleOutcome {
   message: string | null;
   /** Per weapon id, the weapons that calculate exactly like it here (cosmetic variants) and were left out of the results */
   variants: Record<number, number[]>;
+  /** With `runnersUp`, the descent's best setup of each next-best weapon after the searched ones, best first; its DPS is the descent's */
+  runnersUp: { setup: BulkSetup; dps: number }[];
 }
 
 /** The search's phases, in order, as reported with its progress */
@@ -176,7 +178,9 @@ export const runBestSetup = async (
   monster: BulkMonster,
   deps: BestRunDeps,
   onProgress: (done: number, total: number, phase: BestPhase) => void,
-  opts: { topK?: number; cap?: number; concurrent?: boolean } = {},
+  opts: {
+    topK?: number; cap?: number; concurrent?: boolean; runnersUp?: number;
+  } = {},
 ): Promise<StyleOutcome[]> => {
   // a concurrent run leaves other runs alone and shares the pools' workers with them; it ends only by the pools'
   // cancel(), which rejects its pool runs
@@ -246,6 +250,8 @@ export const runBestSetup = async (
     at = 0;
     // per style, each weapon with the cosmetic variants that calculate like it; only the weapon itself goes on
     const variants: Record<number, number[]>[] = [];
+    // per style, the next weapons' best descent results
+    const runners: SearchResult[][] = [];
     const topJobs = plans.map((plan, i) => {
       const results = descentResults.slice(at, at + descentChunks[i].length)
         .flatMap((r) => (r.kind === 'search' ? r.results : []));
@@ -258,7 +264,15 @@ export const runBestSetup = async (
       variantOf.forEach((base, id) => {
         variants[i][base] = [...(variants[i][base] ?? []), id];
       });
-      return topWeaponJobs(plan.jobs.filter((job) => !variantOf.has(job.weaponId)), dps, topK);
+      const top = topWeaponJobs(plan.jobs.filter((job) => !variantOf.has(job.weaponId)), dps, topK);
+      const searched = new Set(top.map((job) => job.weaponId));
+      const bestOfWeapon = new Map<number, SearchResult>();
+      results.filter((r) => r.dps > 0 && !searched.has(r.job.weaponId) && !variantOf.has(r.job.weaponId)).forEach((r) => {
+        const kept = bestOfWeapon.get(r.job.weaponId);
+        if (!kept || r.dps > kept.dps) bestOfWeapon.set(r.job.weaponId, r);
+      });
+      runners[i] = [...bestOfWeapon.values()].sort((a, b) => b.dps - a.dps).slice(0, opts.runnersUp ?? 0);
+      return top;
     });
     // jobs with no damage skip phase 2
     total = done + topJobs.reduce((n, jobs) => n + jobs.length, 0);
@@ -313,6 +327,14 @@ export const runBestSetup = async (
         approximate: picked[i].some((r) => r.approximate),
         message: pairs.length === 0 ? `No usable ${plan.style} setup found` : null,
         variants: variants[i],
+        runnersUp: runners[i].map((r, n) => ({
+          setup: {
+            id: `best-${plan.style}-next-${n}`,
+            name: setupName(r.job, variants[i][r.job.weaponId]),
+            player: buildPlayer(plan.base, r.job, r.gear),
+          },
+          dps: r.dps,
+        })),
       };
     });
   } finally {

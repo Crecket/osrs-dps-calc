@@ -217,6 +217,32 @@ describe('runBestSetup', () => {
     expect(outcomes[0].approximate).toBe(false);
   });
 
+  test('with runnersUp, the descent\'s best setup of each of the next weapons comes back too', async () => {
+    const { deps } = fakeDeps(synthetic);
+    const [o] = await runBestSetup(inputs(['ranged']), vorkath, deps, () => {}, { topK: 3, runnersUp: 5 });
+    const jobs = weaponJobs(pool, 'ranged');
+    const bestOf = new Map<number, number>();
+    jobs.forEach((j) => bestOf.set(j.weaponId, Math.max(bestOf.get(j.weaponId) ?? 0, fakeDps(j))));
+    const top = new Set(o.setups.map((st) => st.player.equipment.weapon!.id));
+    const weapons = o.runnersUp.map((r) => r.setup.player.equipment.weapon!.id);
+    expect(weapons).toHaveLength(5);
+    expect(new Set(weapons).size).toBe(5);
+    weapons.forEach((w) => expect(top.has(w)).toBe(false));
+    o.runnersUp.forEach((r, i) => {
+      expect(r.dps).toBeCloseTo(bestOf.get(weapons[i])!);
+      if (i > 0) expect(r.dps).toBeLessThanOrEqual(o.runnersUp[i - 1].dps);
+    });
+    // they come next after the searched weapons
+    const next = [...bestOf.entries()].filter(([w]) => !top.has(w)).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([w]) => w);
+    expect(new Set(weapons)).toEqual(new Set(next));
+  });
+
+  test('without runnersUp none come back', async () => {
+    const { deps } = fakeDeps(synthetic);
+    const [o] = await runBestSetup(inputs(['ranged']), vorkath, deps, () => {}, { topK: 3 });
+    expect(o.runnersUp).toEqual([]);
+  });
+
   test('keeps up to topN results of every searched weapon, not just the best weapon\'s', async () => {
     // every exhaustive job answers with four gear variations
     const rings = pool.filter((e) => e.slot === 'ring').slice(0, 4).map((e) => e.id);
@@ -252,7 +278,7 @@ describe('runBestSetup', () => {
     const outcomes = await runBestSetup(inputs(['magic']), vorkath, deps, (done, total) => progress.push([done, total]), opts);
 
     expect(outcomes).toEqual([{
-      style: 'magic', setups: [], rows: [], approximate: false, message: 'No usable magic setup found', variants: {},
+      style: 'magic', setups: [], rows: [], approximate: false, message: 'No usable magic setup found', variants: {}, runnersUp: [],
     }]);
     // nothing worth an exhaustive search
     expect(calls.flat().some((p) => p.kind === 'search' && p.mode === 'exhaustive')).toBe(false);

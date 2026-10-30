@@ -46,6 +46,7 @@ beforeEach(() => {
       approximate: false,
       message: null,
       variants: {},
+      runnersUp: [],
     }];
   });
 });
@@ -114,6 +115,7 @@ describe('runRaid', () => {
         approximate: false,
         message: null,
         variants: {},
+        runnersUp: [],
       }];
     });
     const cache = new SearchCache(memoryStorage());

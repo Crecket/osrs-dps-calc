@@ -72,6 +72,7 @@ const outcome = (name: string, dps = 7.5): StyleOutcome => ({
   approximate: false,
   message: null,
   variants: {},
+  runnersUp: [],
 });
 
 const mount = async () => {
@@ -433,6 +434,7 @@ describe('BestPage', () => {
       approximate: false,
       message: null,
       variants: {},
+      runnersUp: [],
     }]);
     const { container, unmount } = await mount();
     await act(async () => find(container).click());
