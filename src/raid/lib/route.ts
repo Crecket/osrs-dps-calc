@@ -43,8 +43,9 @@ const inState = <M extends Omit<Monster, 'inputs'>>(m: M, phase: RaidPhase): M =
 
 /**
  * Every phase on the route with its monster prepared for the fight: each phase's default specs overridden by
- * `counts[phase.key]`, and specs of an excluded weapon set to 0. With `dwhOnly` the Dragon warhammer takes the Elder
- * maul's specs (unless the phase sets its own) and the Tonalztics of Ralos are left out.
+ * `counts[phase.key]`, and specs of an excluded weapon set to 0. With `dwhOnly`, or an excluded Elder maul, the
+ * Dragon warhammer takes the Elder maul's specs (unless the phase sets its own); `dwhOnly` also leaves out the Tonalztics
+ * of Ralos.
  */
 export const routePhases = (
   raid: RaidDef,
@@ -56,11 +57,11 @@ export const routePhases = (
   const leftOut = new Set(excluded.map(getCanonicalItemId));
   return routeBosses(raid, route).flatMap((boss) => boss.phases.map((phase): RoutePhase => {
     const merged = { ...phase.defaults, ...counts[phase.key] };
-    if (dwhOnly) {
+    if (dwhOnly || leftOut.has(DEFENCE_WEAPON_IDS.elderMaul)) {
       merged.dwh = counts[phase.key]?.dwh ?? merged.elderMaul;
       merged.elderMaul = 0;
-      merged.tonalztic = 0;
     }
+    if (dwhOnly) merged.tonalztic = 0;
     DEFENCE_WEAPONS.forEach((w) => {
       if (leftOut.has(getCanonicalItemId(DEFENCE_WEAPON_IDS[w]))) merged[w] = 0;
     });

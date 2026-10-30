@@ -77,6 +77,20 @@ describe('raid definitions', () => {
     });
   });
 
+  test('an excluded Elder maul hands its specs to the Dragon warhammer', () => {
+    const phases = routePhases(fa, fa.defaultRoute, { 'bork:1': { dwh: 1 } }, [21003]);
+    const bork = phases.find((p) => p.phase.key === 'bork:0')!;
+    expect(bork.counts).toMatchObject({ elderMaul: 0, dwh: 2 });
+    expect(phases.find((p) => p.phase.key === 'bork:1')!.counts.dwh).toBe(1);
+    // the Tonalztics stay unless excluded too
+    expect(phases.some((p) => p.counts.tonalztic > 0)).toBe(true);
+  });
+
+  test('with both defence weapons excluded, nothing lowers Defence by melee', () => {
+    const phases = routePhases(fa, fa.defaultRoute, {}, [21003, 13576]);
+    phases.forEach((p) => expect(p.counts).toMatchObject({ elderMaul: 0, dwh: 0 }));
+  });
+
   test('default specs reach the optimal defence from the strategy list', () => {
     // Defence after the default specs, from the community's optimal spec list
     const expected: Record<string, number> = {
