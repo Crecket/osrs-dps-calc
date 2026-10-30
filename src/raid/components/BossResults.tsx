@@ -21,9 +21,6 @@ const partStyles = ({ styles }: PhasePart) => {
 /** e.g. "50% ranged · 50% any style" */
 const partsLabel = (parts: PhasePart[]) => parts.map((p) => `${Math.round(p.share * 100)}% ${partStyles(p)}`).join(' · ');
 
-type Group = 'melee' | 'ranged' | 'magic';
-const groupOf = (style: BestStyle): Group => (style === 'ranged' || style === 'magic' ? style : 'melee');
-
 // tiers by DPS against the best of the list
 const TIERS: [string, number, string][] = [
   ['S', 0.95, 'bg-green-600 text-white'],
@@ -78,6 +75,8 @@ interface Cell {
   /** Which part of the phase the weapon deals, on a split phase */
   part?: string;
   attack?: string;
+  /** Styles that can deal what the cell deals, for its tier list; missing means any */
+  styles?: BestStyle[];
 }
 
 // every phase row uses the same columns, so cells line up down the whole list
@@ -88,7 +87,7 @@ const CELL = 'w-[4.5rem] flex flex-col items-center gap-0.5 rounded px-1 py-1.5 
 const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
   const menu = useItemMenu();
   // the weapon whose tier list is open, on its phase
-  const [open, setOpen] = useState<{ key: string; weaponId: number } | null>(null);
+  const [open, setOpen] = useState<{ key: string; weaponId: number; styles?: BestStyle[] } | null>(null);
   const bosses = [...new Map(result.phases.map((p) => [p.bossId, p.bossName])).entries()];
   // a result saved before specs were ranked by damage per second has no dps; it shows no specs until the next run
   const specsOf = (key: string) => (result.specs?.[key] ?? []).filter((sp) => typeof sp.dps === 'number');
@@ -96,6 +95,7 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
   const pickSeconds = new Map<string, number>();
   result.plan.picks.forEach((p) => pickSeconds.set(p.key, (pickSeconds.get(p.key) ?? 0) + p.seconds));
 
+  const phaseStyles = (key: string) => result.phases.find((p) => p.key === key)?.allowedStyles;
   const usedOf = (key: string, parts?: PhasePart[]): Cell[] => result.plan.picks.filter((p) => p.key === key).flatMap((p, i) => {
     const weaponId = p.candidate?.setup.player.equipment.weapon?.id;
     if (weaponId === undefined) return [];
@@ -106,6 +106,7 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
       seconds: p.seconds,
       part: part ? `${Math.round(part.share * 100)}% ${partStyles(part)}` : undefined,
       attack: p.candidate ? attackLabel(p.candidate.setup.player) : undefined,
+      styles: part ? part.styles : phaseStyles(key),
     }];
   });
 
@@ -123,7 +124,7 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
           : 'bg-body-100 dark:bg-dark-400 hover:bg-body-200 dark:hover:bg-dark-300'}`}
         data-tooltip-id="tooltip"
         data-tooltip-content={weaponTooltip(c.weaponId, c.attack)}
-        onClick={() => setOpen(expanded ? null : { key, weaponId: c.weaponId })}
+        onClick={() => setOpen(expanded ? null : { key, weaponId: c.weaponId, styles: c.styles })}
         onContextMenu={menu.open(c.weaponId)}
       >
         <span className="w-9 h-9 flex items-center justify-center"><ItemImage id={c.weaponId} /></span>
@@ -175,7 +176,7 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
                     <div className="flex flex-wrap items-start gap-1.5">
                       {used.map((c) => weaponCell(p.key, c, 'used'))}
                       {used.length > 0 && others.length > 0 && <span className="self-stretch w-px mx-1 bg-body-300 dark:bg-dark-200" aria-hidden />}
-                      {others.map((o) => weaponCell(p.key, o, 'option'))}
+                      {others.map((o) => weaponCell(p.key, { ...o, styles: p.allowedStyles }, 'option'))}
                       {used.length === 0 && others.length === 0 && <span className="text-xs text-gray-500 dark:text-gray-300 pt-1">No usable setup</span>}
                     </div>
                     <div className="flex flex-wrap items-start gap-1.5">
@@ -196,14 +197,15 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
                       {specs.length === 0 && <span className="text-xs text-gray-500 dark:text-gray-300 pt-1">—</span>}
                     </div>
                     {open?.key === p.key && (() => {
-                      const tiers = result.tiers?.[p.key] ?? [];
-                      const style = tiers.find((t) => t.weaponId === open.weaponId)?.style ?? null;
-                      const group = style ? groupOf(style) : null;
+                      // every weapon that can deal what the clicked cell deals: any style on an any-style part
+                      const tiers = result.tiers?.[p.key];
+                      const { styles } = open;
+                      const which = partStyles({ styles, share: 1 });
                       return (
                         <TierList
-                          tiers={group ? tiers.filter((t) => groupOf(t.style) === group) : []}
+                          tiers={(tiers ?? []).filter((t) => !styles || styles.includes(t.style))}
                           weaponId={open.weaponId}
-                          title={group ? `${group[0].toUpperCase()}${group.slice(1)} weapons on ${p.label}, fastest first` : 'Run again to see the other options'}
+                          title={tiers ? `Weapons on ${p.label} (${which}), fastest first` : 'Run again to see the other options'}
                         />
                       );
                     })()}

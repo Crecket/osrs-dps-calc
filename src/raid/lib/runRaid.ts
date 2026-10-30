@@ -110,6 +110,8 @@ export interface ResultPhase {
   counts: DefenceCounts;
   /** Shares of the health bar only some styles can deal */
   parts?: PhasePart[];
+  /** Styles that can deal the phase; missing means any */
+  allowedStyles?: BestStyle[];
 }
 
 /** A weapon the loadout can use on a phase, with its best setup's DPS (thralls included) and kill time */
@@ -359,6 +361,7 @@ export const runRaid = async (
       hp: p.monster.monster.skills.hp,
       counts: p.counts,
       parts: p.phase.parts,
+      allowedStyles: p.phase.allowedStyles,
     })),
     options: weaponOptions(all, plan.itemIds, hpByKey, extraDps),
     specs,

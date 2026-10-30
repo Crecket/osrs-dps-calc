@@ -176,9 +176,10 @@ describe('RaidPage', () => {
     await unmount();
   });
 
-  test('clicking a weapon opens the tier list of its style on that phase, and clicking again closes it', async () => {
+  test('clicking a weapon opens the tier list of what the phase allows, and clicking again closes it', async () => {
     mockRunRaid.mockImplementation(async (settings) => ({
       ...result(settings),
+      phases: [{ ...result(settings).phases[0], allowedStyles: ['ranged'] }],
       tiers: {
         'bork:0': [
           {
@@ -207,6 +208,27 @@ describe('RaidPage', () => {
     expect(tbowCell.getAttribute('aria-expanded')).toBe('true');
     await act(async () => tbowCell.click());
     expect(container.querySelector('[data-testid=tier-list]')).toBeNull();
+    await unmount();
+  });
+
+  test('a phase any style can deal lists weapons of every style', async () => {
+    const tiers = [
+      {
+        weaponId: 26374, style: 'ranged', dps: 12, seconds: 125, cost: 3e8, held: false,
+      },
+      {
+        weaponId: 4151, style: 'slash', dps: 5, seconds: 300, cost: 1e6, held: true,
+      },
+    ];
+    mockRunRaid.mockImplementation(async (settings) => ({ ...result(settings), tiers: { 'bork:0': tiers } }) as RaidResult);
+    const { container, unmount } = await mount();
+    await act(async () => button(container, 'Find raid gear')!.click());
+    await wait(20);
+    const whip = [...container.querySelectorAll<HTMLButtonElement>('[data-testid=option-cell]')].find((c) => c.getAttribute('aria-label')?.startsWith('Abyssal whip'))!;
+    await act(async () => whip.click());
+    const rows = [...container.querySelectorAll('[data-testid=tier-row]')];
+    expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('Zaryte crossbow'), expect.stringContaining('Abyssal whip')]);
+    expect(container.querySelector('[data-testid=tier-list]')!.textContent).toContain('any style');
     await unmount();
   });
 
