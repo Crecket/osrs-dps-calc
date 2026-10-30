@@ -76,7 +76,6 @@ const readSettings = (raw: unknown): RaidSettings => {
     supplies,
     magic: MAGIC_OPTIONS.includes(r.magic as MagicOption) ? r.magic as MagicOption : base.magic,
     rulesOn: typeof r.rulesOn === 'boolean' ? r.rulesOn : base.rulesOn,
-    dwhOnly: typeof r.dwhOnly === 'boolean' ? r.dwhOnly : base.dwhOnly,
     bestDart: typeof r.bestDart === 'number' && dartOptions().some((d) => d.id === r.bestDart) ? r.bestDart : base.bestDart,
     styles: Array.isArray(r.styles) && BEST_STYLES.some((st) => (r.styles as unknown[]).includes(st))
       ? BEST_STYLES.filter((st) => (r.styles as unknown[]).includes(st))
@@ -215,11 +214,6 @@ export class RaidStore implements AccountEditor {
 
   setRulesOn(on: boolean) {
     this.settings.rulesOn = on;
-    this.save();
-  }
-
-  setDwhOnly(on: boolean) {
-    this.settings.dwhOnly = on;
     this.save();
   }
 

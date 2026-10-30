@@ -48,22 +48,16 @@ const inState = <M extends Omit<Monster, 'inputs'>>(m: M, phase: RaidPhase): M =
 
 /**
  * Every phase on the route with its monster prepared for the fight: each phase's default specs overridden by
- * `counts[phase.key]`. The specs lower Defence whatever the player carries, as a teammate can do them. With `dwhOnly`
- * the Dragon warhammer takes the Elder maul's specs (unless the phase sets its own) and the Tonalztics of Ralos are left
- * out.
+ * `counts[phase.key]`, or those of the phase it keeps the drain of. The specs lower Defence whatever the player carries,
+ * as a teammate can do them.
  */
 export const routePhases = (
   raid: RaidDef,
   route: Route,
   counts: Record<string, Partial<DefenceCounts>>,
-  dwhOnly = false,
 ): RoutePhase[] => routeBosses(raid, route).flatMap((boss) => boss.phases.map((phase): RoutePhase => {
-  const merged = { ...phase.defaults, ...counts[phase.key] };
-  if (dwhOnly) {
-    merged.dwh = counts[phase.key]?.dwh ?? merged.elderMaul;
-    merged.elderMaul = 0;
-    merged.tonalztic = 0;
-  }
+  const source = boss.phases.find((p) => p.key === phase.defenceFrom) ?? phase;
+  const merged = { ...source.defaults, ...counts[source.key] };
   const monster = prepareMonster(inState(findMonster(phase.monsterId, phase.version), phase), {
     defenceReductions: { elderMaul: merged.elderMaul, dwh: merged.dwh, tonalztic: merged.tonalztic },
   });

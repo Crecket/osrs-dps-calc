@@ -28,6 +28,8 @@ export interface RaidPhase {
   parts?: PhasePart[];
   /** The share of the monster's health dealt in this phase, when one monster is fought in several states */
   hpShare?: number;
+  /** The phase whose specs drained this one's Defence, when it's the same monster fought on: it has no specs of its own */
+  defenceFrom?: string;
   /** The monster in this state, where the data has one version for all of them */
   state?: {
     flatArmour?: number;

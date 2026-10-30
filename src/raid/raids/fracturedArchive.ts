@@ -56,8 +56,9 @@ const fracturedArchive: RaidDef = {
               label: 'Bork (stunned)',
               monsterId: 16640,
               version: '',
-              // no Defence to lower: the specs are on the walking part
+              // the specs are done while he walks, and their drain stays
               defaults: specs(0, 0),
+              defenceFrom: 'bork:0',
               allowedStyles: ['stab', 'slash', 'crush'],
               hpShare: 0.4,
               state: { flatArmour: 0, alwaysHit: true },

@@ -56,17 +56,12 @@ describe('raid definitions', () => {
     ['dreadnoth:0', 'xarth:0', 'ocellus:0'].forEach((key) => expect(phase(key).parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }]));
   });
 
-  test('with the Dragon warhammer instead, its specs take the Elder maul\'s and nothing drains Defence at range', () => {
-    const phases = routePhases(fa, fa.defaultRoute, { 'bork:1': { dwh: 1 } }, true);
-    phases.forEach((p) => {
-      expect(p.counts.elderMaul).toBe(0);
-      expect(p.counts.tonalztic).toBe(0);
-    });
-    const counts = Object.fromEntries(phases.map((p) => [p.phase.key, p.counts.dwh]));
-    expect(counts['bork:0']).toBe(2);
-    expect(counts['guardian:0']).toBe(0);
-    expect(counts['bork:1']).toBe(1);
-    expect(phases.find((p) => p.phase.key === 'bork:0')!.monster.monster.inputs.defenceReductions).toMatchObject({ dwh: 2, elderMaul: 0, tonalztic: 0 });
+  test('stunned Bork keeps the Defence drained while he walked, and has no specs of his own', () => {
+    const phases = routePhases(fa, fa.defaultRoute, { 'bork:0': { elderMaul: 3, tonalztic: 1 }, 'bork:2': { elderMaul: 5 } });
+    const stunned = phases.find((p) => p.phase.key === 'bork:2')!;
+    expect(stunned.phase.defenceFrom).toBe('bork:0');
+    expect(stunned.counts).toEqual({ elderMaul: 3, dwh: 0, tonalztic: 1 });
+    expect(stunned.monster.monster.inputs.defenceReductions).toMatchObject({ elderMaul: 3, dwh: 0, tonalztic: 1 });
   });
 
   test('each boss has a picture: its first phase\'s monster image', () => {

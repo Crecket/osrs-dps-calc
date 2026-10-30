@@ -184,7 +184,6 @@ const RaidInputs: React.FC = observer(() => {
               {MAGIC.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
             </select>
             <Check label="Boss rules" checked={settings.rulesOn} onChange={store.setRulesOn} />
-            <Check label="Dragon warhammer only (no Elder maul or Tonalztics)" checked={settings.dwhOnly} onChange={store.setDwhOnly} />
           </FieldGrid>
           <p className="text-xs text-gray-500 dark:text-gray-300">Boss rules: Moia needs a Venator bow, the Dagon&apos;hai need elemental spells.</p>
         </Section>

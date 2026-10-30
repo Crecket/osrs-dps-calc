@@ -14,7 +14,7 @@ const BossStrip: React.FC = observer(() => {
   const store = useRaidStore();
   const { settings } = store;
   const raid = raidById(settings.raidId);
-  const phases = routePhases(raid, settings.route, settings.counts, settings.dwhOnly);
+  const phases = routePhases(raid, settings.route, settings.counts);
 
   return (
     <div className="flex flex-wrap gap-3" aria-label="Defence reduction per boss">
@@ -24,7 +24,7 @@ const BossStrip: React.FC = observer(() => {
             <BossImage bossId={boss.id} />
             {boss.name}
           </h4>
-          {phases.filter((p) => p.boss.id === boss.id).map((p) => (
+          {phases.filter((p) => p.boss.id === boss.id && !p.phase.defenceFrom).map((p) => (
             <div key={p.phase.key} className="flex items-center gap-2 text-xs">
               {boss.phases.length > 1 && <span className="w-20 truncate">{p.phase.label}</span>}
               {DEFENCE_WEAPONS.map((w) => (
