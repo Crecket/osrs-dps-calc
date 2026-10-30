@@ -69,7 +69,7 @@ export const NumberField: React.FC<{
   onChange: (v: number | null) => void;
   allowEmpty?: boolean;
   placeholder?: string;
-  icon?: StaticImageData;
+  icon?: Pick<StaticImageData, 'src'>;
 }> = ({
   label, value, min, max, onChange, allowEmpty, placeholder, icon,
 }) => {

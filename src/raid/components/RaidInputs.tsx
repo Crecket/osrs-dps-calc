@@ -12,7 +12,7 @@ import { raidById } from '@/raid/raids';
 import { MagicOption } from '@/raid/types';
 import { Supplies } from '@/raid/lib/layout';
 import { formatGp, parseGp } from '@/raid/lib/format';
-import { getCdnImage } from '@/utils';
+import { getCdnImage, getWikiImage } from '@/utils';
 import { ItemImage, itemById } from '@/raid/components/items';
 import Panel, { buttonClass } from '@/bulk/components/Panel';
 import {
@@ -26,10 +26,18 @@ const MAGIC: [MagicOption, string][] = [
   ['none', 'No spells'],
 ];
 
-const DRAGON_ARROW = 11212;
-const dartIcon = { src: getCdnImage(`equipment/${itemById(DRAGON_ARROW)?.image ?? 'Dragon arrow.png'}`) };
+const itemIcon = (id: number, fallback: string) => ({ src: getCdnImage(`equipment/${itemById(id)?.image ?? fallback}`) });
+const DRAGON_DART = 11230;
+const MAGES_BOOK = 6889;
+const dartIcon = itemIcon(DRAGON_DART, 'Dragon dart.png');
+const magicIcon = itemIcon(MAGES_BOOK, "Mage's book.png");
+const gpIcon = { src: getWikiImage('Coins 10000.png') };
 
-const SUPPLIES: [keyof Supplies, string][] = [['brews', 'Brews'], ['restores', 'Restores'], ['reserved', 'Other reserved']];
+const SUPPLIES: [keyof Supplies, string, { src: string }][] = [
+  ['brews', 'Brews', { src: getWikiImage('Saradomin brew(4).png') }],
+  ['restores', 'Restores', { src: getWikiImage('Super restore(4).png') }],
+  ['reserved', 'Other reserved', { src: getWikiImage('Super combat potion(4).png') }],
+];
 
 /** A GP field that takes "100m" or "4.5b"; it saves on blur or Enter, so a half-typed amount never counts */
 const BudgetField: React.FC = observer(() => {
@@ -44,7 +52,7 @@ const BudgetField: React.FC = observer(() => {
   };
   return (
     <>
-      <FieldLabel htmlFor="raid-budget" label="Budget" />
+      <FieldLabel htmlFor="raid-budget" label="Budget" icon={gpIcon} />
       <input
         id="raid-budget"
         className={`${fieldClass} w-28`}
@@ -168,10 +176,10 @@ const RaidInputs: React.FC = observer(() => {
         </Section>
         <Section title="Inventory">
           <FieldGrid wide>
-            {SUPPLIES.map(([k, label]) => (
-              <NumberField key={k} label={label} value={settings.supplies[k]} min={0} max={28} onChange={(v) => v !== null && store.setSupplies({ [k]: v })} />
+            {SUPPLIES.map(([k, label, icon]) => (
+              <NumberField key={k} label={label} icon={icon} value={settings.supplies[k]} min={0} max={28} onChange={(v) => v !== null && store.setSupplies({ [k]: v })} />
             ))}
-            <FieldLabel htmlFor="raid-magic" label="Magic" />
+            <FieldLabel htmlFor="raid-magic" label="Magic" icon={magicIcon} />
             <select id="raid-magic" className={fieldClass} value={settings.magic} onChange={(e) => store.setMagic(e.target.value as MagicOption)}>
               {MAGIC.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
             </select>
