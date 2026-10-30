@@ -3,6 +3,7 @@
  * only (basePlayer imports '@/state').
  */
 import { getCanonicalItemId } from '@/lib/Equipment';
+import { EquipmentCategory } from '@/enums/EquipmentCategory';
 import { BestRunDeps, runBestSetup } from '@/best/lib/run';
 import { bestPool } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
@@ -53,6 +54,8 @@ export interface RaidSettings {
   rulesOn: boolean;
   /** Styles the searches try */
   styles: BestStyle[];
+  /** The strongest blowpipe dart the account can use; null for any */
+  bestDart: number | null;
 }
 
 /** Stab and magic rarely win in the Archive; leaving them out makes the searches faster */
@@ -73,7 +76,28 @@ export const defaultSettings = (): RaidSettings => {
     magic: 'thralls',
     rulesOn: true,
     styles: [...DEFAULT_RAID_STYLES],
+    bestDart: null,
   };
+};
+
+let darts: EquipmentPiece[] | null = null;
+/** The darts a blowpipe can fire, strongest first, one per name */
+export const dartOptions = (): EquipmentPiece[] => {
+  if (!darts) {
+    const all = bestPool().filter((e) => e.slot === 'weapon' && e.category === EquipmentCategory.THROWN && e.name.endsWith(' dart'));
+    darts = all.filter((d, i) => all.findIndex((o) => o.name === d.name) === i)
+      .sort((a, b) => b.bonuses.ranged_str - a.bonuses.ranged_str);
+  }
+  return darts;
+};
+
+/** The excluded items, and the darts stronger than the best one the account can use */
+export const excludedOf = (settings: RaidSettings): number[] => {
+  const best = dartOptions().find((d) => d.id === settings.bestDart);
+  const stronger = best
+    ? bestPool().filter((e) => e.category === EquipmentCategory.THROWN && e.name.endsWith(' dart') && e.bonuses.ranged_str > best.bonuses.ranged_str)
+    : [];
+  return [...new Set([...settings.excludedIds, ...stronger.map((d) => d.id)].map(getCanonicalItemId))];
 };
 
 /** One route phase as the results show it */
@@ -186,7 +210,7 @@ export const blockReason = (settings: RaidSettings): string | null => {
 /** Items the loadout must hold: the always-bring items, boss requirements (with rules on), defence weapons in use, the book for thralls */
 export const requiredItems = (settings: RaidSettings): number[] => {
   const raid = raidById(settings.raidId);
-  const excluded = new Set(settings.excludedIds.map(getCanonicalItemId));
+  const excluded = new Set(excludedOf(settings));
   const phases = routePhases(raid, settings.route, settings.counts, settings.excludedIds);
   const ids = [
     ...settings.bringIds,
@@ -204,7 +228,7 @@ const prepare = (settings: RaidSettings, prices: Prices | null) => {
   const phases = routePhases(raid, settings.route, settings.counts, settings.excludedIds);
   const owned = new Set(settings.ownedIds.map(getCanonicalItemId));
   const priceOf = (id: number) => itemPrice(id, prices, owned);
-  const excluded = settings.excludedIds.map(getCanonicalItemId);
+  const excluded = excludedOf(settings);
   const tiers = tierExclusions(settings.budget, priceOf, excluded, pool, requiredItems(settings));
   return {
     phases, priceOf, tiers, base: raidBaseInputs(settings), pool,
@@ -231,7 +255,7 @@ export const runRaid = async (
   } = prepare(settings, prices);
   const candidates = await raidCandidates(phases, base, tiers, deps, onProgress, cache, search);
   const extraDps = settings.magic === 'thralls' ? THRALL_DPS : 0;
-  const excluded = new Set(settings.excludedIds.map(getCanonicalItemId));
+  const excluded = new Set(excludedOf(settings));
   const specs = await specRanking(phases, candidates, [...excluded], deps, cache);
   // the route's best spec weapon and its spec ammo come along
   const spec = routeSpec(specs);

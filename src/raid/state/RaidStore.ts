@@ -19,7 +19,7 @@ import { RAIDS } from '@/raid/raids';
 import { Supplies } from '@/raid/lib/layout';
 import { parseInventorySetup } from '@/raid/lib/inventorySetups';
 import {
-  blockReason, defaultSettings, RaidResult, RaidSettings, requiredItems,
+  blockReason, dartOptions, defaultSettings, RaidResult, RaidSettings, requiredItems,
 } from '@/raid/lib/runRaid';
 
 export const RAID_STORAGE_KEY = 'dps-raid-state';
@@ -76,6 +76,7 @@ const readSettings = (raw: unknown): RaidSettings => {
     supplies,
     magic: MAGIC_OPTIONS.includes(r.magic as MagicOption) ? r.magic as MagicOption : base.magic,
     rulesOn: typeof r.rulesOn === 'boolean' ? r.rulesOn : base.rulesOn,
+    bestDart: typeof r.bestDart === 'number' && dartOptions().some((d) => d.id === r.bestDart) ? r.bestDart : base.bestDart,
     styles: Array.isArray(r.styles) && BEST_STYLES.some((st) => (r.styles as unknown[]).includes(st))
       ? BEST_STYLES.filter((st) => (r.styles as unknown[]).includes(st))
       : base.styles,
@@ -195,6 +196,11 @@ export class RaidStore implements AccountEditor {
 
   setMagic(magic: MagicOption) {
     this.settings.magic = magic;
+    this.save();
+  }
+
+  setBestDart(id: number | null) {
+    this.settings.bestDart = id;
     this.save();
   }
 

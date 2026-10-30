@@ -22,6 +22,7 @@ export const debugReport = (settings: RaidSettings, result: RaidResult): object 
     ownedIds: settings.ownedIds.map(nameOf),
     excludedIds: settings.excludedIds.map(nameOf),
     bringIds: settings.bringIds.map(nameOf),
+    bestDart: settings.bestDart === null ? null : nameOf(settings.bestDart),
   },
   totalSeconds: round(result.plan.totalSeconds),
   cost: result.plan.cost,

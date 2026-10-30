@@ -5,6 +5,7 @@ import { IconX } from '@tabler/icons-react';
 import { GlobalState, StoreProvider } from '@/state';
 import EquipmentSelect from '@/app/components/player/equipment/EquipmentSelect';
 import { bestPool } from '@/best/lib/candidates';
+import { dartOptions } from '@/raid/lib/runRaid';
 import { EquipmentPiece } from '@/types/Player';
 import { useRaidStore } from '@/raid/state/RaidStore';
 import { raidById } from '@/raid/raids';
@@ -159,6 +160,16 @@ const RaidInputs: React.FC = observer(() => {
             <FieldLabel htmlFor="raid-magic" label="Magic" />
             <select id="raid-magic" className={fieldClass} value={settings.magic} onChange={(e) => store.setMagic(e.target.value as MagicOption)}>
               {MAGIC.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+            </select>
+            <FieldLabel htmlFor="raid-dart" label="Blowpipe darts" />
+            <select
+              id="raid-dart"
+              className={fieldClass}
+              value={settings.bestDart ?? ''}
+              onChange={(e) => store.setBestDart(e.target.value === '' ? null : Number(e.target.value))}
+            >
+              <option value="">Any</option>
+              {dartOptions().map((d) => <option key={d.id} value={d.id}>{`${d.name} or weaker`}</option>)}
             </select>
             <Check label="Boss rules" checked={settings.rulesOn} onChange={store.setRulesOn} />
           </FieldGrid>

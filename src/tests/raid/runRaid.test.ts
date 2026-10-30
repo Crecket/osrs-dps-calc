@@ -9,7 +9,7 @@ import { basePlayer } from '@/best/lib/basePlayer';
 import { BulkRow } from '@/bulk/types';
 import { SearchCache } from '@/raid/lib/searchCache';
 import {
-  defaultSettings, raidBaseInputs, runRaid, searchesNeeded, weaponTiers,
+  dartOptions, defaultSettings, excludedOf, raidBaseInputs, runRaid, searchesNeeded, weaponTiers,
 } from '@/raid/lib/runRaid';
 import { Candidate } from '@/raid/lib/candidates';
 
@@ -72,6 +72,18 @@ describe('weaponTiers', () => {
       },
     ]);
     expect(tiers.b.map((t) => t.weaponId)).toEqual([4151]);
+  });
+});
+
+describe('excludedOf', () => {
+  test('darts stronger than the best one the account can use are left out, with the excluded items', () => {
+    const darts = dartOptions();
+    expect(darts.map((d) => d.name).slice(0, 2)).toEqual(['Dragon dart', 'Amethyst dart']);
+    const amethyst = darts[1].id;
+    const excluded = excludedOf({ ...defaultSettings(), excludedIds: [4151], bestDart: amethyst });
+    expect(excluded).toEqual(expect.arrayContaining([4151, darts[0].id]));
+    expect(excluded).not.toContain(amethyst);
+    expect(excludedOf({ ...defaultSettings(), bestDart: null })).toEqual([]);
   });
 });
 
