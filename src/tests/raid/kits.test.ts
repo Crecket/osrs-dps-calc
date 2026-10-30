@@ -225,6 +225,23 @@ describe('planKits', () => {
     expect(plan.picks.map((p) => p.candidate?.setup.player.equipment.weapon?.id)).toEqual([TBOW, 12926]);
   });
 
+  test('a second weapon has to save real time: one slightly faster room does not earn it a bag cell', async () => {
+    const melee = ['stab', 'slash', 'crush'] as BestStyle[];
+    const plan = async (scytheOnB: number) => planKits(input({
+      units: [{ key: 'a', hp: 1200, styles: melee }, { key: 'b', hp: 1200, styles: melee }],
+      candidates: [cand('a', 'crush', MACE, null, [TORVA], 10), cand('b', 'crush', MACE, null, [TORVA], 10), cand('b', 'slash', SCYTHE, null, [TORVA], scytheOnB)],
+    }), async (setups, m) => setups.map((st) => {
+      const weapon = st.player.equipment.weapon?.id;
+      if (weapon === MACE) return 10;
+      if (weapon === SCYTHE) return m.id === 'b' ? scytheOnB : 9;
+      return 0;
+    }));
+    // 1200 / 10 - 1200 / 10.1: about a second
+    expect((await plan(10.1)).itemIds).not.toContain(SCYTHE);
+    // 1200 / 10 - 1200 / 14: over half a minute
+    expect((await plan(14)).itemIds).toEqual(expect.arrayContaining([MACE, SCYTHE]));
+  });
+
   test('the item limit holds', async () => {
     const plan = await planKits(input({
       units: [{ key: 'a', hp: 1200 }, { key: 'c', hp: 600, styles: ['stab', 'slash', 'crush'] }],

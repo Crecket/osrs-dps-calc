@@ -11,6 +11,11 @@ export const THRALL_DPS = 0.625;
  * setup on a big phase is always worth bringing (a flat penalty below a real kill time made melee look worthless)
  */
 /** Lets the browser paint and handle input between steps of the planning, which runs on the main thread */
+// what an item taking a new bag cell must save over the raid: nobody brings a weapon for one slightly faster room
+export const MIN_SECONDS_PER_ITEM = 10;
+/** The seconds a loadout growing from `from` items to `to` has to save */
+export const minGainFor = (from: number, to: number) => 1e-6 + MIN_SECONDS_PER_ITEM * Math.max(0, to - from);
+
 export const yieldToBrowser = () => new Promise<void>((resolve) => { setTimeout(resolve, 0); });
 
 export const NO_SETUP_DPS = 0.5;

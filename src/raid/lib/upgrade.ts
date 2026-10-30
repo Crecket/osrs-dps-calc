@@ -20,7 +20,7 @@ import {
 import { Candidate, fromStored, toStored } from '@/raid/lib/candidates';
 import { SearchCache, StoredCandidate } from '@/raid/lib/searchCache';
 import {
-  mainSetup, orderedItems, PhasePick, RaidPlan, wearsLightbearer, yieldToBrowser,
+  mainSetup, minGainFor, orderedItems, PhasePick, RaidPlan, wearsLightbearer, yieldToBrowser,
 } from '@/raid/lib/assemble';
 
 /** DPS of each setup on the monster */
@@ -219,7 +219,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
         if (nextCost > cap || next.size > Math.max(maxItems, current.size)) continue;
         const gain = gainOf(group, move.next);
         // NaN when a setup does no damage
-        if (!(gain > MIN_GAIN)) continue;
+        if (!(gain > minGainFor(current.size, next.size))) continue;
         const score = gain / (Math.max(0, nextCost - cost) + COST_SMOOTHING);
         if (!best || score > best.score) {
           best = {
@@ -264,7 +264,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
         const next = a.group === b.group
           ? loadout({ group: a.group, items: swapped(swapped(a.group.items, a.move), b.move) })
           : loadout({ group: a.group, items: swapped(a.group.items, a.move) }, { group: b.group, items: swapped(b.group.items, b.move) });
-        if (costOf(next) > cap || next.size > Math.max(maxItems, current.size)) continue;
+        if (costOf(next) > cap || next.size > Math.max(maxItems, current.size) || gain <= minGainFor(current.size, next.size)) continue;
         best = { a, b, gain };
         break;
       }
@@ -279,7 +279,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
       // eslint-disable-next-line no-await-in-loop
       const dps = await Promise.all(group.units.map((u, i) => rate([next[i].setup], u.monster).then(([d]) => d)));
       const rated = next.map((n, i) => ({ ...n, dps: dps[i] }));
-      if (!(gainOf(group, rated) > MIN_GAIN)) continue;
+      if (!(gainOf(group, rated) > minGainFor(current.size, loadout({ group, items: swapped(swapped(group.items, a.move), b.move) }).size))) continue;
       group.units.forEach((u, i) => {
         // eslint-disable-next-line no-param-reassign
         u.candidate = rated[i];

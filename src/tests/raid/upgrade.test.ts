@@ -150,6 +150,14 @@ describe('upgradeLoadout', () => {
     expect((await upgradeLoadout(input({ ...withHands, maxItems: 5 }), hands)).itemIds).toContain(VAMBRACES);
   });
 
+  test('an item for an empty slot has to save real time to take a bag cell', async () => {
+    const hands = (withVambraces: number) => async (setups: BulkSetup[]) => setups.map((s) => (s.player.equipment.hands?.id === VAMBRACES ? withVambraces : 10));
+    const withHands = { pool: [...pool, item(VAMBRACES)], excluded: new Set([ANGUISH]) };
+    // 2 * (1000 / 10 - 1000 / 10.05): about a second
+    expect((await upgradeLoadout(input(withHands), hands(10.05))).itemIds).not.toContain(VAMBRACES);
+    expect((await upgradeLoadout(input(withHands), hands(12))).itemIds).toContain(VAMBRACES);
+  });
+
   test('a ranged setup keeps its ring: the Lightbearer is never swapped for a Venator ring', async () => {
     const ring = async (setups: BulkSetup[]) => setups.map((s) => (s.player.equipment.ring?.id === VENATOR_RING ? 12 : 10));
     const result = await upgradeLoadout(input({ pool: [...pool, item(VENATOR_RING)], excluded: new Set([ANGUISH]) }), ring);

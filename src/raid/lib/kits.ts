@@ -16,7 +16,7 @@ import { BestStyle } from '@/best/types';
 import { BulkMonster } from '@/bulk/types';
 import { Candidate, fromStored, toStored } from '@/raid/lib/candidates';
 import {
-  LIGHTBEARER, mainSetup, NO_SETUP_DPS, orderedItems, PhasePick, RaidPlan, wearsLightbearer, yieldToBrowser,
+  LIGHTBEARER, mainSetup, minGainFor, NO_SETUP_DPS, orderedItems, PhasePick, RaidPlan, wearsLightbearer, yieldToBrowser,
 } from '@/raid/lib/assemble';
 import { RateFn } from '@/raid/lib/upgrade';
 
@@ -268,7 +268,7 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
           const next = evaluate(chosen, [...taken, option]);
           if (!fits(next)) continue;
           const gain = current.seconds - next.seconds;
-          if (!(gain > MIN_GAIN)) continue;
+          if (!(gain > minGainFor(current.items.size, next.items.size))) continue;
           const score = costAware ? gain / (Math.max(0, next.cost - current.cost) + COST_SMOOTHING) : gain;
           if (!pick || score > pick.score) pick = { option, score, next };
         }
@@ -283,6 +283,7 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
           if (taken.includes(option)) continue;
           const next = evaluate(chosen, [...taken.filter((t) => t !== out), option]);
           if (!(next.cost <= Math.max(cap, current.cost)) || next.items.size > Math.max(maxItems, current.items.size)) continue;
+          if (current.seconds - next.seconds <= minGainFor(current.items.size, next.items.size)) continue;
           if (next.seconds < (swap?.next.seconds ?? current.seconds) - MIN_GAIN) swap = { taken: [...taken.filter((t) => t !== out), option], next };
         }
       }
