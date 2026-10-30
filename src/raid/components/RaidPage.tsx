@@ -6,7 +6,7 @@ import React, {
 import { observer } from 'mobx-react-lite';
 import { toJS } from 'mobx';
 import {
-  IconAlertTriangle, IconInfoCircle, IconPlayerStop, IconSearch,
+  IconAlertTriangle, IconBug, IconInfoCircle, IconPlayerStop, IconSearch,
 } from '@tabler/icons-react';
 import { BestPayload, BestResult } from '@/best/worker/protocol';
 import createBestWorker from '@/best/worker/createBestWorker';
@@ -21,6 +21,7 @@ import { runRaid, searchesNeeded } from '@/raid/lib/runRaid';
 import { RaidProgress } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
 import { fetchPrices, Prices } from '@/raid/lib/prices';
+import { debugReport } from '@/raid/lib/debug';
 import RaidInputs from '@/raid/components/RaidInputs';
 import { AccountFields } from '@/best/components/InputsPanel';
 import { AccountEditorContext } from '@/best/state/AccountEditor';
@@ -183,6 +184,28 @@ const RaidPage: React.FC = observer(() => {
                       onClick={refreshPrices}
                     >
                       {`Prices from ${new Date(prices.at).toLocaleString()} · refresh`}
+                    </button>
+                  )}
+                  {store.result && (
+                    <button
+                      type="button"
+                      className={`text-xs underline text-gray-500 dark:text-gray-300 hover:text-orange-400 rounded ${focusRing}`}
+                      data-tooltip-id="tooltip"
+                      data-tooltip-content="Download the settings and result as JSON, to share for debugging"
+                      onClick={() => {
+                        const json = JSON.stringify(debugReport(toJS(store.settings), toJS(store.result!)), null, 2);
+                        const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'raid-debug.json';
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                    >
+                      <span className="flex items-center gap-1">
+                        <IconBug size={14} aria-hidden />
+                        Debug JSON
+                      </span>
                     </button>
                   )}
                   {!blockReason && needed > 0 && (

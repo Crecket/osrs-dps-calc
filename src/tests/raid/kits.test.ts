@@ -139,6 +139,30 @@ describe('planKits', () => {
     expect(plan.totalSeconds).toBeCloseTo(1200 / 15);
   });
 
+  test('with the slots full, a weapon picked first is swapped out when another pair of weapons is faster', async () => {
+    // the bowfa is decent everywhere, the Twisted bow great on a and b, the Zaryte crossbow great on c; only two fit
+    const byPhase = async (setups: BulkSetup[], m: BulkMonster) => setups.map((s) => {
+      const weapon = s.player.equipment.weapon?.id;
+      if (weapon === BOWFA) return 10;
+      if (weapon === TBOW) return m.id === 'c' ? 2 : 14;
+      if (weapon === ZCB) return m.id === 'c' ? 14 : 2;
+      return 0;
+    });
+    const plan = await planKits(input({
+      units: [{ key: 'a', hp: 1200 }, { key: 'b', hp: 1200 }, { key: 'c', hp: 1200 }],
+      candidates: [
+        cand('a', 'ranged', BOWFA, null, MASORI, 10),
+        cand('a', 'ranged', TBOW, ARROW, MASORI, 14),
+        cand('c', 'ranged', ZCB, RUBY, MASORI, 14),
+      ],
+      // Masori, and either the Twisted bow and the crossbow with their ammo, or the bowfa and one of them
+      maxItems: 7,
+    }), byPhase);
+    expect(plan.itemIds).toEqual(expect.arrayContaining([TBOW, ZCB]));
+    expect(plan.itemIds).not.toContain(BOWFA);
+    expect(plan.totalSeconds).toBeCloseTo(3 * (1200 / 14));
+  });
+
   test('the item limit holds', async () => {
     const plan = await planKits(input({
       units: [{ key: 'a', hp: 1200 }, { key: 'c', hp: 600, styles: ['stab', 'slash', 'crush'] }],

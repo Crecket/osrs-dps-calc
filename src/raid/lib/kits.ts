@@ -51,6 +51,8 @@ const KITS_PER_PHASE = 3;
 // as in the assembly: free upgrades first, but tiny gains don't win on price alone
 const COST_SMOOTHING = 100_000;
 const MIN_GAIN = 1e-6;
+// rounds of adding weapons and swapping one
+const MAX_ROUNDS = 10;
 
 interface Kit {
   group: Group;
@@ -203,48 +205,68 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
     cost: number;
   }
 
-  /** With these kits, adds weapons one at a time while they fit, scored by time saved (per gp when costAware) */
-  const withWeapons = (chosen: Kit[], costAware: boolean): Plan => {
-    const items = new Set([...required, ...chosen.flatMap((k) => k.items)]);
-    let cost = costOf(items);
+  /** The plan with these kits and weapons: each unit dealt by the fastest weapon that can */
+  const evaluate = (chosen: Kit[], taken: { w: Weapon; combo: Combo }[]) => {
+    const items = new Set([...required, ...chosen.flatMap((k) => k.items), ...taken.flatMap(({ w }) => w.items)]);
     const best: (Combo | null)[] = units.map(() => null);
-    const bestDps = units.map(() => 0);
-    let total = units.reduce((n, u) => n + secondsAt(u.hp, 0), 0);
+    taken.forEach(({ combo }) => units.forEach((_, j) => {
+      if (combo.dps[j] > (best[j]?.dps[j] ?? 0)) best[j] = combo;
+    }));
+    const seconds = units.reduce((n, u, j) => n + secondsAt(u.hp, best[j]?.dps[j] ?? 0), 0);
+    return {
+      items, cost: costOf(items), best, seconds,
+    };
+  };
+
+  /**
+   * With these kits, adds weapons one at a time while they fit, scored by time saved (per gp when costAware), then
+   * swaps a taken weapon for another while that is faster: once the slots are full, a weapon taken early (good
+   * everywhere) can block a pair that is faster together
+   */
+  const withWeapons = (chosen: Kit[], costAware: boolean): Plan => {
     const options = chosen.flatMap((kit) => [...combos.get(kit)!.entries()].map(([w, combo]) => ({ w, combo })));
-    const taken = new Set<Weapon>();
-    for (;;) {
-      let pick: { w: Weapon; combo: Combo; score: number; seconds: number; cost: number; items: Set<number> } | null = null;
-      for (const { w, combo } of options) {
-        if (taken.has(w)) continue;
-        const next = new Set([...items, ...w.items]);
-        const nextCost = costOf(next);
-        if ((nextCost > cost && nextCost > cap) || next.size > Math.max(maxItems, items.size)) continue;
-        const seconds = units.reduce((n, u, j) => n + secondsAt(u.hp, Math.max(bestDps[j], combo.dps[j])), 0);
-        const gain = total - seconds;
-        if (!(gain > MIN_GAIN)) continue;
-        const score = costAware ? gain / (Math.max(0, nextCost - cost) + COST_SMOOTHING) : gain;
-        if (!pick || score > pick.score) {
-          pick = {
-            w, combo, score, seconds, cost: nextCost, items: next,
-          };
+    let taken: typeof options = [];
+    let current = evaluate(chosen, taken);
+    const fits = (next: ReturnType<typeof evaluate>) => !((next.cost > current.cost && next.cost > cap)
+      || next.items.size > Math.max(maxItems, current.items.size));
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      let changed = false;
+      for (;;) {
+        let pick: { option: typeof options[number]; score: number; next: ReturnType<typeof evaluate> } | null = null;
+        for (const option of options) {
+          if (taken.includes(option)) continue;
+          const next = evaluate(chosen, [...taken, option]);
+          if (!fits(next)) continue;
+          const gain = current.seconds - next.seconds;
+          if (!(gain > MIN_GAIN)) continue;
+          const score = costAware ? gain / (Math.max(0, next.cost - current.cost) + COST_SMOOTHING) : gain;
+          if (!pick || score > pick.score) pick = { option, score, next };
+        }
+        if (!pick) break;
+        taken = [...taken, pick.option];
+        current = pick.next;
+        changed = true;
+      }
+      let swap: { taken: typeof options; next: ReturnType<typeof evaluate> } | null = null;
+      for (const out of taken) {
+        for (const option of options) {
+          if (taken.includes(option)) continue;
+          const next = evaluate(chosen, [...taken.filter((t) => t !== out), option]);
+          if (!(next.cost <= Math.max(cap, current.cost)) || next.items.size > Math.max(maxItems, current.items.size)) continue;
+          if (next.seconds < (swap?.next.seconds ?? current.seconds) - MIN_GAIN) swap = { taken: [...taken.filter((t) => t !== out), option], next };
         }
       }
-      if (!pick) break;
-      taken.add(pick.w);
-      pick.items.forEach((x) => items.add(x));
-      ({ cost } = pick);
-      total = pick.seconds;
-      units.forEach((_, j) => {
-        if (pick!.combo.dps[j] > bestDps[j]) {
-          bestDps[j] = pick!.combo.dps[j];
-          best[j] = pick!.combo;
-        }
-      });
+      if (swap) {
+        ({ taken } = swap);
+        current = swap.next;
+        changed = true;
+      }
+      if (!changed) break;
     }
-    // a kit no pick uses is left at home
-    const used = new Set([...required, ...best.flatMap((c) => c?.candidate.itemIds ?? [])]);
+    // a kit or weapon no pick uses is left at home
+    const used = new Set([...required, ...current.best.flatMap((c) => c?.candidate.itemIds ?? [])]);
     return {
-      picks: best, seconds: total, items: used, cost: costOf(used),
+      picks: current.best, seconds: current.seconds, items: used, cost: costOf(used),
     };
   };
 
