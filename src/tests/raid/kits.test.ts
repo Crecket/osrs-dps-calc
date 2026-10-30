@@ -18,6 +18,8 @@ const MASORI = [27235, 27238, 27241];
 const VOID = [11664, 13072, 13073, 8842];
 const SCYTHE = 22325;
 const TORVA = 26382;
+const ZCB = 26374;
+const RUBY = 21944;
 
 const item = (id: number) => availableEquipment.find((e) => e.id === id)!;
 const inputs = raidBaseInputs(defaultSettings());
@@ -120,6 +122,21 @@ describe('planKits', () => {
     }), rate);
     expect(plan.picks[0].candidate).toBeNull();
     expect(plan.totalSeconds).toBeCloseTo(1200 / NO_SETUP_DPS);
+  });
+
+  test('a required weapon is a mainhand option too: the spec Zaryte crossbow beats the searched Twisted bow', async () => {
+    const zcbBest = async (setups: BulkSetup[]) => setups.map((s) => {
+      const weapon = s.player.equipment.weapon?.id;
+      if (weapon === ZCB) return s.player.equipment.ammo?.id === RUBY ? 15 : 0;
+      return weapon === TBOW ? 12 : 0;
+    });
+    const plan = await planKits(input({
+      units: [{ key: 'a', hp: 1200 }],
+      candidates: [cand('a', 'ranged', TBOW, ARROW, MASORI, 12)],
+      requiredIds: [ZCB, RUBY],
+    }), zcbBest);
+    expect(plan.picks[0].candidate?.setup.player.equipment.weapon?.id).toBe(ZCB);
+    expect(plan.totalSeconds).toBeCloseTo(1200 / 15);
   });
 
   test('the item limit holds', async () => {

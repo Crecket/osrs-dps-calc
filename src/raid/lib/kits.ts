@@ -5,7 +5,10 @@
  * phase (real DPS from the rows pool), then the best kit per group and the weapons to bring are picked within the budget
  * and the item count. Main thread only (basePlayer imports '@/state').
  */
-import { getCanonicalItemId } from '@/lib/Equipment';
+import {
+  AmmoApplicability, ammoApplicability, availableEquipment, getCanonicalItemId,
+} from '@/lib/Equipment';
+import { getCombatStylesForCategory } from '@/utils';
 import { Player } from '@/types/Player';
 import { Gear } from '@/best/lib/search';
 import { WeaponJob } from '@/best/lib/candidates';
@@ -128,6 +131,36 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
     }
   });
   const groups = [...new Set([...kits.values()].map((k) => k.group))];
+  // a weapon brought anyway (the spec weapon, with its ammo) is a mainhand option too, in every kit of its style
+  const requiredAmmo = required.filter((r) => availableEquipment.find((e) => e.id === r)?.slot === 'ammo');
+  required.forEach((weaponId) => {
+    const weapon = availableEquipment.find((e) => e.id === weaponId);
+    if (weapon?.slot !== 'weapon') return;
+    const stances = getCombatStylesForCategory(weapon.category);
+    const ammoFor = requiredAmmo.find((a) => ammoApplicability(weaponId, a) === AmmoApplicability.INCLUDED) ?? null;
+    if (ammoFor === null && ammoApplicability(weaponId, undefined) !== AmmoApplicability.ALLOWED) return;
+    const jobs = groups.flatMap((group) => {
+      const combatStyle = group === 'ranged'
+        ? stances.find((st) => st.stance === 'Rapid')
+        : stances.find((st) => groupOf((st.type ?? 'magic') as BestStyle) === group && st.type !== 'magic' && st.stance === 'Aggressive');
+      return combatStyle ? [{ group, style: combatStyle.type as BestStyle, combatStyle }] : [];
+    });
+    jobs.forEach(({ group, style, combatStyle }) => {
+      const weaponKey = `${group}:${weaponId}:${ammoFor ?? ''}:${combatStyle.name}:`;
+      if (weapons.has(weaponKey)) return;
+      const items = canonical([weaponId, ammoFor]);
+      weapons.set(weaponKey, {
+        group,
+        style,
+        job: {
+          style, weaponId, combatStyle, ammoId: ammoFor, spellName: null, dartId: null,
+        },
+        ammoId: ammoFor,
+        items,
+        cost: costOf(items),
+      });
+    });
+  });
   // each phase's cheap-to-best kits, together
   const keptKits = new Set([...kitStrength.values()].flatMap((strengths) => front([...strengths.keys()], (k) => strengths.get(k)!, KITS_PER_PHASE)));
   const kitsOf = new Map(groups.map((g) => [g, [...keptKits].filter((k) => k.group === g)]));
