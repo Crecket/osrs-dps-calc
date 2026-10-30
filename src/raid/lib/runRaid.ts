@@ -56,6 +56,8 @@ export interface RaidSettings {
   styles: BestStyle[];
   /** The strongest blowpipe dart the account can use; null for any */
   bestDart: number | null;
+  /** Lower Defence with the Dragon warhammer alone: no Elder maul or Tonalztics of Ralos */
+  dwhOnly: boolean;
 }
 
 /** Stab and magic rarely win in the Archive; leaving them out makes the searches faster */
@@ -77,6 +79,7 @@ export const defaultSettings = (): RaidSettings => {
     rulesOn: true,
     styles: [...DEFAULT_RAID_STYLES],
     bestDart: null,
+    dwhOnly: false,
   };
 };
 
@@ -226,7 +229,7 @@ export const blockReason = (settings: RaidSettings): string | null => {
 export const requiredItems = (settings: RaidSettings): number[] => {
   const raid = raidById(settings.raidId);
   const excluded = new Set(excludedOf(settings));
-  const phases = routePhases(raid, settings.route, settings.counts, settings.excludedIds);
+  const phases = routePhases(raid, settings.route, settings.counts, settings.excludedIds, settings.dwhOnly);
   const ids = [
     ...settings.bringIds,
     ...(settings.rulesOn ? routeBosses(raid, settings.route).flatMap((b) => b.rules?.requiredItemIds ?? []) : []),
@@ -240,7 +243,7 @@ let pool: EquipmentPiece[] | null = null;
 const prepare = (settings: RaidSettings, prices: Prices | null) => {
   if (!pool) pool = bestPool();
   const raid = raidById(settings.raidId);
-  const phases = routePhases(raid, settings.route, settings.counts, settings.excludedIds);
+  const phases = routePhases(raid, settings.route, settings.counts, settings.excludedIds, settings.dwhOnly);
   const owned = new Set(settings.ownedIds.map(getCanonicalItemId));
   const priceOf = (id: number) => itemPrice(id, prices, owned);
   const excluded = excludedOf(settings);

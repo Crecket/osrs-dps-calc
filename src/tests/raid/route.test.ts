@@ -56,6 +56,19 @@ describe('raid definitions', () => {
     ['dreadnoth:0', 'xarth:0', 'ocellus:0'].forEach((key) => expect(phase(key).parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }]));
   });
 
+  test('with the Dragon warhammer instead, its specs take the Elder maul\'s and nothing drains Defence at range', () => {
+    const phases = routePhases(fa, fa.defaultRoute, { 'bork:1': { dwh: 1 } }, [], true);
+    phases.forEach((p) => {
+      expect(p.counts.elderMaul).toBe(0);
+      expect(p.counts.tonalztic).toBe(0);
+    });
+    const counts = Object.fromEntries(phases.map((p) => [p.phase.key, p.counts.dwh]));
+    expect(counts['bork:0']).toBe(2);
+    expect(counts['guardian:0']).toBe(0);
+    expect(counts['bork:1']).toBe(1);
+    expect(phases.find((p) => p.phase.key === 'bork:0')!.monster.monster.inputs.defenceReductions).toMatchObject({ dwh: 2, elderMaul: 0, tonalztic: 0 });
+  });
+
   test('excluded weapon zeroes its defence reduction', () => {
     const phases = routePhases(fa, fa.defaultRoute, {}, [21003]);
     phases.forEach((p) => {
