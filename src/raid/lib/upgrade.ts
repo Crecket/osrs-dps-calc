@@ -120,7 +120,11 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
       const top = items.filter((e) => !searched.has(e.id) && (!current || value(e) > value(current)))
         .sort((a, b) => value(b) - value(a))
         .slice(0, TOP_PER_SLOT);
-      return [...items.filter((e) => searched.has(e.id)), ...top].map((item) => ({ slot, item }));
+      // and the best cheaper ones: a downgrade that pays for a bigger gain elsewhere
+      const cheaper = current ? items.filter((e) => !searched.has(e.id) && !top.includes(e) && priceOf(e.id) < priceOf(current.id))
+        .sort((a, b) => value(b) - value(a))
+        .slice(0, TOP_PER_SLOT) : [];
+      return [...items.filter((e) => searched.has(e.id)), ...top, ...cheaper].map((item) => ({ slot, item }));
     });
   };
 
@@ -156,9 +160,12 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   }
 
   const seconds = (hp: number, dps: number) => (dps + extraDps > 0 ? hp / (dps + extraDps) : Infinity);
-  const loadout = (swap?: { group: Group; items: number[] }) => new Set([
-    ...required, ...groups.flatMap((g) => (swap && g === swap.group ? swap.items : g.items)),
+  const loadout = (...swaps: { group: Group; items: number[] }[]) => new Set([
+    ...required, ...groups.flatMap((g) => swaps.find((sw) => sw.group === g)?.items ?? g.items),
   ]);
+  const gainOf = (group: Group, next: Candidate[]) => group.units
+    .reduce((n, u, i) => n + seconds(u.pick.hp, u.candidate.dps) - seconds(u.pick.hp, next[i].dps), 0);
+  const swapped = (items: number[], move: Move) => [...items.filter((id) => id !== move.from), move.to];
   const costOf = (ids: Set<number>) => [...ids].reduce((n, id) => n + priceOf(id), 0);
 
   for (let step = 0; step < MAX_STEPS; step++) {
@@ -168,11 +175,11 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     let best: { group: Group; move: Move; items: number[]; score: number } | null = null;
     for (const group of groups) {
       for (const move of group.moves) {
-        const items = [...group.items.filter((id) => id !== move.from), move.to];
+        const items = swapped(group.items, move);
         const next = loadout({ group, items });
         const nextCost = costOf(next);
         if (nextCost > cap || next.size > Math.max(maxItems, current.size)) continue;
-        const gain = group.units.reduce((n, u, i) => n + seconds(u.pick.hp, u.candidate.dps) - seconds(u.pick.hp, move.next[i].dps), 0);
+        const gain = gainOf(group, move.next);
         // NaN when a setup does no damage
         if (!(gain > MIN_GAIN)) continue;
         const score = gain / (Math.max(0, nextCost - cost) + COST_SMOOTHING);
@@ -192,6 +199,73 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     group.items = items;
     // eslint-disable-next-line no-await-in-loop
     group.moves = await movesFor(group);
+  }
+
+  // with no single change left that fits, two at once: a cheaper item in one slot paying for a bigger gain in another
+  // (the Necklace of anguish for a slightly weaker helm). Two changes to one setup are rated together before they count.
+  const rejected = new Set<string>();
+  for (let step = 0; step < MAX_STEPS; step++) {
+    const current = loadout();
+    const cap = Math.max(budget, costOf(current));
+    // best gain first, so the first pair that fits for each move is its best and the search stops early
+    const all = groups.flatMap((group) => group.moves.map((move) => ({ group, move, gain: gainOf(group, move.next) })))
+      .filter((m) => Number.isFinite(m.gain))
+      .sort((x, y) => y.gain - x.gain);
+    const keyOf = (x: typeof all[number], y: typeof all[number]) => `${groups.indexOf(x.group)}:${x.move.slot}:${x.move.to}|${groups.indexOf(y.group)}:${y.move.slot}:${y.move.to}`;
+    let best: { a: typeof all[number]; b: typeof all[number]; gain: number } | null = null;
+    for (let i = 0; i < all.length - 1; i++) {
+      const a = all[i];
+      if (a.gain + all[i + 1].gain <= Math.max(MIN_GAIN, best?.gain ?? -Infinity)) break;
+      for (let j = i + 1; j < all.length; j++) {
+        const b = all[j];
+        const gain = a.gain + b.gain;
+        if (gain <= Math.max(MIN_GAIN, best?.gain ?? -Infinity)) break;
+        if ((a.group === b.group && a.move.slot === b.move.slot) || rejected.has(keyOf(a, b))) continue;
+        const next = a.group === b.group
+          ? loadout({ group: a.group, items: swapped(swapped(a.group.items, a.move), b.move) })
+          : loadout({ group: a.group, items: swapped(a.group.items, a.move) }, { group: b.group, items: swapped(b.group.items, b.move) });
+        if (costOf(next) > cap || next.size > Math.max(maxItems, current.size)) continue;
+        best = { a, b, gain };
+        break;
+      }
+    }
+    if (!best) break;
+    const { a, b } = best as { a: typeof all[number]; b: typeof all[number] };
+    rejected.add(keyOf(a, b));
+    if (a.group === b.group) {
+      const { group } = a;
+      const first = variant;
+      variant += group.units.length;
+      const next = group.units.map((u, i) => {
+        const stored = toStored(u.candidate.setup, u.candidate.style, 0);
+        const built = fromStored({
+          ...stored, gear: { ...stored.gear, [a.move.slot]: a.move.next[0].setup.player.equipment[a.move.slot]?.id ?? a.move.to, [b.move.slot]: b.move.next[0].setup.player.equipment[b.move.slot]?.id ?? b.move.to },
+        }, u.pick.key, input.playerFor(u.candidate.style));
+        return built ? { ...built, setup: { ...built.setup, id: `upgrade-${first + i + 1}` } } : null;
+      });
+      if (next.some((n) => n === null)) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const dps = await Promise.all(group.units.map((u, i) => rate([next[i]!.setup], u.monster).then(([d]) => d)));
+      const rated = next.map((n, i) => ({ ...n!, dps: dps[i] }));
+      if (!(gainOf(group, rated) > MIN_GAIN)) continue;
+      group.units.forEach((u, i) => {
+        // eslint-disable-next-line no-param-reassign
+        u.candidate = rated[i];
+      });
+      group.items = swapped(swapped(group.items, a.move), b.move);
+      // eslint-disable-next-line no-await-in-loop
+      group.moves = await movesFor(group);
+    } else {
+      for (const { group, move } of [a, b]) {
+        group.units.forEach((u, i) => {
+          // eslint-disable-next-line no-param-reassign
+          u.candidate = move.next[i];
+        });
+        group.items = swapped(group.items, move);
+        // eslint-disable-next-line no-await-in-loop
+        group.moves = await movesFor(group);
+      }
+    }
   }
 
   // variants of one item worn in different setups (Avernic treads (pe) for ranged, (pr) for melee) become the one

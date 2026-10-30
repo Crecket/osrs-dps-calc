@@ -4,6 +4,7 @@
  */
 import { availableEquipment, getCanonicalItemId } from '@/lib/Equipment';
 import { EquipmentPiece, Player } from '@/types/Player';
+import { EquipmentCategory } from '@/enums/EquipmentCategory';
 import { BestPhase, BestRunDeps, runBestSetup } from '@/best/lib/run';
 import { buildPlayer, Gear } from '@/best/lib/search';
 import { GearSlot, ScoreKind, styleScore } from '@/best/lib/candidates';
@@ -169,6 +170,9 @@ const usable = (stored: StoredCandidate[] | undefined, excluded: Set<number>) =>
 export const missingSearches = (phases: RoutePhase[], base: BestInputs, tiers: number[][], cache: SearchCache): number => searchJobs(phases, base, tiers)
   .filter((j) => !usable(cache.peek(j.key), j.excluded)).length;
 
+/** A dart thrown as a weapon */
+const isThrownDart = (weapon: EquipmentPiece | null | undefined) => !!weapon && weapon.category === EquipmentCategory.THROWN && weapon.name.endsWith(' dart');
+
 /**
  * Every search's setups with DPS for each phase × tier, from the cache or by running the best setup search.
  * `RAID_PARALLEL` searches run at once on the shared pools, so workers one search leaves idle (its effect check, its
@@ -235,7 +239,8 @@ export const raidCandidates = async (
   };
   await Promise.all(Array.from({ length: Math.min(RAID_PARALLEL, todo.length) }, lane));
 
+  // darts go in a blowpipe: thrown on their own they never belong in a raid loadout
   return jobs.flatMap((j, i) => stored[i]
     .map((s) => fromStored(s, j.phase.phase.key, playerFor(s.style)))
-    .filter((c): c is Candidate => c !== null));
+    .filter((c): c is Candidate => c !== null && !isThrownDart(c.setup.player.equipment.weapon)));
 };

@@ -108,6 +108,21 @@ describe('upgradeLoadout', () => {
     expect(result.main?.setup.player.equipment.neck?.id).toBe(ANGUISH);
   });
 
+  test('with the budget spent, a cheaper item in one slot pays for a bigger gain in another', async () => {
+    const VOID_HELM = 11664;
+    // the mask is worth 0.5 over the void helm, the Necklace of anguish 2 over the Bonecrusher necklace
+    const traded = async (setups: BulkSetup[]) => setups.map((s) => 10
+      + (s.player.equipment.neck?.id === ANGUISH ? 2 : 0) - (s.player.equipment.head?.id === MASK ? 0 : 0.5));
+    const prices: Record<number, number> = { [MASK]: 15e6, [ANGUISH]: 20e6 };
+    const result = await upgradeLoadout(input({
+      pool: [...pool, item(VOID_HELM)], priceOf: (id) => prices[id] ?? 0, budget: 20e6,
+    }), traded);
+    expect(result.itemIds).toEqual(expect.arrayContaining([ANGUISH, VOID_HELM]));
+    expect(result.itemIds).not.toContain(MASK);
+    expect(result.cost).toBeLessThanOrEqual(20e6);
+    expect(result.totalSeconds).toBeCloseTo(2 * (1000 / 11.5));
+  });
+
   test('stays within the budget', async () => {
     const result = await upgradeLoadout(input({ budget: 10e6 }), rate);
     expect(result.itemIds).toContain(BONECRUSHER);

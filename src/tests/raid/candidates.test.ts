@@ -147,6 +147,16 @@ describe('raidCandidates', () => {
     expect(result[1].dps).toBe(7);
   });
 
+  test('thrown darts are never a raid weapon: darts go in a blowpipe', async () => {
+    const dart = item(11230);
+    const player = buildPlayer(basePlayer(inputs, 'ranged'), {
+      style: 'ranged', weaponId: 11230, combatStyle: getCombatStylesForCategory(dart.category).find((s) => s.stance === 'Rapid')!, ammoId: null, spellName: null, dartId: null,
+    }, { head: 27235 });
+    mockRun.mockImplementation(async () => [{ ...outcome()[0], runnersUp: [{ setup: { id: 'best-ranged-next-0', name: 'Dragon dart', player }, dps: 12 }] }]);
+    const result = await raidCandidates(phases.slice(0, 1), inputs, [[1]], deps, () => {}, new SearchCache(memoryStorage()), search);
+    expect(result.map((c) => c.setup.player.equipment.weapon?.id)).toEqual([20997]);
+  });
+
   test('runs several searches at once, concurrently on the pools, keeping phase order', async () => {
     let active = 0;
     let most = 0;
