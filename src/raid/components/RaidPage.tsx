@@ -80,12 +80,14 @@ const RaidPage: React.FC = observer(() => {
   const { runKey, blockReason } = store;
   const ready = store.loaded && cacheLoaded && pricesState !== 'loading';
   // searches the next run has to do; 0 means it only re-plans from cached searches. Worked out once the inputs settle
-  // (typing a budget changes them on every key), null until then
-  const [needed, setNeeded] = useState<number | null>(null);
+  // (typing a budget changes them on every key), null until then. The count is kept with the inputs it is for: right
+  // after a change the old count is still there, and a 0 for the old inputs must not start a run with the new ones
+  const [checked, setChecked] = useState<{ key: string; count: number } | null>(null);
+  const needed = checked?.key === runKey ? checked.count : null;
   useEffect(() => {
-    setNeeded(null);
     if (!ready) return undefined;
-    const timer = setTimeout(() => setNeeded(searchesNeeded(toJS(store.settings), prices, cache)), SETTLE_MS);
+    const key = runKey;
+    const timer = setTimeout(() => setChecked({ key, count: searchesNeeded(toJS(store.settings), prices, cache) }), SETTLE_MS);
     return () => clearTimeout(timer);
     // runKey stands for the settings
     // eslint-disable-next-line react-hooks/exhaustive-deps
