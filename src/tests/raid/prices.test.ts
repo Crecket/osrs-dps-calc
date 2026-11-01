@@ -58,6 +58,14 @@ describe('itemPrice', () => {
     expect(itemPrice(22322, parts, new Set())).toBe(0);
   });
 
+  test('an untradeable upgrade costs the item plus its upgrade: the Saradomin\'s blessed sword, Neitiznot faceguard', () => {
+    const parts = {
+      byId: new Map([[11838, 100_000], [12804, 5e6], [10828, 40_000], [24268, 10e6]]), byName: new Map<string, number>(),
+    };
+    expect(itemPrice(12808, parts, new Set())).toBe(5.1e6);
+    expect(itemPrice(24271, parts, new Set())).toBe(10.04e6);
+  });
+
   test('falls back to the name without its suffix', () => {
     // Venator bow (Charged)
     expect(itemPrice(27610, { byId: new Map(), byName: new Map([['venator bow', 5]]) }, new Set())).toBe(5);

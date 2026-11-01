@@ -124,7 +124,8 @@ const baseName = (id: number) => {
 };
 
 /**
- * Untradeable items made from tradeable parts, which cost what the parts do (from the osrs-price-index composites).
+ * Untradeable items made from tradeable parts, which cost what the parts do (the osrs-price-index composites, and more).
+ * Untradeable never means free when the item is made from something that isn't.
  * The Avernic defender and Avernic treads (max) are left free on purpose.
  */
 const RECIPES: Record<string, { itemId: number; qty: number }[]> = {
@@ -137,6 +138,18 @@ const RECIPES: Record<string, { itemId: number; qty: number }[]> = {
   'Harmonised Nightmare staff': [{ itemId: 24422, qty: 1 }, { itemId: 24511, qty: 1 }], // Nightmare staff and its orb
   'Volatile Nightmare staff': [{ itemId: 24422, qty: 1 }, { itemId: 24514, qty: 1 }],
   'Eldritch Nightmare staff': [{ itemId: 24422, qty: 1 }, { itemId: 24517, qty: 1 }],
+  // untradeable upgrades of tradeable items: the item plus what upgrades it
+  "Saradomin's blessed sword": [{ itemId: 11838, qty: 1 }, { itemId: 12804, qty: 1 }], // Saradomin sword, Saradomin's tear
+  'Neitiznot faceguard': [{ itemId: 10828, qty: 1 }, { itemId: 24268, qty: 1 }], // Helm of neitiznot, Basilisk jaw
+  'Abyssal tentacle': [{ itemId: 4151, qty: 1 }, { itemId: 12004, qty: 1 }], // Abyssal whip, Kraken tentacle
+  'Bonecrusher necklace': [{ itemId: 22111, qty: 1 }, { itemId: 22988, qty: 1 }], // Dragonbone necklace, Hydra tail
+  // crystal gear is sung from seeds (the shards it also takes are untradeable)
+  'Crystal halberd': [{ itemId: 4207, qty: 1 }], // Crystal weapon seed
+  'Crystal bow': [{ itemId: 4207, qty: 1 }],
+  'Crystal shield': [{ itemId: 4207, qty: 1 }],
+  'Crystal helm': [{ itemId: 23956, qty: 1 }], // Crystal armour seed
+  'Crystal legs': [{ itemId: 23956, qty: 2 }],
+  'Crystal body': [{ itemId: 23956, qty: 3 }],
 };
 
 /**

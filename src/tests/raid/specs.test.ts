@@ -8,10 +8,24 @@ import { buildPlayer } from '@/best/lib/search';
 import { generateEmptyPlayer } from '@/state';
 import { availableEquipment } from '@/lib/Equipment';
 import { getCombatStylesForCategory } from '@/utils';
-import { rankSpecs, specRanking } from '@/raid/lib/specs';
+import { rankSpecs, routeSpec, specRanking } from '@/raid/lib/specs';
 
 const ZCB = 26374;
 const KISTEN = 33631;
+
+describe('routeSpec', () => {
+  test('skips spec weapons that aren\'t affordable', () => {
+    const zcb = {
+      weaponId: 26374, cost: 75, expected: 100, dps: 28, ammoId: null,
+    };
+    const claws = {
+      weaponId: 13652, cost: 50, expected: 57, dps: 24, ammoId: null,
+    };
+    const specs = { a: [zcb, claws], b: [zcb, claws] };
+    expect(routeSpec(specs)?.weaponId).toBe(26374);
+    expect(routeSpec(specs, (r) => r.weaponId !== 26374)?.weaponId).toBe(13652);
+  });
+});
 
 describe('rankSpecs', () => {
   test('ranks by damage per second of the spec, best first, leaving out specs without damage', () => {

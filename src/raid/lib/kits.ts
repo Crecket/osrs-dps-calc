@@ -143,6 +143,24 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
       });
     }
   });
+  // a melee weapon searched in one attack type is tried in its others too (the Zombie axe found by the crush search
+  // also slashes): each style's search only reaches its top weapons. Only types the weapon is nearly as accurate in.
+  const MELEE: BestStyle[] = ['stab', 'slash', 'crush'];
+  [...weapons.values()].filter((w) => w.group === 'melee').forEach((w) => {
+    const weapon = availableEquipment.find((e) => e.id === w.job.weaponId);
+    if (!weapon) return;
+    const stances = getCombatStylesForCategory(weapon.category);
+    const best = Math.max(...MELEE.map((t) => weapon.offensive[t as 'stab' | 'slash' | 'crush']));
+    MELEE.filter((t) => t !== w.style && weapon.offensive[t as 'stab' | 'slash' | 'crush'] >= 0.8 * best).forEach((style) => {
+      const ofType = stances.filter((st) => st.type === style);
+      const combatStyle = ofType.find((st) => st.stance === w.job.combatStyle.stance)
+        ?? ofType.find((st) => st.stance === 'Aggressive') ?? ofType[0];
+      if (!combatStyle) return;
+      const weaponKey = `melee:${w.job.weaponId}:${w.ammoId ?? ''}:${combatStyle.name}:${w.job.spellName ?? ''}`;
+      if (weapons.has(weaponKey)) return;
+      weapons.set(weaponKey, { ...w, style, job: { ...w.job, style, combatStyle } });
+    });
+  });
   const groups = [...new Set([...kits.values()].map((k) => k.group))];
   // a weapon brought anyway (the spec weapon, with its ammo) is a mainhand option too, in every kit of its style
   const requiredAmmo = required.filter((r) => availableEquipment.find((e) => e.id === r)?.slot === 'ammo');

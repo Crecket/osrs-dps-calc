@@ -144,10 +144,13 @@ export const specRanking = async (
   return out;
 };
 
-/** The spec weapon worth bringing: the most spec damage per second added up over the route's phases */
-export const routeSpec = (specs: Record<string, SpecRank[]>): SpecRank | null => {
+/**
+ * The spec weapon worth bringing: the most spec damage per second added up over the route's phases, of those
+ * `affordable` lets in (a 361m Zaryte crossbow must not swallow a 100m budget)
+ */
+export const routeSpec = (specs: Record<string, SpecRank[]>, affordable: (r: SpecRank) => boolean = () => true): SpecRank | null => {
   const totals = new Map<number, { rank: SpecRank; total: number }>();
-  Object.values(specs).flat().forEach((r) => {
+  Object.values(specs).flat().filter(affordable).forEach((r) => {
     const t = totals.get(r.weaponId) ?? { rank: r, total: 0 };
     t.total += r.dps;
     totals.set(r.weaponId, t);

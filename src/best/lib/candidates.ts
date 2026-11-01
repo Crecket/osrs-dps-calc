@@ -42,8 +42,9 @@ const EXCLUDED_ITEM_IDS = new Set([
 // minigame-only gear: The Gauntlet's tiered weapons and armour, which can't leave it
 const GAUNTLET_ONLY = /^(Corrupted|Crystal) (halberd|bow|staff|helm|body|legs) \((basic|attuned|perfected)\)$/;
 
-// not real gear: wrapped gloves are a gift-wrapped copy, Nightmare Zone (nz) items can't leave the Nightmare Zone
-const NOT_REAL = /\((wrapped|nz)\)/;
+// not real gear: wrapped gloves are a gift-wrapped copy, Nightmare Zone (nz) items can't leave the Nightmare Zone, and
+// the Calamity chest and breeches (every tier) can't be used in normal play
+const NOT_REAL = /\((wrapped|nz)\)|^(Superior |Elite )?[Cc]alamity (chest|breeches)$/;
 
 // Leagues-only gear, which can't be had in the main game: Raging Echoes' Echo items and the Demonic Pacts relics and gear
 const LEAGUES_ONLY = /^Echo |^(V's helm|King's barrage|Infernal tecpatl|Nature's recurve|Fang of the hound|Shadowflame quadrant|Lithic sceptre|Evil eye \(item\)|Transmutation ledger|Demonic (hood|robe top|robe bottom|boots) \(t[123]\)|Demonic sceptre)$/;

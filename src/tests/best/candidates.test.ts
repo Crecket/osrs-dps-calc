@@ -110,6 +110,10 @@ describe('bestPool', () => {
     expect(ids.has(findEquipment('Anti-dragon shield').id)).toBe(true);
   });
 
+  test('drops the Calamity chest and breeches in every tier', () => {
+    expect(pool.filter((e) => /calamity/i.test(e.name))).toEqual([]);
+  });
+
   test('drops weapons without a real attack speed (greegrees, crates, Gnomeball)', () => {
     expect(pool.filter((e) => e.slot === 'weapon' && e.speed <= 1)).toEqual([]);
     expect(pool.map((e) => e.id)).not.toContain(findEquipment('Gnomeball').id);
