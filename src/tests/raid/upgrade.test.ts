@@ -76,6 +76,34 @@ const input = (over: Partial<UpgradeInput>): UpgradeInput => {
 };
 
 describe('upgradeLoadout', () => {
+  test('free filler gives way to cheap useful gear when the strongest is out of reach: no Beads of the Dead', async () => {
+    const [WHIP, BEADS, STRENGTH, GLORY] = [4151, 616, 1725, 1704];
+    const expensive = [29801, 19553, 24780, 6585, 19707, 22557, 11128];
+    const lash = getCombatStylesForCategory(item(WHIP).category)[0];
+    const melee = (key: string): Candidate => {
+      const player = buildPlayer(basePlayer(inputs, 'slash'), {
+        style: 'slash', weaponId: WHIP, combatStyle: lash, ammoId: null, spellName: null, dartId: null,
+      }, { neck: BEADS });
+      return {
+        phaseKey: key, style: 'slash', dps: 10, setup: { id: key, name: 'whip', player }, itemIds: [WHIP, BEADS],
+      };
+    };
+    const picks = [melee('a'), melee('b')];
+    const prices = new Map<number, number>([[STRENGTH, 1_218], [GLORY, 11_500], ...expensive.map((id) => [id, 50e6] as [number, number])]);
+    const result = await upgradeLoadout(input({
+      plan: plan(picks),
+      candidates: picks,
+      // the cheap amulets last, so ties for the strongest few don't let them in by list order
+      pool: [WHIP, BEADS, ...expensive, STRENGTH, GLORY].map(item),
+      priceOf: (id) => prices.get(id) ?? 0,
+      budget: 1e6,
+      playerFor: () => basePlayer(inputs, 'slash'),
+    }), async (setups) => setups.map((st) => 10 + (st.player.equipment.neck?.bonuses.str ?? 0)));
+    const neck = result.picks[0].candidate!.setup.player.equipment.neck?.id;
+    expect(neck).not.toBe(BEADS);
+    expect([STRENGTH, GLORY]).toContain(neck);
+  });
+
   test('two variants of one item merge into the one that has both: Avernic treads (pe) and (pr) become (max)', async () => {
     const [PE, PR, MAX] = [31092, 31091, 31097];
     const withFeet = (c: Candidate, feet: number): Candidate => {

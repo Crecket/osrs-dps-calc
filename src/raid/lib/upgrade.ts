@@ -47,6 +47,8 @@ export interface UpgradeInput {
 
 // besides the searched items, the items with the best bonuses for the style tried per slot
 const TOP_PER_SLOT = 6;
+// price levels at which each slot's strongest item is tried too
+const PRICE_BANDS = [100_000, 1_000_000, 10_000_000, 100_000_000];
 // as in the assembly's cost-aware pass: free upgrades first, but tiny gains don't win on price alone
 const COST_SMOOTHING = 100_000;
 const MAX_STEPS = 60;
@@ -137,7 +139,13 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
       const cheaper = current ? items.filter((e) => !searched.has(e.id) && !top.includes(e) && priceOf(e.id) < priceOf(current.id))
         .sort((a, b) => value(b) - value(a))
         .slice(0, TOP_PER_SLOT) : [];
-      return [...items.filter((e) => searched.has(e.id)), ...top, ...cheaper].map((item) => ({ slot, item }));
+      // and the strongest at a few price levels, so cheap useful gear (an Amulet of strength over free filler) is tried
+      // even when the strongest items are out of reach
+      const banded = PRICE_BANDS.map((band) => items.filter((e) => !searched.has(e.id) && !top.includes(e) && !cheaper.includes(e)
+        && priceOf(e.id) <= band && (!current || value(e) > value(current)))
+        .sort((a, b) => value(b) - value(a) || priceOf(a.id) - priceOf(b.id))[0])
+        .filter((e, i, all): e is EquipmentPiece => !!e && all.indexOf(e) === i);
+      return [...items.filter((e) => searched.has(e.id)), ...top, ...cheaper, ...banded].map((item) => ({ slot, item }));
     });
   };
 

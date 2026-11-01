@@ -82,25 +82,30 @@ describe('cacheVersion', () => {
 });
 
 describe('tierExclusions', () => {
-  const a = { id: 1 } as EquipmentPiece;
-  const b = { id: 2 } as EquipmentPiece;
-  const c = { id: 3 } as EquipmentPiece;
-  const prices: Record<number, number> = { 1: 0, 2: 100, 3: 1000 };
+  const items = [1, 2, 3, 4].map((id) => ({ id }) as EquipmentPiece);
+  // free, 200k, 500k, 5m; a 1.6m budget gives tiers of 1.6m, 400k and 100k (the cheap tier)
+  const prices: Record<number, number> = {
+    1: 0, 2: 200_000, 3: 500_000, 4: 5_000_000,
+  };
 
   test('tiers drop items above each cap', () => {
-    expect(tierExclusions(400, (id) => prices[id], [], [a, b, c])).toEqual([[3], [2, 3]]);
+    expect(tierExclusions(1_600_000, (id) => prices[id], [], items)).toEqual([[4], [3, 4], [2, 3, 4]]);
+  });
+
+  test('the cheapest tier keeps cheap items, not only free ones', () => {
+    expect(tierExclusions(1_600_000, (id) => (id === 2 ? 1_218 : prices[id]), [], items)).toEqual([[4], [3, 4]]);
   });
 
   test('excluded items are in every tier', () => {
-    expect(tierExclusions(400, (id) => prices[id], [1], [a, b, c])).toEqual([[1, 3], [1, 2, 3]]);
+    expect(tierExclusions(1_600_000, (id) => prices[id], [1], items)).toEqual([[1, 4], [1, 3, 4], [1, 2, 3, 4]]);
   });
 
   test('required items are never excluded', () => {
-    expect(tierExclusions(400, (id) => prices[id], [], [a, b, c], [3])).toEqual([[], [2]]);
+    expect(tierExclusions(1_600_000, (id) => prices[id], [], items, [4])).toEqual([[], [3], [2, 3]]);
   });
 
   test('owned items never excluded', () => {
-    expect(tierExclusions(400, (id) => (id === 3 ? 0 : prices[id]), [], [a, b, c])).toEqual([[], [2]]);
+    expect(tierExclusions(1_600_000, (id) => (id === 4 ? 0 : prices[id]), [], items)).toEqual([[], [3], [2, 3]]);
   });
 });
 

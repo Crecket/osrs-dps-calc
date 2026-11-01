@@ -43,9 +43,13 @@ export const RAID_RUNNERS_UP = 10;
 /** Searches run at once */
 export const RAID_PARALLEL = 3;
 
+// the cheapest tier's cap: cheap gear (an Amulet of strength, a Rune crossbow) belongs in it, not only free items, or
+// its setups fill up with free filler like Beads of the Dead
+export const CHEAP_TIER = 100_000;
+
 /**
- * Exclusion lists for the price tiers (the budget, a quarter of it, owned and free items only): the pool's items that
- * cost more than the tier, except required ones, plus `excluded`. Sorted, duplicates removed.
+ * Exclusion lists for the price tiers (the budget, a quarter of it, cheap items: up to CHEAP_TIER or the quarter if
+ * less): the pool's items that cost more than the tier, except required ones, plus `excluded`. Sorted, duplicates removed.
  */
 export const tierExclusions = (
   budget: number,
@@ -57,7 +61,7 @@ export const tierExclusions = (
   const seen = new Set<string>();
   // required items are bought anyway, so every tier may use them
   const required = new Set(requiredIds);
-  return [budget, budget / 4, 0].flatMap((cap) => {
+  return [budget, budget / 4, Math.min(CHEAP_TIER, budget / 4)].flatMap((cap) => {
     const above = pool.filter((e) => !required.has(e.id) && priceOf(e.id) > cap).map((e) => e.id);
     const ids = [...new Set([...excluded, ...above])].sort((a, b) => a - b);
     const key = ids.join(',');
