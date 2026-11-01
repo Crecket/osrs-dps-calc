@@ -22,13 +22,25 @@ export const DEFAULT_TRANSFORM_OPTS: TransformOpts = {
   transformInaccurate: true,
 };
 
+// the largest damage the array-indexed merge handles; bigger hits take the map
+const MAX_INDEXED_DAMAGE = 4096;
+const MAX_INDEXED_KEY = MAX_INDEXED_DAMAGE * 2 + 1;
+
 export class Hitsplat {
-  public static INACCURATE: Hitsplat = new Hitsplat(0, false);
+  /**
+   * getHash's key for this hitsplat alone (damage * 2 + accuracy) when it is a whole damage in 0..MAX_INDEXED_DAMAGE,
+   * else -1: worked out once, as merges read it for every hit
+   */
+  public readonly indexKey: number;
 
   public constructor(
     public readonly damage: number,
     public readonly accurate: boolean = true,
-  ) {}
+  ) {
+    this.indexKey = Number.isInteger(damage) && damage >= 0 && damage <= MAX_INDEXED_DAMAGE ? damage * 2 + (accurate ? 1 : 0) : -1;
+  }
+
+  public static INACCURATE: Hitsplat = new Hitsplat(0, false);
 
   public transform(t: HitTransformer, opts: TransformOpts = DEFAULT_TRANSFORM_OPTS): HitDistribution {
     if (!this.accurate && !opts.transformInaccurate) {
@@ -310,16 +322,8 @@ export class HitDistribution {
   }
 }
 
-// the largest damage the array-indexed merge handles; bigger hits take the map
-const MAX_INDEXED_DAMAGE = 4096;
-const MAX_INDEXED_KEY = MAX_INDEXED_DAMAGE * 2 + 1;
-
-/** The key getHash gives a single hitsplat when it is a whole damage in 0..MAX_INDEXED_DAMAGE, else -1 */
-const indexKey = (hitsplats: Hitsplat[]): number => {
-  if (hitsplats.length !== 1) return -1;
-  const { damage, accurate } = hitsplats[0];
-  return Number.isInteger(damage) && damage >= 0 && damage <= MAX_INDEXED_DAMAGE ? damage * 2 + (accurate ? 1 : 0) : -1;
-};
+/** The key getHash gives a list of one hitsplat when it can index the merge's arrays, else -1 */
+const indexKey = (hitsplats: Hitsplat[]): number => (hitsplats.length === 1 ? hitsplats[0].indexKey : -1);
 
 // index buffers, zeroed between uses; a stack, since a transform's own transformer can merge too
 const buffers: Int32Array[] = [];

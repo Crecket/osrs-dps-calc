@@ -211,11 +211,22 @@ export default class BaseCalc {
    * function will return a boolean indicating whether ANY of the provided items are equipped.
    * @param item - item name
    */
-  protected wearing(item: string | string[]): boolean {
-    if (Array.isArray(item)) {
-      return (item as string[]).some((i) => this.allEquippedItems.includes(i));
+  // allEquippedItems as a set, for wearing(), which runs hundreds of times per calc; rebuilt when the list is replaced
+  private equippedNames?: { from: string[]; names: Set<string> };
+
+  private equippedSet(): Set<string> {
+    if (this.equippedNames?.from !== this.allEquippedItems) {
+      this.equippedNames = { from: this.allEquippedItems, names: new Set(this.allEquippedItems) };
     }
-    return this.allEquippedItems.includes(item);
+    return this.equippedNames.names;
+  }
+
+  protected wearing(item: string | string[]): boolean {
+    const names = this.equippedSet();
+    if (Array.isArray(item)) {
+      return (item as string[]).some((i) => names.has(i));
+    }
+    return names.has(item);
   }
 
   /**

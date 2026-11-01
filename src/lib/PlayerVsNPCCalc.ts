@@ -1872,7 +1872,8 @@ export default class PlayerVsNPCCalc extends BaseCalc {
     // raise accurate 0s to 1
     if (accurateZeroApplicable) {
       dist = dist.transform(
-        (h) => HitDistribution.single(1.0, [new Hitsplat(Math.max(h.damage, 1))]),
+        // only accurate hits come here: one that already deals damage stays the same hitsplat
+        (h) => HitDistribution.single(1.0, [h.damage >= 1 && h.accurate ? h : new Hitsplat(Math.max(h.damage, 1))]),
         { transformInaccurate: false },
       );
     }
