@@ -61,6 +61,9 @@ export class SearchCache {
       if (saved && saved.version === currentVersion() && Array.isArray(saved.entries)) {
         this.entries = new Map(saved.entries);
         if (Array.isArray(saved.specs)) this.specs = new Map(saved.specs);
+      } else if (saved) {
+        // searches from older data or an older search: deleted, so they don't sit in storage until the next save
+        await this.storage.removeItem?.(SEARCH_CACHE_KEY);
       }
     } catch (e) {
       console.warn('[raid] Could not read cached searches', e);

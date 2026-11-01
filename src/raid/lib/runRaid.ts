@@ -3,6 +3,7 @@
  * only (basePlayer imports '@/state').
  */
 import { getCanonicalItemId, WEAPON_SPEC_COSTS } from '@/lib/Equipment';
+import { BUILD_ID } from '@/lib/build';
 import { EquipmentCategory } from '@/enums/EquipmentCategory';
 import { BestRunDeps, runBestSetup } from '@/best/lib/run';
 import { bestPool } from '@/best/lib/candidates';
@@ -134,6 +135,8 @@ export const attackLabel = (player: Player): string => {
 };
 
 export interface RaidResult {
+  /** The build that made the result; missing on results made before builds were recorded */
+  build?: string;
   plan: RaidPlan;
   layout: Layout;
   phases: ResultPhase[];
@@ -367,6 +370,7 @@ export const runRaid = async (
   const all = [...candidates, ...plan.picks.flatMap((p) => (p.candidate ? [p.candidate] : []))];
   const hpByKey = new Map(phases.map((p) => [p.phase.key, p.monster.monster.skills.hp]));
   return {
+    build: BUILD_ID,
     plan,
     layout,
     phases: phases.map((p) => ({

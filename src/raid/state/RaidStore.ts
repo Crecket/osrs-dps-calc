@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import localforage from 'localforage';
+import { BUILD_ID } from '@/lib/build';
 import { makeAutoObservable, toJS } from 'mobx';
 import { availableEquipment, getCanonicalItemId } from '@/lib/Equipment';
 import type { PresetStorage } from '@/bulk/state/BulkStore';
@@ -86,6 +87,8 @@ const readSettings = (raw: unknown): RaidSettings => {
 interface SavedResult {
   result: RaidResult;
   key: string;
+  /** The build that made the result; missing on results saved before builds were recorded */
+  build?: string;
 }
 
 export class RaidStore implements AccountEditor {
@@ -129,9 +132,14 @@ export class RaidStore implements AccountEditor {
   private apply(saved: unknown, savedResult: SavedResult | null, readFailed: boolean) {
     this.readFailed = readFailed;
     this.settings = readSettings(isRecord(saved) ? saved.settings : null);
-    if (savedResult && isRecord(savedResult.result) && typeof savedResult.key === 'string') {
+    // a result from another build is left out: the planner or prices may have changed since (the searches stay cached,
+    // so running again only re-plans)
+    if (savedResult && isRecord(savedResult.result) && typeof savedResult.key === 'string' && savedResult.build === BUILD_ID) {
       this.result = savedResult.result;
       this.resultKey = savedResult.key;
+    } else if (savedResult) {
+      // deleted, not just ignored, so it doesn't sit in storage
+      this.storage.removeItem?.(RAID_RESULT_KEY).catch((e) => console.warn('[RaidStore] Could not delete an old result', e));
     }
     this.loaded = true;
   }
@@ -313,7 +321,7 @@ export class RaidStore implements AccountEditor {
   async flushResult() {
     if (!this.canSave || !this.result || !this.resultKey) return;
     try {
-      await this.storage.setItem<SavedResult>(RAID_RESULT_KEY, { result: toJS(this.result), key: this.resultKey });
+      await this.storage.setItem<SavedResult>(RAID_RESULT_KEY, { result: toJS(this.result), key: this.resultKey, build: BUILD_ID });
     } catch (e) {
       console.warn('[RaidStore] Could not save the result', e);
     }

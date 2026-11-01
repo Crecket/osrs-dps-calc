@@ -3,6 +3,7 @@
  * name, without the full player objects.
  */
 import { availableEquipment } from '@/lib/Equipment';
+import { BUILD_ID } from '@/lib/build';
 import { EquipmentPiece } from '@/types/Player';
 import { GEAR_SLOT_ORDER } from '@/bulk/types';
 import { RaidResult, RaidSettings } from '@/raid/lib/runRaid';
@@ -17,6 +18,9 @@ const round = (n: number) => Math.round(n * 100) / 100;
 
 // eslint-disable-next-line import/prefer-default-export
 export const debugReport = (settings: RaidSettings, result: RaidResult): object => ({
+  // the commit the page runs, and the one that made the result (they differ for a result kept from an older build)
+  build: BUILD_ID,
+  resultBuild: result.build ?? 'unknown (made before builds were recorded)',
   settings: {
     ...settings,
     ownedIds: settings.ownedIds.map(nameOf),

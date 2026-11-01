@@ -19,6 +19,8 @@ export const STORAGE_KEY = 'dps-bulk-presets';
 export interface PresetStorage {
   getItem<T>(key: string): Promise<T | null>;
   setItem<T>(key: string, value: T): Promise<T>;
+  /** Deletes a stale entry, so old caches don't pile up in the browser's storage */
+  removeItem?(key: string): Promise<void>;
 }
 
 interface SavedPresets {

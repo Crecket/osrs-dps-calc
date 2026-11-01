@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
-import { RaidStore, RAID_STORAGE_KEY } from '@/raid/state/RaidStore';
+import { RaidStore, RAID_RESULT_KEY, RAID_STORAGE_KEY } from '@/raid/state/RaidStore';
 import tfa from '@/tests/raid/fixtures/tfaSetup.json';
 
 const memoryStorage = () => {
@@ -10,6 +10,9 @@ const memoryStorage = () => {
     setItem: async <T>(key: string, value: T) => {
       data.set(key, JSON.parse(JSON.stringify(value)));
       return value;
+    },
+    removeItem: async (key: string) => {
+      data.delete(key);
     },
   };
 };
@@ -147,5 +150,21 @@ describe('RaidStore', () => {
     expect(again.stale).toBe(false);
     again.setBudget(5);
     expect(again.stale).toBe(true);
+  });
+
+  test('a result from another build is not shown, and is deleted from storage', async () => {
+    const storage = memoryStorage();
+    const store = await loaded(storage);
+    await storage.setItem(RAID_RESULT_KEY, { result: { plan: { totalSeconds: 1 } }, key: store.runKey, build: 'abc1234' });
+    const again = await loaded(storage);
+    expect(again.result).toBeNull();
+    expect(storage.data.has(RAID_RESULT_KEY)).toBe(false);
+  });
+
+  test('a result saved before builds were recorded is dropped too', async () => {
+    const storage = memoryStorage();
+    const store = await loaded(storage);
+    await storage.setItem(RAID_RESULT_KEY, { result: { plan: { totalSeconds: 1 } }, key: store.runKey });
+    expect((await loaded(storage)).result).toBeNull();
   });
 });

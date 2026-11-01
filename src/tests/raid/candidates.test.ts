@@ -59,6 +59,9 @@ const memoryStorage = () => {
       data.set(key, JSON.parse(JSON.stringify(value)));
       return value;
     },
+    removeItem: async (key: string) => {
+      data.delete(key);
+    },
   };
 };
 
@@ -247,6 +250,8 @@ describe('SearchCache', () => {
     const cache = new SearchCache(storage);
     await cache.load();
     expect(cache.get('k')).toBeUndefined();
+    // and the old searches are deleted from storage
+    expect(storage.data.has('dps-raid-searches')).toBe(false);
   });
 
   test('trims to the limit, dropping the least recently used', async () => {
