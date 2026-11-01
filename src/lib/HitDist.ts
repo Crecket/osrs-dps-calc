@@ -123,6 +123,19 @@ export class WeightedHit {
   }
 }
 
+// one-hitsplat lists of an accurate whole damage, shared: hitsplats and their lists never change, and every calc
+// starts from a linear distribution of them
+const ACCURATE_LISTS: Hitsplat[][] = [];
+const accurateList = (damage: number): Hitsplat[] => {
+  if (!Number.isInteger(damage) || damage < 0 || damage > MAX_INDEXED_DAMAGE) return [new Hitsplat(damage)];
+  let list = ACCURATE_LISTS[damage];
+  if (!list) {
+    list = [new Hitsplat(damage)];
+    ACCURATE_LISTS[damage] = list;
+  }
+  return list;
+};
+
 /** One step of d3's sum, which runs on every hit: zeros and NaN are skipped, the rest added in order */
 const addLikeD3 = (total: number, value: number): number => {
   const v = +value;
@@ -314,7 +327,7 @@ export class HitDistribution {
     const d = new HitDistribution([]);
     const hitProb = accuracy / (maximum - minimum + 1);
     for (let i = minimum; i <= maximum; i++) {
-      d.addHit(new WeightedHit(hitProb, [new Hitsplat(i)]));
+      d.addHit(new WeightedHit(hitProb, accurateList(i)));
     }
     d.addHit(new WeightedHit(1 - accuracy, [Hitsplat.INACCURATE]));
     return d;
