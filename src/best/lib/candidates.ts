@@ -53,6 +53,18 @@ const LEAGUES_ONLY = /^Echo |^(V's helm|King's barrage|Infernal tecpatl|Nature's
 // left out for now: every Corrupted item (Gauntlet, PvP and Deadman copies, Corrupted Scythe of Vitur)
 const CORRUPTED = /^Corrupted /;
 
+// cosmetic copies: the Tanzanite and Magma helms are the Serpentine helm with a mutagen, nothing more
+const COSMETIC_COPIES = /^(Tanzanite|Magma) helm$/;
+
+/** Crystal helm, body or legs, in any clan colour: only worth wearing with a crystal bow (Bow of Faerdhinen) */
+export const isCrystalArmour = (e: EquipmentPiece): boolean => /^Crystal (helm|body|legs)( \(|$)/.test(e.name);
+/** A weapon that counts as a crystal bow for the crystal armour's effect, as the calculator checks it */
+export const isCrystalWeapon = (e: EquipmentPiece | null | undefined): boolean => !!e
+  && (e.name === 'Crystal bow' || e.name.includes('Bow of Faerdhinen'));
+/** Crystal armour only with a crystal bow: false for a setup wearing it with any other weapon */
+export const crystalOk = (equipment: PlayerEquipment): boolean => isCrystalWeapon(equipment.weapon)
+  || !Object.values(equipment).some((e) => !!e && isCrystalArmour(e));
+
 /**
  * PvP-only gear: Bounty Hunter copies (bh), which only work on Bounty Hunter worlds, and the Vesta's, Statius's, Morrigan's and Zuriel's gear in every variant (plain, (bh), Corrupted, Deadman, blighted), which comes from LMS, Deadman and Bounty Hunter and works only in PvP areas, and the PvP Arena's Koriff's, Maoma's and Saika's headgear and Wristbands of the Arena.
  */
@@ -73,6 +85,7 @@ export const bestPool = (items: EquipmentPiece[] = availableEquipment): Equipmen
   && !NOT_REAL.test(e.name)
   && !LEAGUES_ONLY.test(e.name)
   && !CORRUPTED.test(e.name)
+  && !COSMETIC_COPIES.test(e.name)
   && !isPvpOnly(e)
   // data artefacts held in the weapon slot: greegrees, Gnomeball (-1), crates and Christmas dinner (0)
   && !(e.slot === 'weapon' && e.speed <= 1));

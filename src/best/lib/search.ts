@@ -10,7 +10,7 @@ import { EquipmentPiece, Player, PlayerEquipment } from '@/types/Player';
 import { spells } from '@/types/Spell';
 import { preparePlayer } from '@/bulk/lib/compute';
 import {
-  GearSlot, paretoFront, ScoreKind, scoreKind, slotCandidates, styleScore, WeaponJob,
+  GearSlot, isCrystalArmour, isCrystalWeapon, paretoFront, ScoreKind, scoreKind, slotCandidates, styleScore, WeaponJob,
 } from '@/best/lib/candidates';
 import { SETS, WEAPON_LINKED } from '@/best/lib/effectItems';
 import { BestStyle } from '@/best/types';
@@ -278,19 +278,37 @@ class TopResults {
  * Exhaustive mode enumerates every combination of candidates when there are at most `opts.cap`, else it falls back to
  * coordinate descent and marks the results approximate. Results are the top `opts.topN` with distinct DPS, best first.
  */
+// per pool, the pool without crystal armour, kept so the per-pool caches still hit
+const withoutCrystalArmour = new WeakMap<EquipmentPiece[], EquipmentPiece[]>();
+/** The items a job may wear: crystal armour only with a crystal bow, nobody wears it for its stats alone */
+export const jobPool = (pool: EquipmentPiece[], job: WeaponJob): EquipmentPiece[] => {
+  if (isCrystalWeapon(itemById(job.weaponId))) return pool;
+  let filtered = withoutCrystalArmour.get(pool);
+  if (!filtered) {
+    filtered = pool.filter((e) => !isCrystalArmour(e));
+    withoutCrystalArmour.set(pool, filtered);
+  }
+  return filtered;
+};
+
 export const searchWeapon = (
   base: Player,
   monster: Monster,
   job: WeaponJob,
-  pool: EquipmentPiece[],
+  allItems: EquipmentPiece[],
   opts: { mode: 'descent' | 'exhaustive'; topN: number; cap: number; effects?: SlotLists },
 ): SearchResult[] => {
+  const pool = jobPool(allItems, job);
   const { style } = job;
   const kind = jobScore(job);
   const slots = searchSlots(job);
   const candidates = candidatesFor(pool, kind);
   const baseline = baselineGear(pool, job);
-  let active = opts.effects ?? activeEffects(base, monster, job, baseline, effectCandidates(pool, style));
+  // shared effects can come from a crystal bow's job
+  const allowed = new Set(pool.map((e) => e.id));
+  let active = opts.effects
+    ? Object.fromEntries(Object.entries(opts.effects).map(([slot, list]) => [slot, (list ?? []).filter((e) => allowed.has(e.id))]))
+    : activeEffects(base, monster, job, baseline, effectCandidates(pool, style));
   if (opts.effects) {
     // the shared effects come from another job: re-test what depends on this job's weapon, spell or ammo
     const linked = activeEffects(base, monster, job, baseline, linkedEffects(pool, job));

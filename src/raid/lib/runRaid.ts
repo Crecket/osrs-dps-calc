@@ -15,7 +15,7 @@ import { defaultAccount } from '@/best/lib/account';
 import { EquipmentPiece, Player } from '@/types/Player';
 import { Spellbook } from '@/types/Spell';
 import {
-  DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS, DefenceCounts, DefenceWeapon, MagicOption, PhasePart, Route,
+  DEFENCE_WEAPON_IDS, DefenceCounts, MagicOption, PhasePart, Route,
 } from '@/raid/types';
 import { raidById } from '@/raid/raids';
 import { routeBosses, routePhases } from '@/raid/lib/route';
@@ -27,10 +27,7 @@ import { SearchCache } from '@/raid/lib/searchCache';
 import {
   routeSpec, SpecRank, specPrice, specRanking,
 } from '@/raid/lib/specs';
-import { BulkMonster } from '@/bulk/types';
-import {
-  mainSetup, NO_SETUP_DPS, orderedItems, RaidPlan, THRALL_DPS,
-} from '@/raid/lib/assemble';
+import { orderedItems, RaidPlan, THRALL_DPS } from '@/raid/lib/assemble';
 import { KitUnit, planKits } from '@/raid/lib/kits';
 import { dpsRater, upgradeLoadout } from '@/raid/lib/upgrade';
 import {
@@ -182,6 +179,8 @@ export const weaponTiers = (
   candidates.forEach((c) => {
     const weaponId = c.setup.player.equipment.weapon?.id;
     if (weaponId === undefined || !hpByKey.has(c.phaseKey)) return;
+    // a held weapon shows as the loadout uses it: only setups of items it holds, not the weapon's best searched gear
+    if (held.has(getCanonicalItemId(weaponId)) && !c.itemIds.every((id) => held.has(id))) return;
     const byWeapon = best.get(c.phaseKey) ?? new Map<number, Candidate>();
     if (!byWeapon.has(weaponId) || byWeapon.get(weaponId)!.dps < c.dps) byWeapon.set(weaponId, c);
     best.set(c.phaseKey, byWeapon);
@@ -234,60 +233,44 @@ export const blockReason = (settings: RaidSettings): string | null => {
   return boss?.rules?.forbiddenMagic?.reason ?? null;
 };
 
-// the most of the budget the Defence weapons may take together (a 89m Elder maul has no place in a 100m loadout); the
-// plan also keeps them within what the setup and the spec weapon leave
+// the most of the budget the player's Defence weapons may take together (a 89m Elder maul has no place in a 100m
+// loadout); the plan also keeps them within what the setup and the spec weapon leave
 export const DEFENCE_BUDGET_SHARE = 0.3;
 
 /**
- * Each phase's Defence specs as the loadout can do them. With prices, the Elder maul, then the Tonalztics of Ralos, then
- * the Dragon warhammer come only while they fit in `allowance` (DEFENCE_BUDGET_SHARE of the budget by default); the
- * specs of a maul or Tonalztics that doesn't fit become Dragon warhammer specs, and those go too when it doesn't fit.
- * An excluded weapon's specs stay, free: a teammate does them.
+ * The Defence weapons the player brings to do their part of the team's configured Defence specs, never an excluded one:
+ * for Elder maul specs the maul, else (when it doesn't fit, not when excluded: a teammate has it then) the Dragon
+ * warhammer, the same job, weaker and far cheaper; for Dragon warhammer specs the warhammer;
+ * for Tonalztics specs the Tonalztics of Ralos, which nothing stands in for. With prices, each only while it fits in
+ * `allowance` (DEFENCE_BUDGET_SHARE of the budget by default), the maul's slot first. The configured specs themselves
+ * stay as they are: the team does them, whatever this player carries.
  */
-export const plannedCounts = (
+export const drainWeapons = (
   settings: RaidSettings,
   priceOf?: (id: number) => number,
   allowance: number = settings.budget * DEFENCE_BUDGET_SHARE,
-): Record<string, DefenceCounts> => {
+): number[] => {
   const raid = raidById(settings.raidId);
-  const own = routePhases(raid, settings.route, settings.counts).filter((p) => !p.phase.defenceFrom);
-  const counts = Object.fromEntries(own.map((p) => [p.phase.key, { ...p.counts }]));
-  if (!priceOf) return counts;
   const excluded = new Set(excludedOf(settings));
-  const teammate = (w: DefenceWeapon) => excluded.has(getCanonicalItemId(DEFENCE_WEAPON_IDS[w]));
-  const used = (w: DefenceWeapon) => own.some((p) => counts[p.phase.key][w] > 0);
+  const phases = routePhases(raid, settings.route, settings.counts);
+  const configured = (w: keyof typeof DEFENCE_WEAPON_IDS) => phases.some((p) => p.counts[w] > 0);
+  const [maul, dwh, ralos] = [DEFENCE_WEAPON_IDS.elderMaul, DEFENCE_WEAPON_IDS.dwh, DEFENCE_WEAPON_IDS.tonalztic].map(getCanonicalItemId);
   let spent = 0;
-  const fits = (w: DefenceWeapon) => {
-    if (teammate(w)) return true;
-    const price = priceOf(getCanonicalItemId(DEFENCE_WEAPON_IDS[w]));
-    if (spent + price > allowance) return false;
-    spent += price;
+  const brings = (id: number) => {
+    if (excluded.has(id)) return false;
+    if (!priceOf) return true;
+    if (spent + priceOf(id) > allowance) return false;
+    spent += priceOf(id);
     return true;
   };
-  const dropped = (['elderMaul', 'tonalztic'] as DefenceWeapon[]).filter((w) => used(w) && !fits(w));
-  const dwh = (used('dwh') || dropped.length > 0) && fits('dwh');
-  Object.values(counts).forEach((c) => {
-    dropped.forEach((w) => {
-      // eslint-disable-next-line no-param-reassign
-      c.dwh += c[w];
-      // eslint-disable-next-line no-param-reassign
-      c[w] = 0;
-    });
-    // eslint-disable-next-line no-param-reassign
-    if (!dwh) c.dwh = 0;
-  });
-  return counts;
-};
-
-/** Each phase's Defence specs a teammate does: those of excluded weapons only */
-export const teammateCounts = (settings: RaidSettings): Record<string, DefenceCounts> => {
-  const excluded = new Set(excludedOf(settings));
-  const counts = plannedCounts(settings);
-  Object.values(counts).forEach((c) => DEFENCE_WEAPONS.forEach((w) => {
-    // eslint-disable-next-line no-param-reassign
-    if (!excluded.has(getCanonicalItemId(DEFENCE_WEAPON_IDS[w]))) c[w] = 0;
-  }));
-  return counts;
+  const out: number[] = [];
+  if (configured('elderMaul') && !excluded.has(maul)) {
+    // an excluded maul's specs are a teammate's; one too dear for the budget becomes the player's warhammer
+    if (brings(maul)) out.push(maul);
+    else if (brings(dwh)) out.push(dwh);
+  } else if (configured('dwh') && brings(dwh)) out.push(dwh);
+  if (configured('tonalztic') && brings(ralos)) out.push(ralos);
+  return out;
 };
 
 /** The items the loadout must hold whatever the budget: the always-bring items, boss requirements (with rules on), the book for thralls */
@@ -302,16 +285,9 @@ export const baseRequiredItems = (settings: RaidSettings): number[] => {
   return [...new Set(ids)].filter((id) => !excluded.has(id));
 };
 
-/** The Defence weapons the loadout holds for these specs: those used and not excluded */
-const defenceWeaponsFor = (settings: RaidSettings, counts: Record<string, DefenceCounts>): number[] => {
-  const excluded = new Set(excludedOf(settings));
-  return DEFENCE_WEAPONS.filter((w) => Object.values(counts).some((c) => c[w] > 0))
-    .map((w) => getCanonicalItemId(DEFENCE_WEAPON_IDS[w])).filter((id) => !excluded.has(id));
-};
-
-/** Items the loadout must hold: the base ones and the Defence weapons in use (as plannedCounts has them, with prices) */
+/** Items the loadout must hold: the base ones and the player's Defence weapons (as drainWeapons has them) */
 export const requiredItems = (settings: RaidSettings, priceOf?: (id: number) => number): number[] => [...new Set([
-  ...baseRequiredItems(settings), ...defenceWeaponsFor(settings, plannedCounts(settings, priceOf)),
+  ...baseRequiredItems(settings), ...drainWeapons(settings, priceOf),
 ])];
 
 let pool: EquipmentPiece[] | null = null;
@@ -320,8 +296,8 @@ const prepare = (settings: RaidSettings, prices: Prices | null) => {
   const raid = raidById(settings.raidId);
   const owned = new Set(settings.ownedIds.map(getCanonicalItemId));
   const priceOf = (id: number) => itemPrice(id, prices, owned);
-  // the specs the budget allows: the searches fight the monsters with the Defence those leave
-  const phases = routePhases(raid, settings.route, plannedCounts(settings, priceOf));
+  // the configured specs: the team lowers the Defence whatever this player carries
+  const phases = routePhases(raid, settings.route, settings.counts);
   const excluded = excludedOf(settings);
   const tiers = tierExclusions(settings.budget, priceOf, excluded, pool, requiredItems(settings, priceOf));
   return {
@@ -363,28 +339,22 @@ export const runRaid = async (
     const styles = part.styles && allowed ? part.styles.filter((st) => allowed.includes(st)) : (part.styles ?? allowed);
     return { key: p.phase.key, hp: p.monster.monster.skills.hp * part.share, styles };
   }));
-  const raid = raidById(settings.raidId);
-  const monstersByCounts = new Map<string, Map<string, BulkMonster>>();
-  const monstersFor = (counts: Record<string, DefenceCounts>) => {
-    const key = JSON.stringify(counts);
-    if (!monstersByCounts.has(key)) {
-      monstersByCounts.set(key, new Map(routePhases(raid, settings.route, counts).map((p) => [p.phase.key, p.monster])));
-    }
-    return monstersByCounts.get(key)!;
-  };
+  // the bosses as the team leaves them: the configured specs, whatever this player carries
+  const monsters = new Map(phases.map((p) => [p.phase.key, p.monster]));
   const baseRequired = baseRequiredItems(settings);
   const costOf = (ids: number[]) => ids.reduce((n, id) => n + priceOf(id), 0);
   const kitPool = items.filter((e) => !excluded.has(getCanonicalItemId(e.id)));
   /**
    * In order of what matters most, never over the budget: (1) a viable setup for every room, kits and weapons from at
-   * most CORE_SHARE of the budget, against the bosses' full Defence (only a teammate's specs); (2) the best spec weapon
-   * the rest pays for; (3) Defence drain the rest after that pays for, the Dragon warhammer before nothing; (4) upgrades
-   * with whatever is left, rated with the drain. A bad setup with a great spec or drain weapon is no plan.
+   * most CORE_SHARE of the budget; (2) the best spec weapon the rest pays for; (3) the player's part of the team's Defence
+   * specs, a drain weapon the rest after that pays for, the Dragon warhammer before nothing; (4) upgrades with whatever
+   * is left. A bad setup with a great spec or drain weapon is no plan. The bosses' Defence is the configured specs'
+   * throughout: the team does them, whatever this player carries.
    */
   const assemble = async (maxItems: number) => {
     const core = await planKits({
       units,
-      monsters: monstersFor(teammateCounts(settings)),
+      monsters,
       candidates,
       priceOf,
       budget: settings.budget * CORE_SHARE,
@@ -400,25 +370,11 @@ export const runRaid = async (
     const spec = routeSpec(specs, (r) => specPrice(r, priceOf) <= Math.min(left, settings.budget * SPEC_BUDGET_SHARE));
     const specIds = spec ? [spec.weaponId, ...(spec.ammoId !== null ? [spec.ammoId] : [])].map(getCanonicalItemId) : [];
     left -= costOf(specIds.filter((id) => !core.itemIds.includes(id)));
-    const counts = plannedCounts(settings, priceOf, Math.max(0, Math.min(left, settings.budget * DEFENCE_BUDGET_SHARE)));
-    const monsters = monstersFor(counts);
-    const requiredIds = [...new Set([...baseRequired, ...specIds, ...defenceWeaponsFor(settings, counts)])];
-    // the setup's DPS with the drain
-    const picks = await Promise.all(core.picks.map(async (pick) => {
-      if (!pick.candidate) return pick;
-      const [dps] = await rate([pick.candidate.setup], monsters.get(pick.key)!);
-      return { ...pick, candidate: { ...pick.candidate, dps }, seconds: pick.hp / Math.max(dps + extraDps, NO_SETUP_DPS) };
-    }));
-    const itemIds = orderedItems(picks, requiredIds);
-    const plan = await upgradeLoadout({
-      plan: {
-        ...core,
-        picks,
-        itemIds,
-        cost: costOf(itemIds),
-        totalSeconds: picks.reduce((n, pick) => n + pick.seconds, 0),
-        main: mainSetup(picks),
-      },
+    const drain = drainWeapons(settings, priceOf, Math.max(0, Math.min(left, settings.budget * DEFENCE_BUDGET_SHARE)));
+    const requiredIds = [...new Set([...baseRequired, ...specIds, ...drain])];
+    const itemIds = orderedItems(core.picks, requiredIds);
+    return upgradeLoadout({
+      plan: { ...core, itemIds, cost: costOf(itemIds) },
       monsters,
       candidates,
       pool: items,
@@ -430,7 +386,6 @@ export const runRaid = async (
       extraDps,
       playerFor,
     }, rate);
-    return { plan, counts };
   };
   // the main setup worn is the one leaving the fewest switches (Masori, the Zaryte crossbow and the book beside it
   // rather than a melee set with everything ranged in the bag), the longest-used of equally good ones
@@ -443,12 +398,12 @@ export const runRaid = async (
   // the item limit assumes all worn slots are filled; when the main setup wears fewer, switches overflow, so plan again
   // with fewer items
   let maxItems = WORN_SLOTS + freeSwitchSlots(settings.supplies, settings.magic);
-  let { plan, counts } = await assemble(maxItems);
+  let plan = await assemble(maxItems);
   let layout = lay(plan);
   for (let i = 0; i < MAX_REPLANS && layout.overflow > 0 && maxItems > 0; i++) {
     maxItems = Math.max(0, Math.min(maxItems, plan.itemIds.length) - layout.overflow);
     // eslint-disable-next-line no-await-in-loop
-    ({ plan, counts } = await assemble(maxItems));
+    plan = await assemble(maxItems);
     layout = lay(plan);
   }
   // the item limit counts every worn slot once; a quiver's slot or a lighter main setup can leave inventory cells free,
@@ -457,14 +412,24 @@ export const runRaid = async (
     const more = Math.max(maxItems, plan.itemIds.length) + freeCells(layout);
     // eslint-disable-next-line no-await-in-loop
     const next = await assemble(more);
-    const nextLayout = lay(next.plan);
-    if (nextLayout.overflow > 0 || next.plan.totalSeconds >= plan.totalSeconds - 1e-6) break;
+    const nextLayout = lay(next);
+    if (nextLayout.overflow > 0 || next.totalSeconds >= plan.totalSeconds - 1e-6) break;
     maxItems = more;
-    ({ plan, counts } = next);
+    plan = next;
     layout = nextLayout;
   }
-  // the upgraded setups count as candidates for the weapon cells
-  const all = [...candidates, ...plan.picks.flatMap((p) => (p.candidate ? [p.candidate] : []))];
+  // the upgraded setups count as candidates for the weapon cells, and each held setup is rated on every phase its style
+  // can deal, so a held weapon shows on every phase with its real DPS in the loadout's gear
+  const heldSetups = plan.picks.flatMap((p) => (p.candidate ? [p.candidate] : []))
+    .filter((c, i, list) => list.findIndex((o) => o.setup.id === c.setup.id) === i);
+  const canDeal = (p: typeof phases[number], style: BestStyle) => (!p.phase.allowedStyles || p.phase.allowedStyles.includes(style))
+    && (!p.phase.parts || p.phase.parts.some((part) => !part.styles || part.styles.includes(style)));
+  const everywhere = (await Promise.all(phases.map(async (p) => {
+    const list = heldSetups.filter((c) => canDeal(p, c.style));
+    const dps = await rate(list.map((c) => c.setup), monsters.get(p.phase.key)!);
+    return list.map((c, i) => ({ ...c, phaseKey: p.phase.key, dps: dps[i] }));
+  }))).flat();
+  const all = [...candidates, ...heldSetups, ...everywhere];
   const hpByKey = new Map(phases.map((p) => [p.phase.key, p.monster.monster.skills.hp]));
   return {
     build: BUILD_ID,
@@ -476,8 +441,7 @@ export const runRaid = async (
       bossId: p.boss.id,
       bossName: p.boss.name,
       hp: p.monster.monster.skills.hp,
-      // the specs the plan does: its Defence weapons' and a teammate's
-      counts: counts[p.phase.defenceFrom ?? p.phase.key] ?? p.counts,
+      counts: p.counts,
       parts: p.phase.parts,
       allowedStyles: p.phase.allowedStyles,
     })),

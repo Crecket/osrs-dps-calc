@@ -11,7 +11,9 @@ import { EquipmentPiece, Player } from '@/types/Player';
 import { PlayerCombatStyle } from '@/types/PlayerCombatStyle';
 import { getCombatStylesForCategory } from '@/utils';
 import { BestRunDeps } from '@/best/lib/run';
-import { GearSlot, scoreKind, styleScore } from '@/best/lib/candidates';
+import {
+  crystalOk, GearSlot, isCrystalArmour, isCrystalWeapon, scoreKind, styleScore,
+} from '@/best/lib/candidates';
 import { SETS } from '@/best/lib/effectItems';
 import { hashKey } from '@/best/lib/resultCache';
 import { BestStyle } from '@/best/types';
@@ -56,8 +58,24 @@ const MAX_STEPS = 60;
 const MAX_SET_ROUNDS = 4;
 // weapons given to single units, and the other weapons tried per unit
 const MAX_WEAPON_ADDS = 4;
+// armour switches swapped for pieces another setup wears
+const MAX_CAMPS = 12;
 const WEAPONS_PER_UNIT = 5;
 const MIN_GAIN = 1e-6;
+// what an armour switch (an item only one setup wears) must save over the raid for its bag cell: most players camp the
+// main setup's piece rather than bring a slightly better one, boots most of all
+const SWITCH_SECONDS = 30;
+const BOOT_SWITCH_SECONDS = 60;
+const switchSeconds = (slot: GearSlot | 'stance'): number => {
+  if (slot === 'feet') return BOOT_SWITCH_SECONDS;
+  if (slot === 'stance' || slot === 'ammo') return 0;
+  return SWITCH_SECONDS;
+};
+/** What a change in `slot` growing the loadout from `from` items to `to` must save: an armour switch its cell's worth */
+const switchGain = (slot: GearSlot | 'stance', from: number, to: number) => Math.max(
+  minGainFor(from, to),
+  MIN_GAIN + switchSeconds(slot) * Math.max(0, to - from),
+);
 const SLOTS = GEAR_SLOT_ORDER.filter((s): s is GearSlot => s !== 'weapon');
 
 interface Unit {
@@ -133,7 +151,8 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
       if ((slot === 'shield' && weapon.isTwoHanded) || (slot === 'ammo' && isBlowpipe(weapon))
         || (slot === 'ring' && wearsLightbearer(c.style))) return [];
       const current = c.setup.player.equipment[slot];
-      let items = (bySlot.get(slot) ?? []).filter((e) => e.id !== current?.id);
+      // crystal armour only with a crystal bow
+      let items = (bySlot.get(slot) ?? []).filter((e) => e.id !== current?.id && (isCrystalWeapon(weapon) || !isCrystalArmour(e)));
       if (slot === 'ammo') items = items.filter((e) => ammoApplicability(weapon.id, e.id) === AmmoApplicability.INCLUDED);
       const top = items.filter((e) => !searched.has(e.id) && (!current || value(e) > value(current)))
         .sort((a, b) => value(b) - value(a))
@@ -240,7 +259,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           if (nextCost > cap || next.size > Math.max(maxItems, current.size)) continue;
           const gain = gainOf(group, move.next);
           // NaN when a setup does no damage
-          if (!(gain > minGainFor(current.size, next.size))) continue;
+          if (!(gain > switchGain(move.slot, current.size, next.size))) continue;
           const score = gain / (Math.max(0, nextCost - cost) + COST_SMOOTHING);
           if (!best || score > best.score) {
             best = {
@@ -285,7 +304,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           const next = a.group === b.group
             ? loadout({ group: a.group, items: swapped(swapped(a.group.items, a.move), b.move) })
             : loadout({ group: a.group, items: swapped(a.group.items, a.move) }, { group: b.group, items: swapped(b.group.items, b.move) });
-          if (costOf(next) > cap || next.size > Math.max(maxItems, current.size) || gain <= minGainFor(current.size, next.size)) continue;
+          if (costOf(next) > cap || next.size > Math.max(maxItems, current.size) || gain <= Math.max(switchGain(a.move.slot, current.size, next.size), switchGain(b.move.slot, current.size, next.size))) continue;
           best = { a, b, gain };
           break;
         }
@@ -340,7 +359,8 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
       }));
       if (!wearing.length) continue;
       const value = valueFor(wearing[0].units[0].candidate);
-      const options = slots.map((slot) => (bySlot.get(slot) ?? []).filter((e) => !names.has(familyOf(e)))
+      const crystal = isCrystalWeapon(wearing[0].units[0].candidate.setup.player.equipment.weapon);
+      const options = slots.map((slot) => (bySlot.get(slot) ?? []).filter((e) => !names.has(familyOf(e)) && (crystal || !isCrystalArmour(e)))
         .sort((a, b) => value(b) - value(a) || priceOf(a.id) - priceOf(b.id)));
       if (options.some((o) => !o.length)) continue;
       // the best at a few ranks, and the best that fits the budget slot by slot
@@ -412,7 +432,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
         shield: weapon.isTwoHanded ? null : (mine.gear.shield ?? theirs.gear.shield ?? null),
       };
       const next = fromStored({ ...theirs, gear }, u.pick.key, input.playerFor(theirs.style));
-      if (!next) return [];
+      if (!next || !crystalOk(next.setup.player.equipment)) return [];
       variant += 1;
       return [{ ...next, setup: { ...next.setup, id: `upgrade-${variant}` } }];
     });
@@ -549,6 +569,55 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     });
   }
 
+  /**
+   * Armour switches that don't earn their cell go: a piece only one setup wears is swapped for the piece another setup
+   * wears in that slot when that costs at most its switch's worth of seconds (the kits come whole, every piece a switch).
+   * The cheapest loss first, one at a time.
+   */
+  const campSwitches = async (): Promise<boolean> => {
+    let best: { group: Group; rated: Candidate[]; loss: number } | null = null;
+    for (const group of groups) {
+      const equipment = group.units[0].candidate.setup.player.equipment;
+      for (const slot of SLOTS) {
+        const mine = equipment[slot];
+        if (slot === 'ammo' || !mine) continue;
+        const id = getCanonicalItemId(mine.id);
+        if (required.has(id) || groups.some((g) => g !== group && g.items.includes(id))) continue;
+        const elsewhere = groups.filter((g) => g !== group).map((g) => g.units[0].candidate.setup.player.equipment[slot])
+          .filter((e): e is EquipmentPiece => !!e)
+          .filter((e, i, list) => list.findIndex((o) => o.id === e.id) === i);
+        for (const other of elsewhere) {
+          const next = build(group, (st) => ({ ...st, gear: { ...st.gear, [slot]: other.id } }));
+          if (!next || !next.every((n) => crystalOk(n.setup.player.equipment))) continue;
+          // eslint-disable-next-line no-await-in-loop
+          const rated = await Promise.all(group.units.map((u, i) => rate([next[i].setup], u.monster).then(([d]) => ({ ...next[i], dps: d }))));
+          const loss = -gainOf(group, rated);
+          if (loss <= switchSeconds(slot) && (!best || loss < best.loss)) best = { group, rated, loss };
+        }
+      }
+    }
+    if (!best) return false;
+    const { group, rated } = best;
+    group.units.forEach((u, i) => {
+      // eslint-disable-next-line no-param-reassign
+      u.candidate = rated[i];
+    });
+    group.items = [...new Set(rated.flatMap((c) => c.itemIds))];
+    group.moves = await movesFor(group);
+    return true;
+  };
+  // after the variant merge, which keeps one item that covers both without a loss; the money a camped switch frees goes
+  // to the climb again, with every group's moves as its setups now are
+  let camped = 0;
+  // eslint-disable-next-line no-await-in-loop
+  while (camped < MAX_CAMPS && await campSwitches()) camped += 1;
+  if (camped > 0) {
+    for (const group of groups) {
+      // eslint-disable-next-line no-await-in-loop
+      group.moves = await movesFor(group);
+    }
+    await climb();
+  }
   const upgraded = new Map(groups.flatMap((g) => g.units.map((u) => [u.pick, u.candidate] as const)));
   const picks = plan.picks.map((p) => {
     const candidate = upgraded.get(p) ?? p.candidate;

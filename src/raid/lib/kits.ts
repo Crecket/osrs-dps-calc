@@ -11,7 +11,9 @@ import {
 import { getCombatStylesForCategory } from '@/utils';
 import { EquipmentPiece, Player } from '@/types/Player';
 import { Gear } from '@/best/lib/search';
-import { scoreKind, styleScore, WeaponJob } from '@/best/lib/candidates';
+import {
+  crystalOk, scoreKind, styleScore, WeaponJob,
+} from '@/best/lib/candidates';
 import { BestStyle } from '@/best/types';
 import { BulkMonster } from '@/bulk/types';
 import { Candidate, fromStored, toStored } from '@/raid/lib/candidates';
@@ -234,7 +236,7 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
       const built = fromStored({
         style: w.style, job: w.job, dps: 0, gear: { ...kit.gear, ammo: w.ammoId, shield: w.shieldId },
       }, 'kit', input.playerFor(w.style));
-      if (!built) return;
+      if (!built || !crystalOk(built.setup.player.equipment)) return;
       id += 1;
       byWeapon.set(w, { candidate: { ...built, setup: { ...built.setup, id: `kit-${id}` } }, dps: units.map(() => 0) });
     });

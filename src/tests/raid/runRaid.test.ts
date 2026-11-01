@@ -9,7 +9,7 @@ import { basePlayer } from '@/best/lib/basePlayer';
 import { BulkRow } from '@/bulk/types';
 import { SearchCache } from '@/raid/lib/searchCache';
 import {
-  attackLabel, dartOptions, defaultSettings, excludedOf, plannedCounts, raidBaseInputs, requiredItems, runRaid, searchesNeeded, weaponTiers,
+  attackLabel, dartOptions, defaultSettings, excludedOf, raidBaseInputs, requiredItems, runRaid, searchesNeeded, weaponTiers,
 } from '@/raid/lib/runRaid';
 import { Candidate } from '@/raid/lib/candidates';
 import { routePhases } from '@/raid/lib/route';
@@ -113,27 +113,18 @@ describe('requiredItems', () => {
     expect(bork.counts.elderMaul).toBe(2);
   });
 
-  test('Defence weapons take at most 30% of the budget; the Dragon warhammer takes the specs of one that doesn\'t fit', () => {
+  test('the player brings Defence weapons for at most 30% of the budget, a Dragon warhammer when the maul and Tonalztics don\'t fit', () => {
     const prices = new Map([[21003, 89e6], [28922, 179e6], [13576, 13e6]]);
     const priceOf = (id: number) => prices.get(id) ?? 0;
-    const specs = (budget: number) => {
-      const counts = plannedCounts({ ...defaultSettings(), budget }, priceOf);
-      return Object.values(counts).reduce((n, c) => ({
-        elderMaul: n.elderMaul + c.elderMaul, dwh: n.dwh + c.dwh, tonalztic: n.tonalztic + c.tonalztic,
-      }), { elderMaul: 0, dwh: 0, tonalztic: 0 });
-    };
-    const all = specs(10e9);
-    expect(all.elderMaul).toBeGreaterThan(0);
-    expect(all.tonalztic).toBeGreaterThan(0);
-    // 100m: neither the maul nor the Tonalztics, every spec done with the Dragon warhammer
+    // 100m: neither the maul nor the Tonalztics, a Dragon warhammer to help with the team's specs
     const small = requiredItems({ ...defaultSettings(), budget: 100e6 }, priceOf);
     expect(small).toContain(13576);
     expect(small).not.toContain(21003);
     expect(small).not.toContain(28922);
-    expect(specs(100e6)).toEqual({ elderMaul: 0, tonalztic: 0, dwh: all.dwh + all.elderMaul + all.tonalztic });
     // 500m: the maul (89m of the 150m), not the Tonalztics too
-    expect(requiredItems({ ...defaultSettings(), budget: 500e6 }, priceOf)).toEqual(expect.arrayContaining([21003, 13576]));
-    expect(specs(500e6)).toEqual({ elderMaul: all.elderMaul, tonalztic: 0, dwh: all.dwh + all.tonalztic });
+    const mid = requiredItems({ ...defaultSettings(), budget: 500e6 }, priceOf);
+    expect(mid).toContain(21003);
+    expect(mid).not.toContain(28922);
     // 1b: both
     expect(requiredItems({ ...defaultSettings(), budget: 1e9 }, priceOf)).toEqual(expect.arrayContaining([21003, 28922]));
     // without prices nothing is weighed
@@ -265,10 +256,11 @@ describe('runRaid', () => {
     const result = await runRaid(settings, prices, { ...(deps as object), rows } as never, () => {}, new SearchCache(memoryStorage()), search);
     expect(result.plan.cost).toBeLessThanOrEqual(100e6);
     [26374, 21003, 28922].forEach((id) => expect(result.plan.itemIds).not.toContain(id));
-    // the maul's and Tonalztics' specs became Dragon warhammer ones
+    // the player helps with a Dragon warhammer; the bosses keep the configured specs the team does
     expect(result.plan.itemIds).toContain(13576);
-    expect(result.phases.some((p) => p.counts.dwh > 0)).toBe(true);
-    expect(result.phases.every((p) => p.counts.elderMaul === 0 && p.counts.tonalztic === 0)).toBe(true);
+    const configured = routePhases(fa, settings.route, settings.counts);
+    expect(result.phases.map((p) => p.counts)).toEqual(configured.map((p) => p.counts));
+    expect(result.phases.some((p) => p.counts.elderMaul > 0)).toBe(true);
   });
 
   test('a cheap change re-plans from the cache without searching', async () => {
