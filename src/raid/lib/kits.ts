@@ -321,14 +321,14 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
       }
       if (!changed) break;
     }
-    // every unit gets a setup: one nothing taken can deal gets the cheapest option that can, within the budget when one
-    // is, else the cheapest at all (a Rune crossbow beats no setup)
+    // every unit gets a setup: one nothing taken can deal gets the cheapest option that can, never over the budget
+    // (a Rune crossbow beats no setup)
     units.forEach((_, j) => {
       if ((current.best[j]?.dps[j] ?? 0) > 0) return;
       const able = options.filter((o) => !taken.includes(o) && o.combo.dps[j] > 0)
         .map((o) => ({ o, next: evaluate(chosen, [...taken, o]) }))
-        .sort((a, b) => Number(a.next.cost > cap) - Number(b.next.cost > cap)
-          || a.next.cost - b.next.cost || a.next.seconds - b.next.seconds);
+        .filter(({ next }) => next.cost <= Math.max(cap, current.cost))
+        .sort((a, b) => a.next.cost - b.next.cost || a.next.seconds - b.next.seconds);
       if (!able.length) return;
       taken = [...taken, able[0].o];
       current = able[0].next;
@@ -351,11 +351,9 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
     if (costOf(items) > cap || items.size > Math.max(maxItems, required.length)) continue;
     for (const costAware of [true, false]) {
       const plan = withWeapons(chosen, costAware);
-      // a setup for every unit first, then within the budget (a plan only goes over to give a unit its only setup),
-      // then fastest, then cheapest
+      // a setup for every unit first, then fastest, then cheapest (no plan goes over the budget)
       const uncovered = (p: Plan) => p.picks.filter((c, j) => !c || !(c.dps[j] > 0)).length;
-      const over = (p: Plan) => p.cost > cap;
-      const better = (a: Plan, b: Plan) => uncovered(a) - uncovered(b) || Number(over(a)) - Number(over(b))
+      const better = (a: Plan, b: Plan) => uncovered(a) - uncovered(b)
         || (a.seconds < b.seconds - MIN_GAIN ? -1 : 0) || (b.seconds < a.seconds - MIN_GAIN ? 1 : 0) || a.cost - b.cost;
       if (!bestPlan || better(plan, bestPlan) < 0) bestPlan = plan;
     }

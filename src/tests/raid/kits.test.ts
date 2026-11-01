@@ -75,16 +75,14 @@ const input = (over: Partial<KitInput>): KitInput => ({
 });
 
 describe('planKits', () => {
-  test('every phase gets a setup even when the budget is spent: the cheapest weapon that can deal it, without armour', async () => {
-    // the required 500m item takes the whole budget; the bowfa is the cheaper of the two bows
-    const prices = new Map([[ZCB, 500e6], [TBOW, 1e9], [ARROW, 1000], [BOWFA, 40e6], ...MASORI.map((id) => [id, 10e6] as [number, number])]);
-    const plan = await planKits(input({
-      priceOf: (id) => prices.get(id) ?? 0, budget: 100e6, requiredIds: [ZCB],
-    }), rate);
+  test('every phase gets a setup within the budget: the bow it can pay for, never over the budget', async () => {
+    // the Twisted bow is far out of reach; the bowfa and Masori fit the 100m
+    const prices = new Map([[TBOW, 1e9], [ARROW, 1000], [BOWFA, 40e6], ...MASORI.map((id) => [id, 10e6] as [number, number])]);
+    const plan = await planKits(input({ priceOf: (id) => prices.get(id) ?? 0, budget: 100e6 }), rate);
     expect(plan.picks.every((p) => p.candidate !== null)).toBe(true);
+    expect(plan.cost).toBeLessThanOrEqual(100e6);
     expect(plan.itemIds).toContain(BOWFA);
     expect(plan.itemIds).not.toContain(TBOW);
-    MASORI.forEach((id) => expect(plan.itemIds).not.toContain(id));
   });
 
   test('one ranged kit for every phase: Masori and the Twisted bow, no void', async () => {

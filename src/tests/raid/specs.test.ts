@@ -9,7 +9,7 @@ import { generateEmptyPlayer } from '@/state';
 import { availableEquipment } from '@/lib/Equipment';
 import { getCombatStylesForCategory } from '@/utils';
 import {
-  rankSpecs, routeSpec, specChoices, specRanking, specSaving,
+  rankSpecs, routeSpec, specRanking,
 } from '@/raid/lib/specs';
 
 const ZCB = 26374;
@@ -26,33 +26,6 @@ describe('routeSpec', () => {
     const specs = { a: [zcb, claws], b: [zcb, claws] };
     expect(routeSpec(specs)?.weaponId).toBe(26374);
     expect(routeSpec(specs, (r) => r.weaponId !== 26374)?.weaponId).toBe(13652);
-  });
-
-  test('specChoices offers the best spec at a few price levels, a free one and none', () => {
-    const zcb = {
-      weaponId: 26374, cost: 75, expected: 100, dps: 28, ammoId: null,
-    };
-    const claws = {
-      weaponId: 13652, cost: 50, expected: 57, dps: 24, ammoId: null,
-    };
-    const prices = new Map([[26374, 361e6], [13652, 31e6]]);
-    const choices = specChoices({ a: [zcb, claws] }, (id) => prices.get(id) ?? 0, 400e6);
-    expect(choices.map((c) => c?.weaponId ?? null)).toEqual([26374, 13652, null]);
-  });
-
-  test('specSaving counts the energy the raid regenerates, less the Defence specs, on the phases the spec can hit', () => {
-    const claws = {
-      weaponId: 13652, cost: 50, expected: 60, dps: 25, ammoId: null,
-    };
-    const melee = { style: 'slash' } as Candidate;
-    // 10 dps for 300 s: 100 + 100 energy, so 4 specs, each dealing 60 where the setup deals 24 in its 2.4 s: 3.6 s saved
-    const picks = [{
-      key: 'a', hp: 3000, seconds: 300, candidate: melee,
-    }];
-    expect(specSaving(claws, { a: [claws] }, picks, 0)).toBeCloseTo(4 * 3.6);
-    expect(specSaving(claws, { a: [claws] }, picks, 100)).toBeCloseTo(2 * 3.6);
-    expect(specSaving(claws, { b: [claws] }, picks, 0)).toBe(0);
-    expect(specSaving(null, { a: [claws] }, picks, 0)).toBe(0);
   });
 });
 

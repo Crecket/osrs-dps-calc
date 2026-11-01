@@ -252,6 +252,25 @@ describe('runRaid', () => {
     expect(result.layout.inventory.some((c) => c?.kind === 'item' && c.itemId === 26374)).toBe(true);
   });
 
+  test('a small budget is never exceeded: no spec or drain weapon it can\'t pay for after the setup', async () => {
+    const rows = {
+      run: jest.fn(async (setups: { id: string; player: { equipment: { weapon: { id: number } | null } } }[]) => setups
+        .map((st) => ({ setupId: st.id, dps: 10, spec: { expected: st.player.equipment.weapon?.id === 26374 ? 90 : 0 } }))),
+      cancel: jest.fn(),
+    };
+    // prices by id: the Zaryte crossbow, Elder maul and Tonalztics are out of reach of 100m, the Dragon warhammer isn't
+    const byId = new Map([[26374, 361e6], [21003, 89e6], [28919, 179e6], [28922, 179e6], [13576, 13e6], [20997, 1e9], [11212, 3000]]);
+    const prices = { byId, byName: new Map<string, number>() };
+    const settings = { ...defaultSettings(), budget: 100e6 };
+    const result = await runRaid(settings, prices, { ...(deps as object), rows } as never, () => {}, new SearchCache(memoryStorage()), search);
+    expect(result.plan.cost).toBeLessThanOrEqual(100e6);
+    [26374, 21003, 28922].forEach((id) => expect(result.plan.itemIds).not.toContain(id));
+    // the maul's and Tonalztics' specs became Dragon warhammer ones
+    expect(result.plan.itemIds).toContain(13576);
+    expect(result.phases.some((p) => p.counts.dwh > 0)).toBe(true);
+    expect(result.phases.every((p) => p.counts.elderMaul === 0 && p.counts.tonalztic === 0)).toBe(true);
+  });
+
   test('a cheap change re-plans from the cache without searching', async () => {
     const cache = new SearchCache(memoryStorage());
     const settings = defaultSettings();

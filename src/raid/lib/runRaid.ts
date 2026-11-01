@@ -2,7 +2,7 @@
  * The raid gear pipeline: route phases, price tiers, candidate searches (cached), assembly and layout. Main thread
  * only (basePlayer imports '@/state').
  */
-import { getCanonicalItemId, WEAPON_SPEC_COSTS } from '@/lib/Equipment';
+import { getCanonicalItemId } from '@/lib/Equipment';
 import { BUILD_ID } from '@/lib/build';
 import { EquipmentCategory } from '@/enums/EquipmentCategory';
 import { BestRunDeps, runBestSetup } from '@/best/lib/run';
@@ -15,7 +15,7 @@ import { defaultAccount } from '@/best/lib/account';
 import { EquipmentPiece, Player } from '@/types/Player';
 import { Spellbook } from '@/types/Spell';
 import {
-  DEFENCE_WEAPON_IDS, DEFENCE_WEAPON_NAMES, DEFENCE_WEAPONS, DefenceCounts, DefenceWeapon, MagicOption, PhasePart, Route,
+  DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS, DefenceCounts, DefenceWeapon, MagicOption, PhasePart, Route,
 } from '@/raid/types';
 import { raidById } from '@/raid/raids';
 import { routeBosses, routePhases } from '@/raid/lib/route';
@@ -25,9 +25,12 @@ import {
 } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
 import {
-  SpecRank, specChoices, specRanking, specSaving,
+  routeSpec, SpecRank, specPrice, specRanking,
 } from '@/raid/lib/specs';
-import { RaidPlan, THRALL_DPS } from '@/raid/lib/assemble';
+import { BulkMonster } from '@/bulk/types';
+import {
+  mainSetup, NO_SETUP_DPS, orderedItems, RaidPlan, THRALL_DPS,
+} from '@/raid/lib/assemble';
 import { KitUnit, planKits } from '@/raid/lib/kits';
 import { dpsRater, upgradeLoadout } from '@/raid/lib/upgrade';
 import {
@@ -35,6 +38,10 @@ import {
 } from '@/raid/lib/layout';
 
 export const BOOK_OF_THE_DEAD = 25818;
+// the most of the budget the viable setup (kits and weapons for every room) may take, before the spec and drain weapons
+export const CORE_SHARE = 0.7;
+// the most of the budget the spec weapon may take
+export const SPEC_BUDGET_SHARE = 0.3;
 // worn slots besides ammo, which a second ammo shares through the quiver
 const WORN_SLOTS = 11;
 const MAX_REPLANS = 5;
@@ -227,61 +234,85 @@ export const blockReason = (settings: RaidSettings): string | null => {
   return boss?.rules?.forbiddenMagic?.reason ?? null;
 };
 
-// the most of the budget the Defence weapons may take together: a 89m Elder maul has no place in a 100m loadout
+// the most of the budget the Defence weapons may take together (a 89m Elder maul has no place in a 100m loadout); the
+// plan also keeps them within what the setup and the spec weapon leave
 export const DEFENCE_BUDGET_SHARE = 0.3;
 
 /**
- * Each phase's Defence specs as the loadout can do them. With prices, the Elder maul and then the Tonalztics of Ralos
- * come only while they fit in DEFENCE_BUDGET_SHARE of the budget; the specs of one that doesn't become Dragon
- * warhammer specs, or none when that doesn't fit either. An excluded weapon's specs stay: a teammate does them.
+ * Each phase's Defence specs as the loadout can do them. With prices, the Elder maul, then the Tonalztics of Ralos, then
+ * the Dragon warhammer come only while they fit in `allowance` (DEFENCE_BUDGET_SHARE of the budget by default); the
+ * specs of a maul or Tonalztics that doesn't fit become Dragon warhammer specs, and those go too when it doesn't fit.
+ * An excluded weapon's specs stay, free: a teammate does them.
  */
-export const plannedCounts = (settings: RaidSettings, priceOf?: (id: number) => number): Record<string, DefenceCounts> => {
+export const plannedCounts = (
+  settings: RaidSettings,
+  priceOf?: (id: number) => number,
+  allowance: number = settings.budget * DEFENCE_BUDGET_SHARE,
+): Record<string, DefenceCounts> => {
   const raid = raidById(settings.raidId);
-  const phases = routePhases(raid, settings.route, settings.counts);
-  const own = phases.filter((p) => !p.phase.defenceFrom);
+  const own = routePhases(raid, settings.route, settings.counts).filter((p) => !p.phase.defenceFrom);
   const counts = Object.fromEntries(own.map((p) => [p.phase.key, { ...p.counts }]));
   if (!priceOf) return counts;
   const excluded = new Set(excludedOf(settings));
+  const teammate = (w: DefenceWeapon) => excluded.has(getCanonicalItemId(DEFENCE_WEAPON_IDS[w]));
   const used = (w: DefenceWeapon) => own.some((p) => counts[p.phase.key][w] > 0);
-  const allowance = settings.budget * DEFENCE_BUDGET_SHARE;
   let spent = 0;
   const fits = (w: DefenceWeapon) => {
-    const id = getCanonicalItemId(DEFENCE_WEAPON_IDS[w]);
-    if (excluded.has(id)) return true;
-    if (spent + priceOf(id) > allowance) return false;
-    spent += priceOf(id);
+    if (teammate(w)) return true;
+    const price = priceOf(getCanonicalItemId(DEFENCE_WEAPON_IDS[w]));
+    if (spent + price > allowance) return false;
+    spent += price;
     return true;
   };
   const dropped = (['elderMaul', 'tonalztic'] as DefenceWeapon[]).filter((w) => used(w) && !fits(w));
-  if (!dropped.length) return counts;
-  // the Dragon warhammer takes the dropped specs, if it is used already, fits, or a teammate has it
-  const dwhOk = used('dwh') || fits('dwh');
+  const dwh = (used('dwh') || dropped.length > 0) && fits('dwh');
   Object.values(counts).forEach((c) => {
     dropped.forEach((w) => {
-      if (dwhOk) c.dwh += c[w];
+      // eslint-disable-next-line no-param-reassign
+      c.dwh += c[w];
       // eslint-disable-next-line no-param-reassign
       c[w] = 0;
     });
+    // eslint-disable-next-line no-param-reassign
+    if (!dwh) c.dwh = 0;
   });
   return counts;
 };
 
-/**
- * Items the loadout must hold: the always-bring items, boss requirements (with rules on), defence weapons in use (as
- * plannedCounts has them, with prices), the book for thralls
- */
-export const requiredItems = (settings: RaidSettings, priceOf?: (id: number) => number): number[] => {
+/** Each phase's Defence specs a teammate does: those of excluded weapons only */
+export const teammateCounts = (settings: RaidSettings): Record<string, DefenceCounts> => {
+  const excluded = new Set(excludedOf(settings));
+  const counts = plannedCounts(settings);
+  Object.values(counts).forEach((c) => DEFENCE_WEAPONS.forEach((w) => {
+    // eslint-disable-next-line no-param-reassign
+    if (!excluded.has(getCanonicalItemId(DEFENCE_WEAPON_IDS[w]))) c[w] = 0;
+  }));
+  return counts;
+};
+
+/** The items the loadout must hold whatever the budget: the always-bring items, boss requirements (with rules on), the book for thralls */
+export const baseRequiredItems = (settings: RaidSettings): number[] => {
   const raid = raidById(settings.raidId);
   const excluded = new Set(excludedOf(settings));
-  const phases = routePhases(raid, settings.route, plannedCounts(settings, priceOf));
   const ids = [
     ...settings.bringIds,
     ...(settings.rulesOn ? routeBosses(raid, settings.route).flatMap((b) => b.rules?.requiredItemIds ?? []) : []),
-    ...DEFENCE_WEAPONS.filter((w) => phases.some((p) => p.counts[w] > 0)).map((w) => DEFENCE_WEAPON_IDS[w]),
     ...(settings.magic === 'thralls' ? [BOOK_OF_THE_DEAD] : []),
   ].map(getCanonicalItemId);
   return [...new Set(ids)].filter((id) => !excluded.has(id));
 };
+
+/** The Defence weapons the loadout holds for these specs: those used and not excluded */
+const defenceWeaponsFor = (settings: RaidSettings, counts: Record<string, DefenceCounts>): number[] => {
+  const excluded = new Set(excludedOf(settings));
+  return DEFENCE_WEAPONS.filter((w) => Object.values(counts).some((c) => c[w] > 0))
+    .map((w) => getCanonicalItemId(DEFENCE_WEAPON_IDS[w])).filter((id) => !excluded.has(id));
+};
+
+/** Items the loadout must hold: the base ones and the Defence weapons in use (as plannedCounts has them, with prices) */
+export const requiredItems = (settings: RaidSettings, priceOf?: (id: number) => number): number[] => [...new Set([
+  ...baseRequiredItems(settings), ...defenceWeaponsFor(settings, plannedCounts(settings, priceOf)),
+])];
 
 let pool: EquipmentPiece[] | null = null;
 const prepare = (settings: RaidSettings, prices: Prices | null) => {
@@ -320,55 +351,87 @@ export const runRaid = async (
   const extraDps = settings.magic === 'thralls' ? THRALL_DPS : 0;
   const excluded = new Set(excludedOf(settings));
   const specs = await specRanking(phases, candidates, [...excluded], deps, cache);
-  // the spec weapon and its spec ammo fit in the budget the required items leave: a spec weapon never takes the
-  // loadout over budget (100m never brings a 361m Zaryte crossbow)
-  const required = requiredItems(settings, priceOf);
-  const specAllowance = Math.max(0, settings.budget - required.reduce((n, id) => n + priceOf(id), 0));
-  // the Defence specs the loadout does itself take spec energy first
-  const defenceEnergy = DEFENCE_WEAPONS.filter((w) => required.includes(DEFENCE_WEAPON_IDS[w]))
-    .reduce((n, w) => n + phases.reduce((m, p) => m + p.counts[w], 0) * (WEAPON_SPEC_COSTS[DEFENCE_WEAPON_NAMES[w]] ?? 50), 0);
-  const requiredFor = (spec: SpecRank | null) => [...new Set([
-    ...required,
-    ...(spec ? [spec.weaponId, ...(spec.ammoId !== null ? [spec.ammoId] : [])].map(getCanonicalItemId) : []),
-  ])];
   const players = new Map<BestStyle, Player>();
   const playerFor = (style: BestStyle) => {
     if (!players.has(style)) players.set(style, basePlayer(base, style));
     return players.get(style)!;
   };
   const rate = dpsRater(deps, cache);
-  // a kit per style and its weapons first, then better items slot by slot with the budget and slots left
   // what has to be dealt: each phase, or each part of one, by the styles that can
   const units = phases.flatMap((p) => (p.phase.parts ?? [{ share: 1 }]).map((part): KitUnit => {
     const allowed = p.phase.allowedStyles;
     const styles = part.styles && allowed ? part.styles.filter((st) => allowed.includes(st)) : (part.styles ?? allowed);
     return { key: p.phase.key, hp: p.monster.monster.skills.hp * part.share, styles };
   }));
-  const monsters = new Map(phases.map((p) => [p.phase.key, p.monster]));
-  const assemble = async (maxItems: number, requiredIds: number[]) => upgradeLoadout({
-    plan: await planKits({
+  const raid = raidById(settings.raidId);
+  const monstersByCounts = new Map<string, Map<string, BulkMonster>>();
+  const monstersFor = (counts: Record<string, DefenceCounts>) => {
+    const key = JSON.stringify(counts);
+    if (!monstersByCounts.has(key)) {
+      monstersByCounts.set(key, new Map(routePhases(raid, settings.route, counts).map((p) => [p.phase.key, p.monster])));
+    }
+    return monstersByCounts.get(key)!;
+  };
+  const baseRequired = baseRequiredItems(settings);
+  const costOf = (ids: number[]) => ids.reduce((n, id) => n + priceOf(id), 0);
+  const kitPool = items.filter((e) => !excluded.has(getCanonicalItemId(e.id)));
+  /**
+   * In order of what matters most, never over the budget: (1) a viable setup for every room, kits and weapons from at
+   * most CORE_SHARE of the budget, against the bosses' full Defence (only a teammate's specs); (2) the best spec weapon
+   * the rest pays for; (3) Defence drain the rest after that pays for, the Dragon warhammer before nothing; (4) upgrades
+   * with whatever is left, rated with the drain. A bad setup with a great spec or drain weapon is no plan.
+   */
+  const assemble = async (maxItems: number) => {
+    const core = await planKits({
       units,
+      monsters: monstersFor(teammateCounts(settings)),
+      candidates,
+      priceOf,
+      budget: settings.budget * CORE_SHARE,
+      maxItems,
+      requiredIds: baseRequired,
+      extraDps,
+      playerFor,
+      pool: kitPool,
+    }, rate);
+    let left = settings.budget - core.cost;
+    // each from the money left, and at most its share of the budget: a 361m Zaryte crossbow or 89m Elder maul has no
+    // place in a small loadout however cheap its setup
+    const spec = routeSpec(specs, (r) => specPrice(r, priceOf) <= Math.min(left, settings.budget * SPEC_BUDGET_SHARE));
+    const specIds = spec ? [spec.weaponId, ...(spec.ammoId !== null ? [spec.ammoId] : [])].map(getCanonicalItemId) : [];
+    left -= costOf(specIds.filter((id) => !core.itemIds.includes(id)));
+    const counts = plannedCounts(settings, priceOf, Math.max(0, Math.min(left, settings.budget * DEFENCE_BUDGET_SHARE)));
+    const monsters = monstersFor(counts);
+    const requiredIds = [...new Set([...baseRequired, ...specIds, ...defenceWeaponsFor(settings, counts)])];
+    // the setup's DPS with the drain
+    const picks = await Promise.all(core.picks.map(async (pick) => {
+      if (!pick.candidate) return pick;
+      const [dps] = await rate([pick.candidate.setup], monsters.get(pick.key)!);
+      return { ...pick, candidate: { ...pick.candidate, dps }, seconds: pick.hp / Math.max(dps + extraDps, NO_SETUP_DPS) };
+    }));
+    const itemIds = orderedItems(picks, requiredIds);
+    const plan = await upgradeLoadout({
+      plan: {
+        ...core,
+        picks,
+        itemIds,
+        cost: costOf(itemIds),
+        totalSeconds: picks.reduce((n, pick) => n + pick.seconds, 0),
+        main: mainSetup(picks),
+      },
       monsters,
       candidates,
+      pool: items,
       priceOf,
       budget: settings.budget,
       maxItems,
       requiredIds,
+      excluded,
       extraDps,
       playerFor,
-      pool: items.filter((e) => !excluded.has(getCanonicalItemId(e.id))),
-    }, rate),
-    monsters,
-    candidates,
-    pool: items,
-    priceOf,
-    budget: settings.budget,
-    maxItems,
-    requiredIds,
-    excluded,
-    extraDps,
-    playerFor,
-  }, rate);
+    }, rate);
+    return { plan, counts };
+  };
   // the main setup worn is the one leaving the fewest switches (Masori, the Zaryte crossbow and the book beside it
   // rather than a melee set with everything ranged in the bag), the longest-used of equally good ones
   const lay = (plan: RaidPlan) => {
@@ -380,29 +443,12 @@ export const runRaid = async (
   // the item limit assumes all worn slots are filled; when the main setup wears fewer, switches overflow, so plan again
   // with fewer items
   let maxItems = WORN_SLOTS + freeSwitchSlots(settings.supplies, settings.magic);
-  // the spec weapon whose plan is fastest with the time its specs save: a better spec or the gear its price buys
-  let best: { spec: SpecRank | null; plan: RaidPlan; seconds: number } | null = null;
-  for (const choice of specChoices(specs, priceOf, specAllowance)) {
-    // eslint-disable-next-line no-await-in-loop
-    const option = await assemble(maxItems, requiredFor(choice));
-    const seconds = option.totalSeconds - specSaving(choice, specs, option.picks, defenceEnergy);
-    // a setup for every phase first, then within the budget, whatever their times; then fastest
-    const uncovered = (p: RaidPlan) => p.picks.filter((pick) => !pick.candidate).length;
-    const over = (p: RaidPlan) => p.cost > settings.budget;
-    const rank = (p: RaidPlan, s: number) => [uncovered(p), Number(over(p)), s];
-    const [u, o, t] = rank(option, seconds);
-    const [bu, bo, bt] = best ? rank(best.plan, best.seconds) : [Infinity, 1, Infinity];
-    if (!best || u < bu || (u === bu && (o < bo || (o === bo && t < bt - 1e-6)))) {
-      best = { spec: choice, plan: option, seconds };
-    }
-  }
-  const requiredIds = requiredFor(best!.spec);
-  let { plan } = best!;
+  let { plan, counts } = await assemble(maxItems);
   let layout = lay(plan);
   for (let i = 0; i < MAX_REPLANS && layout.overflow > 0 && maxItems > 0; i++) {
     maxItems = Math.max(0, Math.min(maxItems, plan.itemIds.length) - layout.overflow);
     // eslint-disable-next-line no-await-in-loop
-    plan = await assemble(maxItems, requiredIds);
+    ({ plan, counts } = await assemble(maxItems));
     layout = lay(plan);
   }
   // the item limit counts every worn slot once; a quiver's slot or a lighter main setup can leave inventory cells free,
@@ -410,11 +456,11 @@ export const runRaid = async (
   for (let i = 0; i < MAX_REPLANS && layout.overflow === 0 && freeCells(layout) > 0; i++) {
     const more = Math.max(maxItems, plan.itemIds.length) + freeCells(layout);
     // eslint-disable-next-line no-await-in-loop
-    const next = await assemble(more, requiredIds);
-    const nextLayout = lay(next);
-    if (nextLayout.overflow > 0 || next.totalSeconds >= plan.totalSeconds - 1e-6) break;
+    const next = await assemble(more);
+    const nextLayout = lay(next.plan);
+    if (nextLayout.overflow > 0 || next.plan.totalSeconds >= plan.totalSeconds - 1e-6) break;
     maxItems = more;
-    plan = next;
+    ({ plan, counts } = next);
     layout = nextLayout;
   }
   // the upgraded setups count as candidates for the weapon cells
@@ -430,7 +476,8 @@ export const runRaid = async (
       bossId: p.boss.id,
       bossName: p.boss.name,
       hp: p.monster.monster.skills.hp,
-      counts: p.counts,
+      // the specs the plan does: its Defence weapons' and a teammate's
+      counts: counts[p.phase.defenceFrom ?? p.phase.key] ?? p.counts,
       parts: p.phase.parts,
       allowedStyles: p.phase.allowedStyles,
     })),
