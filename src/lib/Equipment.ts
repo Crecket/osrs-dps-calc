@@ -203,20 +203,36 @@ export const ammoApplicability = (weaponId?: number, ammoId?: number): AmmoAppli
  * Returns the canonical (base) item ID for a given item ID. This is useful if there are variants of each item.
  * @param itemId
  */
+// variant id -> canonical id, built once: the aliases never change, and scanning them on every call was most of the
+// search's time (it runs for every worn item of every evaluation)
+let canonicalById: Map<number, number> | null = null;
 export const getCanonicalItemId = (itemId: number): number => {
-  for (const [k, v] of Object.entries(equipmentAliases)) {
-    if (v.includes(itemId)) return parseInt(k);
+  if (!canonicalById) {
+    const map = new Map<number, number>();
+    // the first base listing a variant wins, as the scan did
+    Object.entries(equipmentAliases).forEach(([k, v]) => v.forEach((id) => {
+      if (!map.has(id)) map.set(id, parseInt(k));
+    }));
+    canonicalById = map;
   }
-  return itemId;
+  return canonicalById.get(itemId) ?? itemId;
 };
 
+let equipmentById: Map<number, EquipmentPiece> | null = null;
 export const getCanonicalItem = (equipmentPiece: EquipmentPiece): EquipmentPiece => {
   const canonicalId = getCanonicalItemId(equipmentPiece.id);
   if (equipmentPiece.id === canonicalId) {
     return equipmentPiece;
   }
 
-  const canonicalItem = availableEquipment.find((e) => e.id === canonicalId);
+  if (!equipmentById) {
+    equipmentById = new Map();
+    // the first item with an id wins, as find did
+    availableEquipment.forEach((e) => {
+      if (!equipmentById!.has(e.id)) equipmentById!.set(e.id, e);
+    });
+  }
+  const canonicalItem = equipmentById.get(canonicalId);
   if (!canonicalItem) {
     return equipmentPiece;
   }
