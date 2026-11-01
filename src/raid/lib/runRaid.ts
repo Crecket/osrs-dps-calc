@@ -272,10 +272,10 @@ export const runRaid = async (
   const extraDps = settings.magic === 'thralls' ? THRALL_DPS : 0;
   const excluded = new Set(excludedOf(settings));
   const specs = await specRanking(phases, candidates, [...excluded], deps, cache);
-  // the route's best spec weapon and its spec ammo come along, when they cost at most half the budget the required
-  // items leave: the gear around the spec does most of the damage (100m brings Dragon claws, not a 361m Zaryte crossbow)
+  // the route's best spec weapon and its spec ammo come along, when they fit in the budget the required items leave: a
+  // spec weapon never takes the loadout over budget (100m never brings a 361m Zaryte crossbow)
   const required = requiredItems(settings);
-  const specAllowance = Math.max(0, settings.budget - required.reduce((n, id) => n + priceOf(id), 0)) / 2;
+  const specAllowance = Math.max(0, settings.budget - required.reduce((n, id) => n + priceOf(id), 0));
   const spec = routeSpec(specs, (r) => priceOf(r.weaponId) + (r.ammoId !== null ? priceOf(r.ammoId) : 0) <= specAllowance);
   const requiredIds = [...new Set([
     ...required,
