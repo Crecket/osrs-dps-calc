@@ -98,7 +98,9 @@ export class WeightedHit {
 
   public getSum(): number {
     if (this._sum === undefined) {
-      this._sum = sum(this.hitsplats, (h) => h.damage);
+      let total = 0;
+      for (const h of this.hitsplats) total = addLikeD3(total, h.damage);
+      this._sum = total;
     }
     return this._sum;
   }
@@ -120,6 +122,12 @@ export class WeightedHit {
     return `WeightedHit(p: ${this.probability}, h: [${this.hitsplats.map((h) => h.damage).join(',')}], s: ${this.getSum()})`;
   }
 }
+
+/** One step of d3's sum, which runs on every hit: zeros and NaN are skipped, the rest added in order */
+const addLikeD3 = (total: number, value: number): number => {
+  const v = +value;
+  return v ? total + v : total;
+};
 
 /** WeightedHit.getHash for a list of hitsplats */
 export function hashOf(hitsplats: Hitsplat[]): number | bigint {
@@ -248,8 +256,9 @@ export class HitDistribution {
   }
 
   public expectedHit(): number {
-    return sum(this.hits
-      .map((h) => h.getExpectedValue()));
+    let total = 0;
+    for (const h of this.hits) total = addLikeD3(total, h.getExpectedValue());
+    return total;
   }
 
   public size(): number {
@@ -481,7 +490,9 @@ export class AttackDistribution {
   }
 
   public getExpectedDamage(): number {
-    return sum(this.dists.map((d) => d.expectedHit())) || 0;
+    let total = 0;
+    for (const d of this.dists) total = addLikeD3(total, d.expectedHit());
+    return total || 0;
   }
 
   public asHistogram(hideMisses: boolean = false): (ChartEntry & { name: string, value: number })[] {
