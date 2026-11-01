@@ -143,15 +143,20 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
       });
     }
   });
-  // a melee weapon searched in one attack type is tried in its others too (the Zombie axe found by the crush search
-  // also slashes): each style's search only reaches its top weapons. Only types the weapon is nearly as accurate in.
+  // a melee weapon found only in an attack type it is weaker in is tried in its stronger ones too (the Zombie axe found
+  // by the crush search also slashes, better): each style's search only reaches its top weapons. Weapons found in their
+  // best type get nothing more, which keeps the kit × weapon × off-hand combinations (and their memory) in check.
   const MELEE: BestStyle[] = ['stab', 'slash', 'crush'];
+  const meleeAttack = (e: EquipmentPiece, t: BestStyle) => e.offensive[t as 'stab' | 'slash' | 'crush'];
+  const foundIn = new Map<number, Set<BestStyle>>();
+  weapons.forEach((w) => foundIn.set(w.job.weaponId, (foundIn.get(w.job.weaponId) ?? new Set()).add(w.style)));
   [...weapons.values()].filter((w) => w.group === 'melee').forEach((w) => {
     const weapon = availableEquipment.find((e) => e.id === w.job.weaponId);
     if (!weapon) return;
     const stances = getCombatStylesForCategory(weapon.category);
-    const best = Math.max(...MELEE.map((t) => weapon.offensive[t as 'stab' | 'slash' | 'crush']));
-    MELEE.filter((t) => t !== w.style && weapon.offensive[t as 'stab' | 'slash' | 'crush'] >= 0.8 * best).forEach((style) => {
+    const found = foundIn.get(weapon.id)!;
+    const strongest = Math.max(...[...found].map((t) => meleeAttack(weapon, t)));
+    MELEE.filter((t) => !found.has(t) && meleeAttack(weapon, t) > strongest).forEach((style) => {
       const ofType = stances.filter((st) => st.type === style);
       const combatStyle = ofType.find((st) => st.stance === w.job.combatStyle.stance)
         ?? ofType.find((st) => st.stance === 'Aggressive') ?? ofType[0];

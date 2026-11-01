@@ -163,12 +163,12 @@ export const routeSpec = (specs: Record<string, SpecRank[]>, affordable: (r: Spe
 export const specPrice = (r: SpecRank, priceOf: (id: number) => number) => priceOf(r.weaponId) + (r.ammoId !== null ? priceOf(r.ammoId) : 0);
 
 /**
- * The spec weapons worth planning a loadout around, at a few price levels: the best one that fits in `allowance`, in
- * half and a quarter of it, the best free one, and none. Which is fastest is up to the plans: a big spec can beat the
+ * The spec weapons worth planning a loadout around, at a few price levels: the best one that fits in `allowance`, in a
+ * quarter of it, and none: each is a whole plan, so few of them. Which is fastest is up to the plans: a big spec can beat the
  * gear its price would buy, or not.
  */
 export const specChoices = (specs: Record<string, SpecRank[]>, priceOf: (id: number) => number, allowance: number): (SpecRank | null)[] => {
-  const picks = [allowance, allowance / 2, allowance / 4, 0].map((cap) => routeSpec(specs, (r) => specPrice(r, priceOf) <= cap));
+  const picks = [allowance, allowance / 4].map((cap) => routeSpec(specs, (r) => specPrice(r, priceOf) <= cap));
   return [...picks, null].filter((r, i, all) => all.findIndex((o) => o?.weaponId === r?.weaponId) === i);
 };
 
