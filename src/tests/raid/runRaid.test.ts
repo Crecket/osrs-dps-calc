@@ -9,7 +9,7 @@ import { basePlayer } from '@/best/lib/basePlayer';
 import { BulkRow } from '@/bulk/types';
 import { SearchCache } from '@/raid/lib/searchCache';
 import {
-  attackLabel, dartOptions, defaultSettings, excludedOf, raidBaseInputs, requiredItems, runRaid, searchesNeeded, weaponTiers,
+  attackLabel, dartOptions, defaultSettings, excludedOf, plannedCounts, raidBaseInputs, requiredItems, runRaid, searchesNeeded, weaponTiers,
 } from '@/raid/lib/runRaid';
 import { Candidate } from '@/raid/lib/candidates';
 import { routePhases } from '@/raid/lib/route';
@@ -111,6 +111,33 @@ describe('requiredItems', () => {
     expect(ids).not.toContain(13576);
     const bork = routePhases(fa, settings.route, settings.counts).find((p) => p.phase.key === 'bork:0')!;
     expect(bork.counts.elderMaul).toBe(2);
+  });
+
+  test('Defence weapons take at most 30% of the budget; the Dragon warhammer takes the specs of one that doesn\'t fit', () => {
+    const prices = new Map([[21003, 89e6], [28922, 179e6], [13576, 13e6]]);
+    const priceOf = (id: number) => prices.get(id) ?? 0;
+    const specs = (budget: number) => {
+      const counts = plannedCounts({ ...defaultSettings(), budget }, priceOf);
+      return Object.values(counts).reduce((n, c) => ({
+        elderMaul: n.elderMaul + c.elderMaul, dwh: n.dwh + c.dwh, tonalztic: n.tonalztic + c.tonalztic,
+      }), { elderMaul: 0, dwh: 0, tonalztic: 0 });
+    };
+    const all = specs(10e9);
+    expect(all.elderMaul).toBeGreaterThan(0);
+    expect(all.tonalztic).toBeGreaterThan(0);
+    // 100m: neither the maul nor the Tonalztics, every spec done with the Dragon warhammer
+    const small = requiredItems({ ...defaultSettings(), budget: 100e6 }, priceOf);
+    expect(small).toContain(13576);
+    expect(small).not.toContain(21003);
+    expect(small).not.toContain(28922);
+    expect(specs(100e6)).toEqual({ elderMaul: 0, tonalztic: 0, dwh: all.dwh + all.elderMaul + all.tonalztic });
+    // 500m: the maul (89m of the 150m), not the Tonalztics too
+    expect(requiredItems({ ...defaultSettings(), budget: 500e6 }, priceOf)).toEqual(expect.arrayContaining([21003, 13576]));
+    expect(specs(500e6)).toEqual({ elderMaul: all.elderMaul, tonalztic: 0, dwh: all.dwh + all.tonalztic });
+    // 1b: both
+    expect(requiredItems({ ...defaultSettings(), budget: 1e9 }, priceOf)).toEqual(expect.arrayContaining([21003, 28922]));
+    // without prices nothing is weighed
+    expect(requiredItems({ ...defaultSettings(), budget: 100e6 })).toEqual(expect.arrayContaining([21003, 28922]));
   });
 });
 

@@ -54,6 +54,9 @@ const COST_SMOOTHING = 100_000;
 const MAX_STEPS = 60;
 // times the step leaves a set and climbs again
 const MAX_SET_ROUNDS = 4;
+// weapons given to single units, and the other weapons tried per unit
+const MAX_WEAPON_ADDS = 4;
+const WEAPONS_PER_UNIT = 5;
 const MIN_GAIN = 1e-6;
 const SLOTS = GEAR_SLOT_ORDER.filter((s): s is GearSlot => s !== 'weapon');
 
@@ -378,9 +381,131 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     return true;
   };
 
+  /**
+   * Another weapon for one unit, in the armour it wears (a blowpipe switch for the phases it beats the crossbow on):
+   * the steps above only change armour slots, and the kit planner fixed the weapons before the armour was bought. The
+   * unit leaves its group for one of its own. On its own when it fits, else together with one armour change elsewhere
+   * that frees the money or the bag cell (melee wearing the ranged boots instead of its own pair).
+   */
+  const otherWeapons = new Map<Unit, Candidate[]>();
+  const weaponOptions = async (u: Unit): Promise<Candidate[]> => {
+    const known = otherWeapons.get(u);
+    if (known) return known;
+    const own = u.candidate.setup.player.equipment.weapon!;
+    const group = (st: BestStyle) => (st === 'ranged' || st === 'magic' ? st : 'melee');
+    // the phase's best setup of each other weapon of the unit's style group
+    const best = new Map<number, Candidate>();
+    input.candidates.filter((c) => c.phaseKey === u.pick.key && group(c.style) === group(u.candidate.style)
+      && c.setup.player.equipment.weapon!.id !== own.id && !excluded.has(getCanonicalItemId(c.setup.player.equipment.weapon!.id)))
+      .forEach((c) => {
+        const id = c.setup.player.equipment.weapon!.id;
+        if (!best.has(id) || best.get(id)!.dps < c.dps) best.set(id, c);
+      });
+    const picked = [...best.values()].sort((a, b) => b.dps - a.dps).slice(0, WEAPONS_PER_UNIT);
+    const mine = toStored(u.candidate.setup, u.candidate.style, 0);
+    const built = picked.flatMap((c) => {
+      const theirs = toStored(c.setup, c.style, 0);
+      const weapon = c.setup.player.equipment.weapon!;
+      const gear = {
+        ...mine.gear,
+        ammo: theirs.gear.ammo ?? null,
+        shield: weapon.isTwoHanded ? null : (mine.gear.shield ?? theirs.gear.shield ?? null),
+      };
+      const next = fromStored({ ...theirs, gear }, u.pick.key, input.playerFor(theirs.style));
+      if (!next) return [];
+      variant += 1;
+      return [{ ...next, setup: { ...next.setup, id: `upgrade-${variant}` } }];
+    });
+    const dps = await rate(built.map((c) => c.setup), u.monster);
+    const rated = built.map((c, i) => ({ ...c, dps: dps[i] }))
+      .filter((c) => seconds(u.pick.hp, c.dps) < seconds(u.pick.hp, u.candidate.dps) - MIN_GAIN);
+    otherWeapons.set(u, rated);
+    return rated;
+  };
+
+  const addWeapons = async (): Promise<boolean> => {
+    const current = loadout();
+    const cost = costOf(current);
+    const cap = Math.max(budget, cost);
+    const limit = Math.max(maxItems, current.size);
+    let best: { unit: Unit; next: Candidate; partner: { group: Group; move: Move } | null; gain: number } | null = null;
+    for (const group of groups) {
+      for (const unit of group.units) {
+        // eslint-disable-next-line no-await-in-loop
+        const options = await weaponOptions(unit);
+        // the loadout with the unit in its new setup and its group's other units as they are
+        const others = group.units.filter((x) => x !== unit);
+        for (const next of options) {
+          const gain = seconds(unit.pick.hp, unit.candidate.dps) - seconds(unit.pick.hp, next.dps);
+          const items = (partner: { group: Group; move: Move } | null) => {
+            const groupItems = others.length ? [...new Set(others.flatMap((x) => x.candidate.itemIds))] : [];
+            const swaps = [{ group, items: groupItems }];
+            if (partner) {
+              const base = partner.group === group ? groupItems : partner.group.items;
+              swaps.push({ group: partner.group, items: base.includes(partner.move.from ?? -1) || partner.move.from === null ? swapped(base, partner.move) : base });
+            }
+            return new Set([...loadout(...swaps.filter((sw, i) => swaps.findIndex((o) => o.group === sw.group) === i)), ...next.itemIds]);
+          };
+          const alone = items(null);
+          if (costOf(alone) <= cap && alone.size <= limit && gain > minGainFor(current.size, alone.size)) {
+            if (!best || gain > best.gain) {
+              best = {
+                unit, next, partner: null, gain,
+              };
+            }
+            continue;
+          }
+          for (const pg of groups) {
+            // the partner change applies to the units left in the group
+            const idx = pg.units.map((x, i) => (x === unit ? -1 : i)).filter((i) => i >= 0);
+            if (!idx.length) continue;
+            for (const move of pg.moves) {
+              const partnerGain = idx.reduce((n, i) => n + seconds(pg.units[i].pick.hp, pg.units[i].candidate.dps)
+                - seconds(pg.units[i].pick.hp, move.next[i].dps), 0);
+              if (!Number.isFinite(partnerGain)) continue;
+              const total = gain + partnerGain;
+              if (best && total <= best.gain) continue;
+              const both = items({ group: pg, move });
+              if (costOf(both) > cap || both.size > limit || !(total > minGainFor(current.size, both.size))) continue;
+              best = {
+                unit, next, partner: { group: pg, move }, gain: total,
+              };
+            }
+          }
+        }
+      }
+    }
+    if (!best) return false;
+    const { unit, next, partner } = best;
+    const home = groups.find((g) => g.units.includes(unit))!;
+    if (partner) {
+      partner.group.units.forEach((x, i) => {
+        if (x === unit) return;
+        // eslint-disable-next-line no-param-reassign
+        x.candidate = partner.move.next[i];
+      });
+    }
+    home.units = home.units.filter((x) => x !== unit);
+    unit.candidate = next;
+    groups.push({ units: [unit], items: [...next.itemIds], moves: [] });
+    // groups left empty go; the others take their items from their units again
+    for (let i = groups.length - 1; i >= 0; i--) {
+      if (!groups[i].units.length) groups.splice(i, 1);
+    }
+    for (const g of groups) {
+      g.items = [...new Set(g.units.flatMap((x) => x.candidate.itemIds))];
+      // eslint-disable-next-line no-await-in-loop
+      g.moves = await movesFor(g);
+    }
+    otherWeapons.clear();
+    return true;
+  };
+
   await climb();
   // eslint-disable-next-line no-await-in-loop
   for (let round = 0; round < MAX_SET_ROUNDS && await leaveSet(); round++) await climb();
+  // eslint-disable-next-line no-await-in-loop
+  for (let round = 0; round < MAX_WEAPON_ADDS && await addWeapons(); round++) await climb();
 
   // variants of one item worn in different setups (Avernic treads (pe) for ranged, (pr) for melee) become the one
   // variant that covers them all, when there is one: one item instead of several, never weaker

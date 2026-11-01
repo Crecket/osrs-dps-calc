@@ -30,6 +30,7 @@ const EXCLUDED_VERSIONS = new Set(['Uncharged', 'Inactive', 'Deadman Mode', 'Cos
 const EXCLUDED_NAME = /\(unobtainable item\)|\(beta\)|\(historical\)|\(deadman( mode)?\)/i;
 const EXCLUDED_ITEM_IDS = new Set([
   21433, // Wilderness champion amulet: +100 to every attack from a past event, not obtainable in normal play
+  616, // Beads of the Dead: +1 to everything, never worth a slot over any real amulet
   // minigame-only ammo: Barbarian Assault's Bullet, Field, Blunt and Barbed arrow (upstream lets bows fire them)
   22227, 22228, 22229, 22230,
   // minigame-only ammo: Castle wars arrow and bolts

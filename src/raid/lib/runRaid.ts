@@ -15,7 +15,7 @@ import { defaultAccount } from '@/best/lib/account';
 import { EquipmentPiece, Player } from '@/types/Player';
 import { Spellbook } from '@/types/Spell';
 import {
-  DEFENCE_WEAPON_IDS, DEFENCE_WEAPON_NAMES, DEFENCE_WEAPONS, DefenceCounts, MagicOption, PhasePart, Route,
+  DEFENCE_WEAPON_IDS, DEFENCE_WEAPON_NAMES, DEFENCE_WEAPONS, DefenceCounts, DefenceWeapon, MagicOption, PhasePart, Route,
 } from '@/raid/types';
 import { raidById } from '@/raid/raids';
 import { routeBosses, routePhases } from '@/raid/lib/route';
@@ -227,11 +227,53 @@ export const blockReason = (settings: RaidSettings): string | null => {
   return boss?.rules?.forbiddenMagic?.reason ?? null;
 };
 
-/** Items the loadout must hold: the always-bring items, boss requirements (with rules on), defence weapons in use, the book for thralls */
-export const requiredItems = (settings: RaidSettings): number[] => {
+// the most of the budget the Defence weapons may take together: a 89m Elder maul has no place in a 100m loadout
+export const DEFENCE_BUDGET_SHARE = 0.3;
+
+/**
+ * Each phase's Defence specs as the loadout can do them. With prices, the Elder maul and then the Tonalztics of Ralos
+ * come only while they fit in DEFENCE_BUDGET_SHARE of the budget; the specs of one that doesn't become Dragon
+ * warhammer specs, or none when that doesn't fit either. An excluded weapon's specs stay: a teammate does them.
+ */
+export const plannedCounts = (settings: RaidSettings, priceOf?: (id: number) => number): Record<string, DefenceCounts> => {
+  const raid = raidById(settings.raidId);
+  const phases = routePhases(raid, settings.route, settings.counts);
+  const own = phases.filter((p) => !p.phase.defenceFrom);
+  const counts = Object.fromEntries(own.map((p) => [p.phase.key, { ...p.counts }]));
+  if (!priceOf) return counts;
+  const excluded = new Set(excludedOf(settings));
+  const used = (w: DefenceWeapon) => own.some((p) => counts[p.phase.key][w] > 0);
+  const allowance = settings.budget * DEFENCE_BUDGET_SHARE;
+  let spent = 0;
+  const fits = (w: DefenceWeapon) => {
+    const id = getCanonicalItemId(DEFENCE_WEAPON_IDS[w]);
+    if (excluded.has(id)) return true;
+    if (spent + priceOf(id) > allowance) return false;
+    spent += priceOf(id);
+    return true;
+  };
+  const dropped = (['elderMaul', 'tonalztic'] as DefenceWeapon[]).filter((w) => used(w) && !fits(w));
+  if (!dropped.length) return counts;
+  // the Dragon warhammer takes the dropped specs, if it is used already, fits, or a teammate has it
+  const dwhOk = used('dwh') || fits('dwh');
+  Object.values(counts).forEach((c) => {
+    dropped.forEach((w) => {
+      if (dwhOk) c.dwh += c[w];
+      // eslint-disable-next-line no-param-reassign
+      c[w] = 0;
+    });
+  });
+  return counts;
+};
+
+/**
+ * Items the loadout must hold: the always-bring items, boss requirements (with rules on), defence weapons in use (as
+ * plannedCounts has them, with prices), the book for thralls
+ */
+export const requiredItems = (settings: RaidSettings, priceOf?: (id: number) => number): number[] => {
   const raid = raidById(settings.raidId);
   const excluded = new Set(excludedOf(settings));
-  const phases = routePhases(raid, settings.route, settings.counts);
+  const phases = routePhases(raid, settings.route, plannedCounts(settings, priceOf));
   const ids = [
     ...settings.bringIds,
     ...(settings.rulesOn ? routeBosses(raid, settings.route).flatMap((b) => b.rules?.requiredItemIds ?? []) : []),
@@ -245,11 +287,12 @@ let pool: EquipmentPiece[] | null = null;
 const prepare = (settings: RaidSettings, prices: Prices | null) => {
   if (!pool) pool = bestPool();
   const raid = raidById(settings.raidId);
-  const phases = routePhases(raid, settings.route, settings.counts);
   const owned = new Set(settings.ownedIds.map(getCanonicalItemId));
   const priceOf = (id: number) => itemPrice(id, prices, owned);
+  // the specs the budget allows: the searches fight the monsters with the Defence those leave
+  const phases = routePhases(raid, settings.route, plannedCounts(settings, priceOf));
   const excluded = excludedOf(settings);
-  const tiers = tierExclusions(settings.budget, priceOf, excluded, pool, requiredItems(settings));
+  const tiers = tierExclusions(settings.budget, priceOf, excluded, pool, requiredItems(settings, priceOf));
   return {
     phases, priceOf, tiers, base: raidBaseInputs(settings), pool,
   };
@@ -279,7 +322,7 @@ export const runRaid = async (
   const specs = await specRanking(phases, candidates, [...excluded], deps, cache);
   // the spec weapon and its spec ammo fit in the budget the required items leave: a spec weapon never takes the
   // loadout over budget (100m never brings a 361m Zaryte crossbow)
-  const required = requiredItems(settings);
+  const required = requiredItems(settings, priceOf);
   const specAllowance = Math.max(0, settings.budget - required.reduce((n, id) => n + priceOf(id), 0));
   // the Defence specs the loadout does itself take spec energy first
   const defenceEnergy = DEFENCE_WEAPONS.filter((w) => required.includes(DEFENCE_WEAPON_IDS[w]))

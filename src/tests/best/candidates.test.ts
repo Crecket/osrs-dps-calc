@@ -110,6 +110,10 @@ describe('bestPool', () => {
     expect(ids.has(findEquipment('Anti-dragon shield').id)).toBe(true);
   });
 
+  test('drops Beads of the Dead', () => {
+    expect(pool.some((e) => e.name === 'Beads of the Dead')).toBe(false);
+  });
+
   test('drops the Calamity chest and breeches in every tier', () => {
     expect(pool.filter((e) => /calamity/i.test(e.name))).toEqual([]);
   });
