@@ -101,38 +101,42 @@ export class WeightedHit {
    * without making a bigint for every hit.
    */
   public getHash(): number | bigint {
-    const { hitsplats } = this;
-    if (hitsplats.length === 1) {
-      const { damage, accurate } = hitsplats[0];
-      if (Number.isSafeInteger(damage) && Math.abs(damage) < 2 ** 50) return damage * 2 + (accurate ? 1 : 0);
-    } else {
-      let acc = 0;
-      let fits = true;
-      for (const hitsplat of hitsplats) {
-        const { damage } = hitsplat;
-        // with damage in 0..255 the bitwise or below is an add; the result must stay an exact number
-        if (!Number.isInteger(damage) || damage < 0 || damage > 255 || acc > (Number.MAX_SAFE_INTEGER - 511) / 512) {
-          fits = false;
-          break;
-        }
-        acc = (acc * 256 + damage) * 2 + (hitsplat.accurate ? 1 : 0);
-      }
-      if (fits) return acc;
-    }
-    let acc = 0n;
-    for (const hitsplat of hitsplats) {
-      acc <<= 8n;
-      acc |= BigInt(hitsplat.damage);
-      acc <<= 1n;
-      acc |= (hitsplat.accurate ? 1n : 0n);
-    }
-    // a value a number holds exactly is keyed as that number, like the packed ones above
-    return acc >= BigInt(-Number.MAX_SAFE_INTEGER) && acc <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(acc) : acc;
+    return hashOf(this.hitsplats);
   }
 
   toString(): string {
     return `WeightedHit(p: ${this.probability}, h: [${this.hitsplats.map((h) => h.damage).join(',')}], s: ${this.getSum()})`;
   }
+}
+
+/** WeightedHit.getHash for a list of hitsplats */
+export function hashOf(hitsplats: Hitsplat[]): number | bigint {
+  if (hitsplats.length === 1) {
+    const { damage, accurate } = hitsplats[0];
+    if (Number.isSafeInteger(damage) && Math.abs(damage) < 2 ** 50) return damage * 2 + (accurate ? 1 : 0);
+  } else {
+    let acc = 0;
+    let fits = true;
+    for (const hitsplat of hitsplats) {
+      const { damage } = hitsplat;
+      // with damage in 0..255 the bitwise or below is an add; the result must stay an exact number
+      if (!Number.isInteger(damage) || damage < 0 || damage > 255 || acc > (Number.MAX_SAFE_INTEGER - 511) / 512) {
+        fits = false;
+        break;
+      }
+      acc = (acc * 256 + damage) * 2 + (hitsplat.accurate ? 1 : 0);
+    }
+    if (fits) return acc;
+  }
+  let acc = 0n;
+  for (const hitsplat of hitsplats) {
+    acc <<= 8n;
+    acc |= BigInt(hitsplat.damage);
+    acc <<= 1n;
+    acc |= (hitsplat.accurate ? 1n : 0n);
+  }
+  // a value a number holds exactly is keyed as that number, like the packed ones above
+  return acc >= BigInt(-Number.MAX_SAFE_INTEGER) && acc <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(acc) : acc;
 }
 
 export class HitDistribution {
@@ -179,7 +183,7 @@ export class HitDistribution {
   }
 
   public transform(t: HitTransformer, opts: TransformOpts = DEFAULT_TRANSFORM_OPTS): HitDistribution {
-    return this.wideTransform(t, opts).flatten();
+    return transformHits(this.hits, t, opts);
   }
 
   public scaleProbability(factor: number): HitDistribution {
@@ -199,7 +203,7 @@ export class HitDistribution {
    * Merges the probabilities of hits with identical damage values
    */
   public flatten(): HitDistribution {
-    return flattenSingles(this.hits) ?? flattenAny(this.hits);
+    return flattenHits(this.hits);
   }
 
   /**
@@ -306,62 +310,117 @@ export class HitDistribution {
   }
 }
 
-// the largest damage the array-indexed flatten handles; bigger hits take the map
+// the largest damage the array-indexed merge handles; bigger hits take the map
 const MAX_INDEXED_DAMAGE = 4096;
+const MAX_INDEXED_KEY = MAX_INDEXED_DAMAGE * 2 + 1;
+
+/** The key getHash gives a single hitsplat when it is a whole damage in 0..MAX_INDEXED_DAMAGE, else -1 */
+const indexKey = (hitsplats: Hitsplat[]): number => {
+  if (hitsplats.length !== 1) return -1;
+  const { damage, accurate } = hitsplats[0];
+  return Number.isInteger(damage) && damage >= 0 && damage <= MAX_INDEXED_DAMAGE ? damage * 2 + (accurate ? 1 : 0) : -1;
+};
+
+// index buffers, zeroed between uses; a stack, since a transform's own transformer can merge too
+const buffers: Int32Array[] = [];
 
 /**
- * flatten for the common case, every hit one hitsplat with a whole damage in 0..MAX_INDEXED_DAMAGE: the hash
- * (damage * 2 + accuracy) indexes arrays instead of a map. Same first-seen order, same additions. Null otherwise.
+ * Merges hits by getHash, adding the probabilities of equal hits in the order they come and keeping the first-seen
+ * order and hitsplat list: what flatten does. Indexes arrays by the single-hitsplat key while every hit has one, and
+ * moves to a map (with the same keys, so the same order) on the first hit that doesn't.
  */
-function flattenSingles(hits: WeightedHit[]): HitDistribution | null {
-  let maxKey = -1;
-  for (const hit of hits) {
-    if (hit.hitsplats.length !== 1) return null;
-    const { damage } = hit.hitsplats[0];
-    if (!Number.isInteger(damage) || damage < 0 || damage > MAX_INDEXED_DAMAGE) return null;
-    const key = damage * 2 + (hit.hitsplats[0].accurate ? 1 : 0);
-    if (key > maxKey) maxKey = key;
-  }
-  // slot of each key in the first-seen order, +1 so 0 means unseen
-  const slotOf = new Int32Array(maxKey + 1);
-  const probs: number[] = [];
-  const lists: Hitsplat[][] = [];
-  for (const hit of hits) {
-    const splat = hit.hitsplats[0];
-    const key = splat.damage * 2 + (splat.accurate ? 1 : 0);
-    const slot = slotOf[key];
-    if (slot === 0) {
-      probs.push(hit.probability);
-      lists.push(hit.hitsplats);
-      slotOf[key] = probs.length;
+class Merger {
+  private slotOf: Int32Array | null = buffers.pop() ?? new Int32Array(MAX_INDEXED_KEY + 1);
+
+  private readonly keys: number[] = [];
+
+  private readonly probs: number[] = [];
+
+  private readonly lists: Hitsplat[][] = [];
+
+  private map: Map<number | bigint, { prob: number; hitsplats: Hitsplat[] }> | null = null;
+
+  add(hitsplats: Hitsplat[], probability: number): void {
+    if (this.slotOf) {
+      const key = indexKey(hitsplats);
+      if (key >= 0) {
+        const slot = this.slotOf[key];
+        if (slot === 0) {
+          this.keys.push(key);
+          this.probs.push(probability);
+          this.lists.push(hitsplats);
+          this.slotOf[key] = this.probs.length;
+        } else {
+          this.probs[slot - 1] += probability;
+        }
+        return;
+      }
+      this.toMap();
+    }
+    const h = hashOf(hitsplats);
+    const prev = this.map!.get(h);
+    if (prev === undefined) {
+      this.map!.set(h, { prob: probability, hitsplats });
     } else {
-      probs[slot - 1] += hit.probability;
+      prev.prob += probability;
     }
   }
-  const out: WeightedHit[] = [];
-  for (let i = 0; i < probs.length; i++) {
-    if (probs[i] > 0) out.push(new WeightedHit(probs[i], lists[i]));
+
+  private release(): void {
+    if (!this.slotOf) return;
+    for (const key of this.keys) this.slotOf[key] = 0;
+    buffers.push(this.slotOf);
+    this.slotOf = null;
   }
-  return new HitDistribution(out);
+
+  private toMap(): void {
+    // the indexed keys are getHash's values for those hits, so the map continues in the same order
+    this.map = new Map();
+    for (let i = 0; i < this.keys.length; i++) this.map.set(this.keys[i], { prob: this.probs[i], hitsplats: this.lists[i] });
+    this.release();
+  }
+
+  result(): HitDistribution {
+    const out: WeightedHit[] = [];
+    if (this.map) {
+      for (const { prob, hitsplats } of this.map.values()) {
+        if (prob > 0) out.push(new WeightedHit(prob, hitsplats));
+      }
+    } else {
+      for (let i = 0; i < this.probs.length; i++) {
+        if (this.probs[i] > 0) out.push(new WeightedHit(this.probs[i], this.lists[i]));
+      }
+      this.release();
+    }
+    return new HitDistribution(out);
+  }
 }
 
-/** flatten for any hits: merges the probabilities of hits with the same hash, in first-seen order */
-function flattenAny(hits: WeightedHit[]): HitDistribution {
-  const acc = new Map<number | bigint, { prob: number; hitsplats: Hitsplat[] }>();
-  for (const hit of hits) {
-    const hash = hit.getHash();
-    const prev = acc.get(hash);
-    if (prev === undefined) {
-      acc.set(hash, { prob: hit.probability, hitsplats: hit.hitsplats });
+function flattenHits(hits: WeightedHit[]): HitDistribution {
+  const merger = new Merger();
+  for (const hit of hits) merger.add(hit.hitsplats, hit.probability);
+  return merger.result();
+}
+
+/**
+ * wideTransform then flatten, merging each transformed hit as it comes instead of listing them all first: the same
+ * hits, probabilities (the transformed hit's times the source hit's) and order of additions.
+ */
+function transformHits(hits: WeightedHit[], t: HitTransformer, opts: TransformOpts): HitDistribution {
+  const merger = new Merger();
+  for (const h of hits) {
+    if (h.hitsplats.length === 1) {
+      const splat = h.hitsplats[0];
+      if (!splat.accurate && !opts.transformInaccurate) {
+        merger.add(h.hitsplats, 1.0 * h.probability);
+      } else {
+        for (const r of t(splat).hits) merger.add(r.hitsplats, r.probability * h.probability);
+      }
     } else {
-      prev.prob += hit.probability;
+      for (const r of h.transform(t, opts).hits) merger.add(r.hitsplats, r.probability);
     }
   }
-  const out: WeightedHit[] = [];
-  for (const { prob, hitsplats } of acc.values()) {
-    if (prob > 0) out.push(new WeightedHit(prob, hitsplats));
-  }
-  return new HitDistribution(out);
+  return merger.result();
 }
 
 export class AttackDistribution {

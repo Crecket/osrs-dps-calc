@@ -55,12 +55,14 @@ export const diamondBolts: BoltTransformer = (ctx) => {
   const effectMax = Math.trunc(maxHit * (zcb ? 126 : 115) / 100);
 
   const effectDist = HitDistribution.linear(1.0, 0, effectMax);
+  // the same for every hit, so made once
+  const procHits = effectDist.scaleProbability(chance).hits;
   return (h) => {
     if (h.accurate && zcb && spec) {
       return effectDist;
     }
     return new HitDistribution([
-      ...effectDist.scaleProbability(chance).hits,
+      ...procHits,
       new WeightedHit(1 - chance, [new Hitsplat(h.damage, h.accurate)]),
     ]);
   };
@@ -94,6 +96,8 @@ export const onyxBolts: BoltTransformer = (ctx) => {
   const effectMax = Math.trunc(maxHit * (zcb ? 132 : 120) / 100);
 
   const effectDist = HitDistribution.linear(1.0, 0, effectMax);
+  // the same for every hit, so made once
+  const procHits = effectDist.scaleProbability(chance).hits;
   return (h) => {
     if (!h.accurate) {
       return new HitDistribution([new WeightedHit(1.0, [h])]);
@@ -102,7 +106,7 @@ export const onyxBolts: BoltTransformer = (ctx) => {
       return effectDist;
     }
     return new HitDistribution([
-      ...effectDist.scaleProbability(chance).hits,
+      ...procHits,
       new WeightedHit(1 - chance, [new Hitsplat(h.damage, h.accurate)]),
     ]);
   };
@@ -121,13 +125,15 @@ export const rubyBolts: BoltTransformer = (ctx) => {
 
   const effectDmg = Math.trunc(monster.inputs.monsterCurrentHp * (zcb ? 22 : 20) / 100);
   const effectHit = HitDistribution.single(1.0, [new Hitsplat(Math.min(cap, effectDmg))]);
+  // the same for every hit, so made once
+  const procHits = effectHit.scaleProbability(chance).hits;
 
   return (h) => {
     if (h.accurate && zcb && spec) {
       return effectHit;
     }
     return new HitDistribution([
-      ...effectHit.scaleProbability(chance).hits,
+      ...procHits,
       new WeightedHit(1 - chance, [new Hitsplat(h.damage, h.accurate)]),
     ]);
   };
