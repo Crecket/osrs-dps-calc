@@ -160,13 +160,22 @@ export class HitDistribution {
   }
 
   public wideTransform(t: HitTransformer, opts: TransformOpts = DEFAULT_TRANSFORM_OPTS): HitDistribution {
-    const d = new HitDistribution([]);
+    const hits: WeightedHit[] = [];
     for (const h of this.hits) {
-      for (const transformed of h.transform(t, opts).hits) {
-        d.addHit(transformed);
+      if (h.hitsplats.length === 1) {
+        // what h.transform does for one hitsplat, without the in-between distributions: the transformed hits at
+        // their probability times h's (in that order, as scaleProbability multiplies)
+        const splat = h.hitsplats[0];
+        if (!splat.accurate && !opts.transformInaccurate) {
+          hits.push(new WeightedHit(1.0 * h.probability, [splat]));
+        } else {
+          for (const r of t(splat).hits) hits.push(new WeightedHit(r.probability * h.probability, r.hitsplats));
+        }
+      } else {
+        for (const transformed of h.transform(t, opts).hits) hits.push(transformed);
       }
     }
-    return d;
+    return new HitDistribution(hits);
   }
 
   public transform(t: HitTransformer, opts: TransformOpts = DEFAULT_TRANSFORM_OPTS): HitDistribution {
@@ -190,25 +199,7 @@ export class HitDistribution {
    * Merges the probabilities of hits with identical damage values
    */
   public flatten(): HitDistribution {
-    // first-seen order and the same additions as before: only fewer maps and lookups
-    const acc = new Map<number | bigint, { prob: number; hitsplats: Hitsplat[] }>();
-    for (const hit of this.hits) {
-      const hash = hit.getHash();
-      const prev = acc.get(hash);
-      if (prev === undefined) {
-        acc.set(hash, { prob: hit.probability, hitsplats: hit.hitsplats });
-      } else {
-        prev.prob += hit.probability;
-      }
-    }
-
-    const hits: WeightedHit[] = [];
-    for (const { prob, hitsplats } of acc.values()) {
-      if (prob > 0) {
-        hits.push(new WeightedHit(prob, hitsplats));
-      }
-    }
-    return new HitDistribution(hits);
+    return flattenSingles(this.hits) ?? flattenAny(this.hits);
   }
 
   /**
@@ -313,6 +304,64 @@ export class HitDistribution {
     }
     return d;
   }
+}
+
+// the largest damage the array-indexed flatten handles; bigger hits take the map
+const MAX_INDEXED_DAMAGE = 4096;
+
+/**
+ * flatten for the common case, every hit one hitsplat with a whole damage in 0..MAX_INDEXED_DAMAGE: the hash
+ * (damage * 2 + accuracy) indexes arrays instead of a map. Same first-seen order, same additions. Null otherwise.
+ */
+function flattenSingles(hits: WeightedHit[]): HitDistribution | null {
+  let maxKey = -1;
+  for (const hit of hits) {
+    if (hit.hitsplats.length !== 1) return null;
+    const { damage } = hit.hitsplats[0];
+    if (!Number.isInteger(damage) || damage < 0 || damage > MAX_INDEXED_DAMAGE) return null;
+    const key = damage * 2 + (hit.hitsplats[0].accurate ? 1 : 0);
+    if (key > maxKey) maxKey = key;
+  }
+  // slot of each key in the first-seen order, +1 so 0 means unseen
+  const slotOf = new Int32Array(maxKey + 1);
+  const probs: number[] = [];
+  const lists: Hitsplat[][] = [];
+  for (const hit of hits) {
+    const splat = hit.hitsplats[0];
+    const key = splat.damage * 2 + (splat.accurate ? 1 : 0);
+    const slot = slotOf[key];
+    if (slot === 0) {
+      probs.push(hit.probability);
+      lists.push(hit.hitsplats);
+      slotOf[key] = probs.length;
+    } else {
+      probs[slot - 1] += hit.probability;
+    }
+  }
+  const out: WeightedHit[] = [];
+  for (let i = 0; i < probs.length; i++) {
+    if (probs[i] > 0) out.push(new WeightedHit(probs[i], lists[i]));
+  }
+  return new HitDistribution(out);
+}
+
+/** flatten for any hits: merges the probabilities of hits with the same hash, in first-seen order */
+function flattenAny(hits: WeightedHit[]): HitDistribution {
+  const acc = new Map<number | bigint, { prob: number; hitsplats: Hitsplat[] }>();
+  for (const hit of hits) {
+    const hash = hit.getHash();
+    const prev = acc.get(hash);
+    if (prev === undefined) {
+      acc.set(hash, { prob: hit.probability, hitsplats: hit.hitsplats });
+    } else {
+      prev.prob += hit.probability;
+    }
+  }
+  const out: WeightedHit[] = [];
+  for (const { prob, hitsplats } of acc.values()) {
+    if (prob > 0) out.push(new WeightedHit(prob, hitsplats));
+  }
+  return new HitDistribution(out);
 }
 
 export class AttackDistribution {
