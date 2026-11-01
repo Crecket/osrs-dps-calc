@@ -14,6 +14,7 @@ import { BulkSetup, GEAR_SLOT_ORDER } from '@/bulk/types';
 import { DEFENCE_WEAPON_IDS, RoutePhase } from '@/raid/types';
 import { Candidate } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
+import { PhasePick, wearsLightbearer } from '@/raid/lib/assemble';
 
 export interface SpecRank {
   weaponId: number;
@@ -156,4 +157,43 @@ export const routeSpec = (specs: Record<string, SpecRank[]>, affordable: (r: Spe
     totals.set(r.weaponId, t);
   });
   return [...totals.values()].sort((a, b) => b.total - a.total)[0]?.rank ?? null;
+};
+
+/** What the spec weapon and its spec ammo cost */
+export const specPrice = (r: SpecRank, priceOf: (id: number) => number) => priceOf(r.weaponId) + (r.ammoId !== null ? priceOf(r.ammoId) : 0);
+
+/**
+ * The spec weapons worth planning a loadout around, at a few price levels: the best one that fits in `allowance`, in
+ * half and a quarter of it, the best free one, and none. Which is fastest is up to the plans: a big spec can beat the
+ * gear its price would buy, or not.
+ */
+export const specChoices = (specs: Record<string, SpecRank[]>, priceOf: (id: number) => number, allowance: number): (SpecRank | null)[] => {
+  const picks = [allowance, allowance / 2, allowance / 4, 0].map((cap) => routeSpec(specs, (r) => specPrice(r, priceOf) <= cap));
+  return [...picks, null].filter((r, i, all) => all.findIndex((o) => o?.weaponId === r?.weaponId) === i);
+};
+
+// spec energy regenerates 10% every 30 seconds, twice as fast with the Lightbearer
+const ENERGY_PER_SECOND = 10 / 30;
+
+/**
+ * Seconds the spec weapon saves over the plan's raid: the energy the raid regenerates (from a full bar, less what the
+ * Defence specs take) spent on the phases it can hit, in proportion to their time. Each spec saves the damage it deals
+ * above what the phase's setup deals in the same time, at the setup's speed.
+ */
+export const specSaving = (spec: SpecRank | null, specs: Record<string, SpecRank[]>, picks: PhasePick[], defenceEnergy: number): number => {
+  if (!spec) return 0;
+  const regen = picks.reduce((n, p) => n + p.seconds * ENERGY_PER_SECOND * (p.candidate && wearsLightbearer(p.candidate.style) ? 2 : 1), 0);
+  const count = Math.max(0, 100 + regen - defenceEnergy) / spec.cost;
+  const eligible = picks.flatMap((p) => {
+    const rank = specs[p.key]?.find((r) => r.weaponId === spec.weaponId);
+    return rank && p.candidate && p.seconds > 0 ? [{ p, rank }] : [];
+  });
+  const time = eligible.reduce((n, { p }) => n + p.seconds, 0);
+  if (time <= 0) return 0;
+  return eligible.reduce((n, { p, rank }) => {
+    const dps = p.hp / p.seconds;
+    const saved = Math.max(0, rank.expected * (1 - dps / rank.dps)) / dps;
+    // a phase can't be sped up by more than it lasts
+    return n + Math.min((count * p.seconds * saved) / time, p.seconds / 2);
+  }, 0);
 };

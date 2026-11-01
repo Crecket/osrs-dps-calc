@@ -2,7 +2,7 @@
  * The raid gear pipeline: route phases, price tiers, candidate searches (cached), assembly and layout. Main thread
  * only (basePlayer imports '@/state').
  */
-import { getCanonicalItemId } from '@/lib/Equipment';
+import { getCanonicalItemId, WEAPON_SPEC_COSTS } from '@/lib/Equipment';
 import { EquipmentCategory } from '@/enums/EquipmentCategory';
 import { BestRunDeps, runBestSetup } from '@/best/lib/run';
 import { bestPool } from '@/best/lib/candidates';
@@ -14,7 +14,7 @@ import { defaultAccount } from '@/best/lib/account';
 import { EquipmentPiece, Player } from '@/types/Player';
 import { Spellbook } from '@/types/Spell';
 import {
-  DEFENCE_WEAPON_IDS, DEFENCE_WEAPONS, DefenceCounts, MagicOption, PhasePart, Route,
+  DEFENCE_WEAPON_IDS, DEFENCE_WEAPON_NAMES, DEFENCE_WEAPONS, DefenceCounts, MagicOption, PhasePart, Route,
 } from '@/raid/types';
 import { raidById } from '@/raid/raids';
 import { routeBosses, routePhases } from '@/raid/lib/route';
@@ -23,7 +23,9 @@ import {
   Candidate, missingSearches, raidCandidates, RaidProgress, tierExclusions,
 } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
-import { routeSpec, SpecRank, specRanking } from '@/raid/lib/specs';
+import {
+  SpecRank, specChoices, specRanking, specSaving,
+} from '@/raid/lib/specs';
 import { RaidPlan, THRALL_DPS } from '@/raid/lib/assemble';
 import { KitUnit, planKits } from '@/raid/lib/kits';
 import { dpsRater, upgradeLoadout } from '@/raid/lib/upgrade';
@@ -272,12 +274,14 @@ export const runRaid = async (
   const extraDps = settings.magic === 'thralls' ? THRALL_DPS : 0;
   const excluded = new Set(excludedOf(settings));
   const specs = await specRanking(phases, candidates, [...excluded], deps, cache);
-  // the route's best spec weapon and its spec ammo come along, when they fit in the budget the required items leave: a
-  // spec weapon never takes the loadout over budget (100m never brings a 361m Zaryte crossbow)
+  // the spec weapon and its spec ammo fit in the budget the required items leave: a spec weapon never takes the
+  // loadout over budget (100m never brings a 361m Zaryte crossbow)
   const required = requiredItems(settings);
   const specAllowance = Math.max(0, settings.budget - required.reduce((n, id) => n + priceOf(id), 0));
-  const spec = routeSpec(specs, (r) => priceOf(r.weaponId) + (r.ammoId !== null ? priceOf(r.ammoId) : 0) <= specAllowance);
-  const requiredIds = [...new Set([
+  // the Defence specs the loadout does itself take spec energy first
+  const defenceEnergy = DEFENCE_WEAPONS.filter((w) => required.includes(DEFENCE_WEAPON_IDS[w]))
+    .reduce((n, w) => n + phases.reduce((m, p) => m + p.counts[w], 0) * (WEAPON_SPEC_COSTS[DEFENCE_WEAPON_NAMES[w]] ?? 50), 0);
+  const requiredFor = (spec: SpecRank | null) => [...new Set([
     ...required,
     ...(spec ? [spec.weaponId, ...(spec.ammoId !== null ? [spec.ammoId] : [])].map(getCanonicalItemId) : []),
   ])];
@@ -295,7 +299,7 @@ export const runRaid = async (
     return { key: p.phase.key, hp: p.monster.monster.skills.hp * part.share, styles };
   }));
   const monsters = new Map(phases.map((p) => [p.phase.key, p.monster]));
-  const assemble = async (maxItems: number) => upgradeLoadout({
+  const assemble = async (maxItems: number, requiredIds: number[]) => upgradeLoadout({
     plan: await planKits({
       units,
       monsters,
@@ -330,12 +334,21 @@ export const runRaid = async (
   // the item limit assumes all worn slots are filled; when the main setup wears fewer, switches overflow, so plan again
   // with fewer items
   let maxItems = WORN_SLOTS + freeSwitchSlots(settings.supplies, settings.magic);
-  let plan = await assemble(maxItems);
+  // the spec weapon whose plan is fastest with the time its specs save: a better spec or the gear its price buys
+  let best: { spec: SpecRank | null; plan: RaidPlan; seconds: number } | null = null;
+  for (const choice of specChoices(specs, priceOf, specAllowance)) {
+    // eslint-disable-next-line no-await-in-loop
+    const option = await assemble(maxItems, requiredFor(choice));
+    const seconds = option.totalSeconds - specSaving(choice, specs, option.picks, defenceEnergy);
+    if (!best || seconds < best.seconds - 1e-6) best = { spec: choice, plan: option, seconds };
+  }
+  const requiredIds = requiredFor(best!.spec);
+  let { plan } = best!;
   let layout = lay(plan);
   for (let i = 0; i < MAX_REPLANS && layout.overflow > 0 && maxItems > 0; i++) {
     maxItems = Math.max(0, Math.min(maxItems, plan.itemIds.length) - layout.overflow);
     // eslint-disable-next-line no-await-in-loop
-    plan = await assemble(maxItems);
+    plan = await assemble(maxItems, requiredIds);
     layout = lay(plan);
   }
   // the item limit counts every worn slot once; a quiver's slot or a lighter main setup can leave inventory cells free,
@@ -343,7 +356,7 @@ export const runRaid = async (
   for (let i = 0; i < MAX_REPLANS && layout.overflow === 0 && freeCells(layout) > 0; i++) {
     const more = Math.max(maxItems, plan.itemIds.length) + freeCells(layout);
     // eslint-disable-next-line no-await-in-loop
-    const next = await assemble(more);
+    const next = await assemble(more, requiredIds);
     const nextLayout = lay(next);
     if (nextLayout.overflow > 0 || next.totalSeconds >= plan.totalSeconds - 1e-6) break;
     maxItems = more;
