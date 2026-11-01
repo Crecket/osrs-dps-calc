@@ -343,7 +343,15 @@ export const runRaid = async (
     // eslint-disable-next-line no-await-in-loop
     const option = await assemble(maxItems, requiredFor(choice));
     const seconds = option.totalSeconds - specSaving(choice, specs, option.picks, defenceEnergy);
-    if (!best || seconds < best.seconds - 1e-6) best = { spec: choice, plan: option, seconds };
+    // a setup for every phase first, then within the budget, whatever their times; then fastest
+    const uncovered = (p: RaidPlan) => p.picks.filter((pick) => !pick.candidate).length;
+    const over = (p: RaidPlan) => p.cost > settings.budget;
+    const rank = (p: RaidPlan, s: number) => [uncovered(p), Number(over(p)), s];
+    const [u, o, t] = rank(option, seconds);
+    const [bu, bo, bt] = best ? rank(best.plan, best.seconds) : [Infinity, 1, Infinity];
+    if (!best || u < bu || (u === bu && (o < bo || (o === bo && t < bt - 1e-6)))) {
+      best = { spec: choice, plan: option, seconds };
+    }
   }
   const requiredIds = requiredFor(best!.spec);
   let { plan } = best!;

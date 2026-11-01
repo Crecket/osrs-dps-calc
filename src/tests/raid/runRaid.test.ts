@@ -163,7 +163,7 @@ describe('runRaid', () => {
     expect(first[0].seconds).toBeCloseTo(result.phases[0].hp / 10.625);
   });
 
-  test('re-plans with fewer items when switches overflow the inventory', async () => {
+  test('re-plans with fewer items when switches overflow the inventory, but keeps a setup for every phase', async () => {
     const whip = availableEquipment.find((e) => e.id === 4151)!;
     const lash = getCombatStylesForCategory(whip.category)[0];
     // the Guardian's phases use the Twisted bow setup, every other phase a whip setup: 6 items, 3 worn
@@ -196,7 +196,11 @@ describe('runRaid', () => {
     const zeroSpecs = Object.fromEntries(['guardian:0', 'guardian:1', 'bork:0', 'bork:1', 'dreadnoth:0', 'xarth:0', 'ocellus:0', 'ocellus:1', 'ocellus:2']
       .map((k) => [k, { elderMaul: 0, dwh: 0, tonalztic: 0 }]));
     const result = await runRaid({ ...settings, counts: zeroSpecs }, null, deps, () => {}, cache, search);
-    expect(result.layout.overflow).toBe(0);
+    // everything that isn't needed for a phase's only setup is dropped: the bow worn, the whip (the only weapon for the
+    // melee-only phases) in the one cell the bag lacks; no phase is left without a setup to make room
+    expect(result.plan.picks.every((p) => p.candidate !== null)).toBe(true);
+    expect([...result.plan.itemIds].sort((a, b) => a - b)).toEqual([4151, 11212, 20997]);
+    expect(result.layout.overflow).toBe(1);
   });
 
   test('ranks spec weapons per phase', async () => {

@@ -199,7 +199,11 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
   });
   // each phase's cheap-to-best kits, together
   const keptKits = new Set([...kitStrength.values()].flatMap((strengths) => front([...strengths.keys()], (k) => strengths.get(k)!, KITS_PER_PHASE)));
-  const kitsOf = new Map(groups.map((g) => [g, [...keptKits].filter((k) => k.group === g)]));
+  // and a bare kit (no armour) per group, so a weapon alone always fits: no phase is left without a setup because
+  // every kit costs more than the budget leaves
+  const kitsOf = new Map(groups.map((g) => [g, [...[...keptKits].filter((k) => k.group === g), {
+    group: g, gear: {}, items: [], cost: 0,
+  } as Kit]]));
   // every one-handed weapon with each off-hand worth trying, or none (a slot for the Book of the Dead)
   const poolShields = (input.pool ?? []).filter((e) => e.slot === 'shield');
   const withShields = (w: Omit<Weapon, 'shieldId'>): Weapon[] => {
@@ -317,6 +321,18 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
       }
       if (!changed) break;
     }
+    // every unit gets a setup: one nothing taken can deal gets the cheapest option that can, within the budget when one
+    // is, else the cheapest at all (a Rune crossbow beats no setup)
+    units.forEach((_, j) => {
+      if ((current.best[j]?.dps[j] ?? 0) > 0) return;
+      const able = options.filter((o) => !taken.includes(o) && o.combo.dps[j] > 0)
+        .map((o) => ({ o, next: evaluate(chosen, [...taken, o]) }))
+        .sort((a, b) => Number(a.next.cost > cap) - Number(b.next.cost > cap)
+          || a.next.cost - b.next.cost || a.next.seconds - b.next.seconds);
+      if (!able.length) return;
+      taken = [...taken, able[0].o];
+      current = able[0].next;
+    });
     // a kit or weapon no pick uses is left at home
     const used = new Set([...required, ...current.best.flatMap((c) => c?.candidate.itemIds ?? [])]);
     return {
@@ -335,8 +351,13 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
     if (costOf(items) > cap || items.size > Math.max(maxItems, required.length)) continue;
     for (const costAware of [true, false]) {
       const plan = withWeapons(chosen, costAware);
-      if (!bestPlan || plan.seconds < bestPlan.seconds - MIN_GAIN
-        || (Math.abs(plan.seconds - bestPlan.seconds) <= MIN_GAIN && plan.cost < bestPlan.cost)) bestPlan = plan;
+      // a setup for every unit first, then within the budget (a plan only goes over to give a unit its only setup),
+      // then fastest, then cheapest
+      const uncovered = (p: Plan) => p.picks.filter((c, j) => !c || !(c.dps[j] > 0)).length;
+      const over = (p: Plan) => p.cost > cap;
+      const better = (a: Plan, b: Plan) => uncovered(a) - uncovered(b) || Number(over(a)) - Number(over(b))
+        || (a.seconds < b.seconds - MIN_GAIN ? -1 : 0) || (b.seconds < a.seconds - MIN_GAIN ? 1 : 0) || a.cost - b.cost;
+      if (!bestPlan || better(plan, bestPlan) < 0) bestPlan = plan;
     }
     // eslint-disable-next-line no-await-in-loop
     await yieldToBrowser();
