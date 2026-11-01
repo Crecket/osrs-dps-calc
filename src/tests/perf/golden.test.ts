@@ -65,7 +65,7 @@ const MONSTERS: [string, string, boolean][] = [
 
 const monsters = (): (BulkMonster & { slayer: boolean })[] => {
   const s = defaultSettings();
-  const raid = routePhases(raidById(s.raidId), s.route, s.counts, []).slice(0, 4)
+  const raid = routePhases(raidById(s.raidId), s.route, s.counts).slice(0, 4)
     .map((p) => ({ ...p.monster, id: `raid-${p.phase.key}`, slayer: false }));
   return [
     ...MONSTERS.map(([name, version, slayer]) => ({

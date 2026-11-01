@@ -130,6 +130,9 @@ const UNIMPLEMENTED_SPECS: string[] = [
 /**
  * Class for computing various player-vs-NPC metrics.
  */
+/** NPC transformers without effects: each hit stays itself, so applying one is the same as flattening */
+const IDENTITY_TRANSFORMERS = new WeakSet<HitTransformer>();
+
 export default class PlayerVsNPCCalc extends BaseCalc {
   private memoizedDist?: AttackDistribution;
 
@@ -1407,7 +1410,9 @@ export default class PlayerVsNPCCalc extends BaseCalc {
       }
     }
 
-    const npcDist = attackerDist.transform(this.applyNpcTransforms(styleType));
+    const npcTransform = this.applyNpcTransforms(styleType);
+    // with no NPC effects each hit maps to itself at probability 1.0, so the transform is exactly a flatten
+    const npcDist = IDENTITY_TRANSFORMERS.has(npcTransform) ? attackerDist.flatten() : attackerDist.transform(npcTransform);
 
     if (process.env.NEXT_PUBLIC_HIT_DIST_SANITY_CHECK) {
       npcDist.dists.forEach((hitDist, ix) => {
@@ -2078,6 +2083,7 @@ export default class PlayerVsNPCCalc extends BaseCalc {
 
       return dist.flatten();
     };
+    if (relevantEffects.length === 0) IDENTITY_TRANSFORMERS.add(transformer);
     this.npcTransformCache[styleType!] = transformer;
     return transformer;
   }

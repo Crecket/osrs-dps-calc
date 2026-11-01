@@ -219,20 +219,26 @@ export const getCanonicalItemId = (itemId: number): number => {
 };
 
 let equipmentById: Map<number, EquipmentPiece> | null = null;
+/** The item with the id, as availableEquipment.find would give it, without scanning every item */
+const findEquipment = (id: number | undefined): EquipmentPiece | undefined => {
+  if (!equipmentById) {
+    const map = new Map<number, EquipmentPiece>();
+    // the first item with an id wins, as find did
+    availableEquipment.forEach((e) => {
+      if (!map.has(e.id)) map.set(e.id, e);
+    });
+    equipmentById = map;
+  }
+  return id === undefined ? undefined : equipmentById.get(id);
+};
+
 export const getCanonicalItem = (equipmentPiece: EquipmentPiece): EquipmentPiece => {
   const canonicalId = getCanonicalItemId(equipmentPiece.id);
   if (equipmentPiece.id === canonicalId) {
     return equipmentPiece;
   }
 
-  if (!equipmentById) {
-    equipmentById = new Map();
-    // the first item with an id wins, as find did
-    availableEquipment.forEach((e) => {
-      if (!equipmentById!.has(e.id)) equipmentById!.set(e.id, e);
-    });
-  }
-  const canonicalItem = equipmentById.get(canonicalId);
+  const canonicalItem = findEquipment(canonicalId);
   if (!canonicalItem) {
     return equipmentPiece;
   }
@@ -350,7 +356,7 @@ export const calculateEquipmentBonusesFromGear = (player: Player, monster: Monst
   });
 
   if (BLOWPIPE_IDS.includes(playerEquipment.weapon?.id || 0)) {
-    const dart = availableEquipment.find((e) => e.id === playerEquipment.weapon?.itemVars?.blowpipeDartId);
+    const dart = findEquipment(playerEquipment.weapon?.itemVars?.blowpipeDartId);
     if (dart) {
       totals.bonuses.ranged_str += dart.bonuses.ranged_str;
     } else {

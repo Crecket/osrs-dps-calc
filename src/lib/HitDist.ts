@@ -1,7 +1,6 @@
 /* eslint max-classes-per-file: 0 */
 /* eslint @typescript-eslint/no-use-before-define: 0 */
 import {
-  cross,
   max,
   min,
   some,
@@ -46,9 +45,10 @@ export class WeightedHit {
   ) {}
 
   public scale(factor: number): WeightedHit {
+    // hitsplat lists are never changed after they are made, so the new hit can share this one's
     return new WeightedHit(
       this.probability * factor,
-      [...this.hitsplats],
+      this.hitsplats,
     );
   }
 
@@ -95,15 +95,39 @@ export class WeightedHit {
     return this.probability * this.getSum();
   }
 
-  public getHash(): bigint {
+  /**
+   * The hitsplats packed into one key: 8 bits of damage and 1 accuracy bit each. A plain number whenever the packed
+   * value fits in one (nearly always), else a bigint: the same value either way, so hits that shared a key still do,
+   * without making a bigint for every hit.
+   */
+  public getHash(): number | bigint {
+    const { hitsplats } = this;
+    if (hitsplats.length === 1) {
+      const { damage, accurate } = hitsplats[0];
+      if (Number.isSafeInteger(damage) && Math.abs(damage) < 2 ** 50) return damage * 2 + (accurate ? 1 : 0);
+    } else {
+      let acc = 0;
+      let fits = true;
+      for (const hitsplat of hitsplats) {
+        const { damage } = hitsplat;
+        // with damage in 0..255 the bitwise or below is an add; the result must stay an exact number
+        if (!Number.isInteger(damage) || damage < 0 || damage > 255 || acc > (Number.MAX_SAFE_INTEGER - 511) / 512) {
+          fits = false;
+          break;
+        }
+        acc = (acc * 256 + damage) * 2 + (hitsplat.accurate ? 1 : 0);
+      }
+      if (fits) return acc;
+    }
     let acc = 0n;
-    for (const hitsplat of this.hitsplats) {
+    for (const hitsplat of hitsplats) {
       acc <<= 8n;
       acc |= BigInt(hitsplat.damage);
       acc <<= 1n;
       acc |= (hitsplat.accurate ? 1n : 0n);
     }
-    return acc;
+    // a value a number holds exactly is keyed as that number, like the packed ones above
+    return acc >= BigInt(-Number.MAX_SAFE_INTEGER) && acc <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(acc) : acc;
   }
 
   toString(): string {
@@ -127,10 +151,12 @@ export class HitDistribution {
   }
 
   public zip(other: HitDistribution): HitDistribution {
-    return new HitDistribution(
-      cross(this.hits, other.hits)
-        .map((hits) => hits[0].zip(hits[1])),
-    );
+    // every pair, this distribution's hits outer, as d3's cross ordered them
+    const hits: WeightedHit[] = [];
+    for (const a of this.hits) {
+      for (const b of other.hits) hits.push(a.zip(b));
+    }
+    return new HitDistribution(hits);
   }
 
   public wideTransform(t: HitTransformer, opts: TransformOpts = DEFAULT_TRANSFORM_OPTS): HitDistribution {
@@ -164,26 +190,25 @@ export class HitDistribution {
    * Merges the probabilities of hits with identical damage values
    */
   public flatten(): HitDistribution {
-    const acc = new Map<bigint, number>();
-    const hitLists = new Map<bigint, Hitsplat[]>();
+    // first-seen order and the same additions as before: only fewer maps and lookups
+    const acc = new Map<number | bigint, { prob: number; hitsplats: Hitsplat[] }>();
     for (const hit of this.hits) {
       const hash = hit.getHash();
       const prev = acc.get(hash);
       if (prev === undefined) {
-        acc.set(hash, hit.probability);
-        hitLists.set(hash, hit.hitsplats);
+        acc.set(hash, { prob: hit.probability, hitsplats: hit.hitsplats });
       } else {
-        acc.set(hash, prev + hit.probability);
+        prev.prob += hit.probability;
       }
     }
 
-    const d = new HitDistribution([]);
-    for (const [hash, prob] of acc.entries()) {
+    const hits: WeightedHit[] = [];
+    for (const { prob, hitsplats } of acc.values()) {
       if (prob > 0) {
-        d.addHit(new WeightedHit(prob, hitLists.get(hash)!));
+        hits.push(new WeightedHit(prob, hitsplats));
       }
     }
-    return d;
+    return new HitDistribution(hits);
   }
 
   /**
