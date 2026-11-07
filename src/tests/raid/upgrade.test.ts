@@ -267,6 +267,14 @@ describe('upgradeLoadout', () => {
     expect((await upgradeLoadout(input(withHands), hands(12))).itemIds).toContain(VAMBRACES);
   });
 
+  test('cells and money left over go to switches worth less than a cell normally is: melee armour over the ranged', async () => {
+    const hands = async (setups: BulkSetup[]) => setups.map((s) => (s.player.equipment.hands?.id === VAMBRACES ? 10.3 : 10));
+    const withHands = { pool: [...pool, item(VAMBRACES)], excluded: new Set([ANGUISH]) };
+    // 2 * (1000 / 10 - 1000 / 10.3): about 6s, under a cell's 15s
+    expect((await upgradeLoadout(input(withHands), hands)).itemIds).toContain(VAMBRACES);
+    expect((await upgradeLoadout(input({ ...withHands, maxItems: 4 }), hands)).itemIds).not.toContain(VAMBRACES);
+  });
+
   test('a ranged setup keeps its ring: the Lightbearer is never swapped for a Venator ring', async () => {
     const ring = async (setups: BulkSetup[]) => setups.map((s) => (s.player.equipment.ring?.id === VENATOR_RING ? 12 : 10));
     const result = await upgradeLoadout(input({ pool: [...pool, item(VENATOR_RING)], excluded: new Set([ANGUISH]) }), ring);

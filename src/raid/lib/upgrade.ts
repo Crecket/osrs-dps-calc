@@ -72,6 +72,9 @@ const MIN_GAIN = 1e-6;
 // ranged armour (an Inquisitor's piece saves ~17s over a raid's melee phases) still pays.
 const SWITCH_SECONDS = 15;
 const BOOT_SWITCH_SECONDS = 30;
+// what a switch must save per bag cell once the planning is done and cells and money are left over: an empty cell is
+// worth nothing, so a melee piece over the ranged armour (a Bandos chestplate saves ~6s) goes in rather than nothing
+const FILL_SECONDS = 3;
 const switchSeconds = (slot: GearSlot | 'stance'): number => {
   if (slot === 'feet') return BOOT_SWITCH_SECONDS;
   if (slot === 'stance' || slot === 'ammo') return 0;
@@ -248,6 +251,11 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   const swapped = (items: number[], move: Move) => [...items.filter((id) => id !== move.from), move.to];
   const costOf = (ids: Set<number>) => [...ids].reduce((n, id) => n + priceOf(id), 0);
 
+  // the last climb fills the cells left over at a lower bar
+  let filling = false;
+  const fillGain = (from: number, to: number) => MIN_GAIN + FILL_SECONDS * Math.max(0, to - from);
+  const needed = (slot: GearSlot | 'stance', from: number, to: number) => (filling ? fillGain(from, to) : switchGain(slot, from, to));
+
   /** Single changes while one fits, then pairs of them */
   const climb = async () => {
     for (let step = 0; step < MAX_STEPS; step++) {
@@ -265,7 +273,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           if (nextCost > cap || next.size > Math.max(maxItems, current.size)) continue;
           const gain = gainOf(group, move.next);
           // NaN when a setup does no damage
-          if (!(gain > switchGain(move.slot, current.size, next.size))) continue;
+          if (!(gain > needed(move.slot, current.size, next.size))) continue;
           const score = gain / (Math.max(0, nextCost - cost) + COST_SMOOTHING);
           if (!best || score > best.score) {
             best = {
@@ -310,7 +318,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           const next = a.group === b.group
             ? loadout({ group: a.group, items: swapped(swapped(a.group.items, a.move), b.move) })
             : loadout({ group: a.group, items: swapped(a.group.items, a.move) }, { group: b.group, items: swapped(b.group.items, b.move) });
-          if (costOf(next) > cap || next.size > Math.max(maxItems, current.size) || gain <= Math.max(switchGain(a.move.slot, current.size, next.size), switchGain(b.move.slot, current.size, next.size))) continue;
+          if (costOf(next) > cap || next.size > Math.max(maxItems, current.size) || gain <= Math.max(needed(a.move.slot, current.size, next.size), needed(b.move.slot, current.size, next.size))) continue;
           best = { a, b, gain };
           break;
         }
@@ -325,7 +333,8 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
         // eslint-disable-next-line no-await-in-loop
         const dps = await Promise.all(group.units.map((u, i) => rate([next[i].setup], u.monster).then(([d]) => d)));
         const rated = next.map((n, i) => ({ ...n, dps: dps[i] }));
-        if (!(gainOf(group, rated) > minGainFor(current.size, loadout({ group, items: swapped(swapped(group.items, a.move), b.move) }).size))) continue;
+        const size = loadout({ group, items: swapped(swapped(group.items, a.move), b.move) }).size;
+        if (!(gainOf(group, rated) > (filling ? fillGain(current.size, size) : minGainFor(current.size, size)))) continue;
         group.units.forEach((u, i) => {
           // eslint-disable-next-line no-param-reassign
           u.candidate = rated[i];
@@ -698,6 +707,11 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
       // eslint-disable-next-line no-await-in-loop
       group.moves = await movesFor(group);
     }
+    await climb();
+  }
+  // bag cells and money left: switches that save less than a cell is normally worth, the most time per gp first
+  if (loadout().size < maxItems && costOf(loadout()) < budget) {
+    filling = true;
     await climb();
   }
   const upgraded = new Map(groups.flatMap((g) => g.units.map((u) => [u.pick, u.candidate] as const)));
