@@ -115,7 +115,7 @@ const covers = (a: EquipmentPiece, b: EquipmentPiece) => (Object.keys(b.offensiv
   .every((k) => a.offensive[k] >= b.offensive[k])
   && (Object.keys(b.bonuses) as (keyof EquipmentPiece['bonuses'])[]).every((k) => a.bonuses[k] >= b.bonuses[k]);
 
-const setKey = (ids: number[]) => [...ids].sort((a, b) => a - b).join(',');
+const setKey = (ids: number[]) => [...new Set(ids)].sort((a, b) => a - b).join(',');
 const isBlowpipe = (w: EquipmentPiece) => w.itemVars?.blowpipeDartId !== undefined || /blowpipe/i.test(w.name);
 
 export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise<RaidPlan> => {
@@ -580,6 +580,27 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
    * wears in that slot when that costs at most its switch's worth of seconds (the kits come whole, every piece a switch).
    * The cheapest loss first, one at a time.
    */
+  /**
+   * Groups that came to wear the same items become one again (a unit the weapon step split off, climbed into the
+   * items of another): the camp and the cheapening below see a piece two such groups wear as shared, and leave it.
+   */
+  const regroup = async () => {
+    const merged = new Set<Group>();
+    for (let i = 0; i < groups.length; i++) {
+      for (let j = groups.length - 1; j > i; j--) {
+        if (setKey(groups[j].items) !== setKey(groups[i].items)) continue;
+        groups[i].units.push(...groups[j].units);
+        groups.splice(j, 1);
+        merged.add(groups[i]);
+      }
+    }
+    for (const group of merged) {
+      // eslint-disable-next-line no-await-in-loop
+      group.moves = await movesFor(group);
+    }
+  };
+  await regroup();
+
   const campSwitches = async (): Promise<boolean> => {
     let best: { group: Group; rated: Candidate[]; loss: number } | null = null;
     for (const group of groups) {
@@ -617,6 +638,8 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   let camped = 0;
   // eslint-disable-next-line no-await-in-loop
   while (camped < MAX_CAMPS && await campSwitches()) camped += 1;
+  // a camped switch can leave two groups in the same items
+  await regroup();
 
   /**
    * Items that cost more than one doing the same damage go: the climb only takes changes that save time, so Oathplate

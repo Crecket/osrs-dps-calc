@@ -129,6 +129,39 @@ describe('upgradeLoadout', () => {
     expect(result.cost).toBe(20e6);
   });
 
+  test('drops Oathplate too when the weapon step moved each phase to the mace on its own, in the same gear', async () => {
+    const [MACE, WHIP, OATH_CHEST, BANDOS] = [24417, 4151, 30753, 11832];
+    const job = (weaponId: number) => {
+      const stances = getCombatStylesForCategory(item(weaponId).category);
+      const style = weaponId === MACE ? 'crush' as const : 'slash' as const;
+      return {
+        style, weaponId, combatStyle: stances.find((st) => st.type === style)!, ammoId: null, spellName: null, dartId: null,
+      };
+    };
+    const setup = (key: string, weaponId: number): Candidate => {
+      const j = job(weaponId);
+      const player = buildPlayer(basePlayer(inputs, j.style), j, { body: OATH_CHEST });
+      return {
+        phaseKey: key, style: j.style, dps: weaponId === MACE ? 24 : 14, setup: { id: `${key}-${weaponId}`, name: 'x', player }, itemIds: [weaponId, OATH_CHEST],
+      };
+    };
+    const picks = [setup('a', WHIP), setup('b', WHIP)];
+    const prices = new Map([[OATH_CHEST, 80e6], [BANDOS, 20e6], [MACE, 10e6]]);
+    const body = (st: BulkSetup) => st.player.equipment.body;
+    const result = await upgradeLoadout(input({
+      plan: plan(picks),
+      // the mace's searched setups, for the weapon step to move each phase to
+      candidates: [...picks, setup('a', MACE), setup('b', MACE)],
+      pool: [MACE, WHIP, OATH_CHEST, BANDOS].map(item),
+      priceOf: (id) => prices.get(id) ?? 0,
+      budget: 90e6,
+      playerFor: (st) => basePlayer(inputs, st),
+    }), async (setups) => setups.map((st) => (st.player.equipment.weapon?.id === MACE ? 20 : 10) + (body(st)?.bonuses.str ?? 0)));
+    expect(result.picks.map((p) => p.candidate!.setup.player.equipment.weapon?.id)).toEqual([MACE, MACE]);
+    expect(result.picks.map((p) => p.candidate!.setup.player.equipment.body?.id)).toEqual([BANDOS, BANDOS]);
+    expect(result.itemIds).not.toContain(OATH_CHEST);
+  });
+
   test('two variants of one item merge into the one that has both: Avernic treads (pe) and (pr) become (max)', async () => {
     const [PE, PR, MAX] = [31092, 31091, 31097];
     const withFeet = (c: Candidate, feet: number): Candidate => {
