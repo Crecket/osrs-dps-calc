@@ -20,7 +20,8 @@ import { RaidStore, RaidStoreContext } from '@/raid/state/RaidStore';
 import { runRaid, searchesNeeded } from '@/raid/lib/runRaid';
 import { RaidProgress } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
-import { fetchPrices, Prices } from '@/raid/lib/prices';
+import { fetchPrices, itemPrice, Prices } from '@/raid/lib/prices';
+import { getCanonicalItemId } from '@/lib/Equipment';
 import { debugReport } from '@/raid/lib/debug';
 import RaidInputs from '@/raid/components/RaidInputs';
 import { AccountFields } from '@/best/components/InputsPanel';
@@ -202,7 +203,9 @@ const RaidPage: React.FC = observer(() => {
                       data-tooltip-id="tooltip"
                       data-tooltip-content="Download the settings and result as JSON, to share for debugging"
                       onClick={() => {
-                        const json = JSON.stringify(debugReport(toJS(store.settings), toJS(store.result!)), null, 2);
+                        const settings = toJS(store.settings);
+                        const owned = new Set(settings.ownedIds.map(getCanonicalItemId));
+                        const json = JSON.stringify(debugReport(settings, toJS(store.result!), (id) => itemPrice(id, prices, owned)), null, 2);
                         const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
                         const a = document.createElement('a');
                         a.href = url;

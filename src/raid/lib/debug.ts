@@ -7,6 +7,7 @@ import { BUILD_ID } from '@/lib/build';
 import { EquipmentPiece } from '@/types/Player';
 import { GEAR_SLOT_ORDER } from '@/bulk/types';
 import { RaidResult, RaidSettings } from '@/raid/lib/runRaid';
+import { bestPool } from '@/best/lib/candidates';
 
 let itemsById: Map<number, EquipmentPiece> | null = null;
 const nameOf = (id: number | null | undefined): string => {
@@ -16,8 +17,12 @@ const nameOf = (id: number | null | undefined): string => {
 };
 const round = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * `priceOf` adds what each item of the loadout costs, and every item the planner could have bought, by name: whether a
+ * cheaper item did the same is a question of prices
+ */
 // eslint-disable-next-line import/prefer-default-export
-export const debugReport = (settings: RaidSettings, result: RaidResult): object => ({
+export const debugReport = (settings: RaidSettings, result: RaidResult, priceOf?: (id: number) => number): object => ({
   // the commit the page runs, and the one that made the result (they differ for a result kept from an older build)
   build: BUILD_ID,
   resultBuild: result.build ?? 'unknown (made before builds were recorded)',
@@ -31,6 +36,12 @@ export const debugReport = (settings: RaidSettings, result: RaidResult): object 
   totalSeconds: round(result.plan.totalSeconds),
   cost: result.plan.cost,
   items: result.plan.itemIds.map(nameOf),
+  ...(priceOf ? {
+    itemPrices: Object.fromEntries(result.plan.itemIds.map((id) => [nameOf(id), priceOf(id)])),
+    poolPrices: Object.fromEntries(bestPool().map((e) => [e.name, priceOf(e.id)] as const)
+      .filter(([, price]) => price > 0)
+      .sort(([a], [b]) => a.localeCompare(b))),
+  } : {}),
   worn: Object.fromEntries(Object.entries(result.layout.worn).map(([slot, id]) => [slot, nameOf(id)])),
   inventory: result.layout.inventory.map((c) => {
     if (!c) return null;

@@ -56,5 +56,14 @@ describe('debugReport', () => {
     expect(report.worn.weapon).toBe('Twisted bow');
     expect(report.tiers['bork:0'][0].weapon).toBe('Twisted bow');
     expect(JSON.stringify(report)).not.toContain('"equipment"');
+    expect(report).not.toHaveProperty('itemPrices');
+
+    const priced = debugReport(settings, result, (id) => (id === 20997 ? 1_400_000_000 : 0)) as {
+      itemPrices: Record<string, number>; poolPrices: Record<string, number>;
+    };
+    expect(priced.itemPrices['Twisted bow']).toBe(1_400_000_000);
+    expect(priced.itemPrices['Masori mask (f)']).toBe(0);
+    // only the items with a price
+    expect(Object.keys(priced.poolPrices)).toEqual(['Twisted bow']);
   });
 });
