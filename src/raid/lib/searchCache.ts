@@ -6,6 +6,7 @@ import { BestStyle } from '@/best/types';
 import { Gear } from '@/best/lib/search';
 import { bestPool, WeaponJob } from '@/best/lib/candidates';
 import { hashKey } from '@/best/lib/resultCache';
+import { BUILD_ID } from '@/lib/build';
 import type { PresetStorage } from '@/bulk/state/BulkStore';
 
 export const SEARCH_CACHE_KEY = 'dps-raid-searches';
@@ -32,9 +33,10 @@ const SPEC_LIMIT = 30000;
 
 /**
  * A data update (new items or monsters) can change any result, and so can a change to the items the search may use
- * (e.g. Leagues items left out): results holding an item no longer allowed must not come back.
+ * (e.g. Leagues items left out): results holding an item no longer allowed must not come back. So can any code change
+ * (the search, the DPS engine the spec and upgrade DPS lookups come from), so a new build starts empty.
  */
-export const cacheVersion = (pool: EquipmentPiece[]) => `${CACHE_VERSION}:${availableEquipment.length}:${getMonsters().length}:${hashKey(pool.map((e) => e.id).join(','))}`;
+export const cacheVersion = (pool: EquipmentPiece[], build: string = BUILD_ID) => `${CACHE_VERSION}:${build}:${availableEquipment.length}:${getMonsters().length}:${hashKey(pool.map((e) => e.id).join(','))}`;
 
 let version: string | null = null;
 const currentVersion = () => {

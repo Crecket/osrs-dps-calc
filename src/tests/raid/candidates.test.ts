@@ -78,6 +78,8 @@ describe('cacheVersion', () => {
   test('changes when the items the search may use change, so old results are dropped', () => {
     expect(cacheVersion([tbow])).toBe(cacheVersion([tbow]));
     expect(cacheVersion([tbow])).not.toBe(cacheVersion([tbow, item(11212)]));
+    // a new build's code can change any result
+    expect(cacheVersion([tbow], 'abc1234')).not.toBe(cacheVersion([tbow], 'def5678'));
   });
 });
 
