@@ -15,7 +15,7 @@ import { defaultAccount } from '@/best/lib/account';
 import { EquipmentPiece, Player } from '@/types/Player';
 import { Spellbook } from '@/types/Spell';
 import {
-  DEFENCE_WEAPON_IDS, DefenceCounts, MagicOption, PhasePart, Route,
+  DEFENCE_WEAPON_IDS, DefenceCounts, MagicOption, PhasePart, Route, RoutePhase,
 } from '@/raid/types';
 import { raidById } from '@/raid/raids';
 import { routeBosses, routePhases } from '@/raid/lib/route';
@@ -30,6 +30,9 @@ import {
 import { orderedItems, RaidPlan, THRALL_DPS } from '@/raid/lib/assemble';
 import { KitUnit, planKits } from '@/raid/lib/kits';
 import { dpsRater, upgradeLoadout } from '@/raid/lib/upgrade';
+import {
+  ItemWorth, itemReplacements, itemWorths, Replacement, WorthContext,
+} from '@/raid/lib/itemValue';
 import {
   freeSwitchSlots, Layout, slotEfficientLayout, Supplies,
 } from '@/raid/lib/layout';
@@ -150,6 +153,10 @@ export interface RaidResult {
   specs: Record<string, SpecRank[]>;
   /** Per phase key, every searched weapon, fastest first; missing on results saved before it existed */
   tiers?: Record<string, WeaponTier[]>;
+  /** The settings the run planned with; missing on results saved before it existed */
+  settings?: RaidSettings;
+  /** Per item a setup wears, what the raid loses without it; missing on results saved before it existed */
+  worths?: Record<number, ItemWorth>;
 }
 
 /** A weapon the searches found for a phase, at its best setup there */
@@ -305,6 +312,40 @@ const prepare = (settings: RaidSettings, prices: Prices | null) => {
   };
 };
 
+/** What has to be dealt: each phase, or each part of one, by the styles that can. The plan's picks follow this order */
+const raidUnits = (phases: RoutePhase[]): KitUnit[] => phases.flatMap((p) => (p.phase.parts ?? [{ share: 1 }]).map((part): KitUnit => {
+  const allowed = p.phase.allowedStyles;
+  const styles = part.styles && allowed ? part.styles.filter((st) => allowed.includes(st)) : (part.styles ?? allowed);
+  return { key: p.phase.key, hp: p.monster.monster.skills.hp * part.share, styles };
+}));
+
+/**
+ * The replacements for an item of a result's loadout, rated as the run that made it would: with the result's settings,
+ * the current prices. Null for a weapon or an item no setup wears.
+ */
+export const replacementsFor = async (
+  result: RaidResult,
+  fallback: RaidSettings,
+  id: number,
+  prices: Prices | null,
+  deps: BestRunDeps,
+  cache: SearchCache,
+): Promise<Replacement[] | null> => {
+  const settings = result.settings ?? fallback;
+  const { phases, priceOf, pool: items } = prepare(settings, prices);
+  const left = new Set(excludedOf(settings).map(getCanonicalItemId));
+  const base = raidBaseInputs(settings);
+  const ctx: WorthContext = {
+    picks: result.plan.picks,
+    styles: raidUnits(phases).map((u) => u.styles),
+    monsters: new Map(phases.map((p) => [p.phase.key, p.monster])),
+    extraDps: settings.magic === 'thralls' ? THRALL_DPS : 0,
+    rate: dpsRater(deps, cache),
+    playerFor: (style) => basePlayer(base, style),
+  };
+  return itemReplacements(ctx, id, withoutOutclassed(items.filter((e) => !left.has(getCanonicalItemId(e.id)))), priceOf, result.plan.itemIds);
+};
+
 /** Searches a run would still have to do; 0 means it only re-plans from the cache */
 export const searchesNeeded = (settings: RaidSettings, prices: Prices | null, cache: SearchCache): number => {
   const { phases, base, tiers } = prepare(settings, prices);
@@ -343,11 +384,7 @@ export const runRaid = async (
   };
   const rate = dpsRater(deps, cache);
   // what has to be dealt: each phase, or each part of one, by the styles that can
-  const units = phases.flatMap((p) => (p.phase.parts ?? [{ share: 1 }]).map((part): KitUnit => {
-    const allowed = p.phase.allowedStyles;
-    const styles = part.styles && allowed ? part.styles.filter((st) => allowed.includes(st)) : (part.styles ?? allowed);
-    return { key: p.phase.key, hp: p.monster.monster.skills.hp * part.share, styles };
-  }));
+  const units = raidUnits(phases);
   // the bosses as the team leaves them: the configured specs, whatever this player carries
   const monsters = new Map(phases.map((p) => [p.phase.key, p.monster]));
   const baseRequired = baseRequiredItems(settings);
@@ -445,9 +482,15 @@ export const runRaid = async (
     return list.map((c, i) => ({ ...c, phaseKey: p.phase.key, dps: dps[i] }));
   }))).flat();
   const all = [...candidates, ...heldSetups, ...everywhere];
+  planning('Working out what each item saves');
+  const worths = await itemWorths({
+    picks: plan.picks, styles: units.map((u) => u.styles), monsters, extraDps, rate, playerFor,
+  }, plan.itemIds, heldSetups);
   const hpByKey = new Map(phases.map((p) => [p.phase.key, p.monster.monster.skills.hp]));
   return {
     build: BUILD_ID,
+    settings,
+    worths,
     plan,
     layout,
     phases: phases.map((p) => ({

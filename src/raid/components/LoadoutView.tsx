@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { PlayerEquipment } from '@/types/Player';
@@ -13,6 +13,8 @@ import { formatGp, formatTime } from '@/raid/lib/format';
 import {
   ItemImage, ItemMenu, itemById, priceLabel, useItemMenu,
 } from '@/raid/components/items';
+import { Replacement } from '@/raid/lib/itemValue';
+import ItemDetails, { worthLabel } from '@/raid/components/ItemDetails';
 
 // the in-game equipment tab: 3 columns, 5 rows; null is a gap
 const EQUIPMENT_GRID: (WornSlot | null)[] = [
@@ -38,23 +40,33 @@ const SUPPLY_TOOLTIP: Record<SupplyLabel, string> = {
 const cellClass = 'w-12 h-12 flex items-center justify-center rounded border border-[#3e3529] bg-[#3e3529]/70';
 const ICON_SIZE = 36;
 
-const LoadoutView: React.FC<{ result: RaidResult; prices: Prices | null }> = observer(({ result, prices }) => {
+const LoadoutView: React.FC<{
+  result: RaidResult;
+  prices: Prices | null;
+  /** The replacements for an item, rated when it is clicked */
+  replacements?: (id: number) => Promise<Replacement[] | null>;
+}> = observer(({ result, prices, replacements }) => {
   const store = useRaidStore();
   const menu = useItemMenu();
+  const [selected, setSelected] = useState<number | null>(null);
+  const select = (id: number) => (replacements ? () => setSelected((s) => (s === id ? null : id)) : undefined);
   const { owned } = { owned: store.settings.ownedIds };
   const { plan, layout } = result;
 
   const itemCell = (id: number, key: string) => (
-    <div
+    <button
+      type="button"
       key={key}
-      className={cellClass}
+      className={`${cellClass} ${replacements ? 'cursor-pointer hover:border-orange-400' : ''} ${selected === id ? 'border-orange-400' : ''}`}
       data-testid="item-cell"
       data-tooltip-id="tooltip"
-      data-tooltip-content={`${itemById(id)?.name ?? id} — ${priceLabel(id, prices, owned)}`}
+      data-tooltip-content={[`${itemById(id)?.name ?? id} — ${priceLabel(id, prices, owned)}`, worthLabel(result, id)].filter(Boolean).join(' · ')}
       onContextMenu={menu.open(id)}
+      onClick={select(id)}
+      aria-label={itemById(id)?.name ?? String(id)}
     >
       <ItemImage id={id} size={ICON_SIZE} />
-    </div>
+    </button>
   );
 
   const firstReserved = layout.inventory.findIndex((c) => c?.kind === 'supply' && c.label === 'Reserved');
@@ -131,14 +143,19 @@ const LoadoutView: React.FC<{ result: RaidResult; prices: Prices | null }> = obs
           {layout.inventory.map(invCell)}
         </div>
       </div>
+      {selected !== null && replacements && (
+        <ItemDetails result={result} id={selected} prices={prices} owned={owned} load={replacements} onClose={() => setSelected(null)} />
+      )}
       <div className="min-h-0 flex flex-col gap-1">
         <h3 className="text-sm font-bold">Cost breakdown</h3>
         <ul className="min-h-0 overflow-y-auto max-h-80 xl:max-h-none rounded border border-body-200 dark:border-dark-300 divide-y divide-body-200 dark:divide-dark-300 text-sm" data-testid="cost-list">
           {costs.map(({ id, price }) => (
-            <li key={id} className="flex items-center gap-2 px-2 py-1" data-testid="cost-row" onContextMenu={menu.open(id)}>
-              <ItemImage id={id} size={20} />
-              <span className="grow truncate">{itemById(id)?.name ?? id}</span>
-              <span className="tabular-nums text-gray-500 dark:text-gray-300 shrink-0">{price > 0 ? `${formatGp(price)} gp` : priceLabel(id, prices, owned).replace(' (untradeable or no price)', '')}</span>
+            <li key={id} data-testid="cost-row" onContextMenu={menu.open(id)}>
+              <button type="button" className={`w-full text-left flex items-center gap-2 px-2 py-1 ${replacements ? 'cursor-pointer hover:bg-body-200 dark:hover:bg-dark-400' : 'cursor-default'}`} onClick={select(id)}>
+                <ItemImage id={id} size={20} />
+                <span className="grow truncate">{itemById(id)?.name ?? id}</span>
+                <span className="tabular-nums text-gray-500 dark:text-gray-300 shrink-0">{price > 0 ? `${formatGp(price)} gp` : priceLabel(id, prices, owned).replace(' (untradeable or no price)', '')}</span>
+              </button>
             </li>
           ))}
         </ul>

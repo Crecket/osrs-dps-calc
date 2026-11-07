@@ -17,7 +17,7 @@ import createBulkWorker from '@/bulk/worker/createBulkWorker';
 import Panel, { buttonClass } from '@/bulk/components/Panel';
 import { focusRing } from '@/best/components/fields';
 import { RaidStore, RaidStoreContext } from '@/raid/state/RaidStore';
-import { runRaid, searchesNeeded } from '@/raid/lib/runRaid';
+import { replacementsFor, runRaid, searchesNeeded } from '@/raid/lib/runRaid';
 import { RaidProgress } from '@/raid/lib/candidates';
 import { SearchCache } from '@/raid/lib/searchCache';
 import { fetchPrices, itemPrice, Prices } from '@/raid/lib/prices';
@@ -116,6 +116,12 @@ const RaidPage: React.FC = observer(() => {
   }, [ready, store, prices, pools, cache]);
 
   // runs only start from the button: a change, however cheap, marks the result stale and waits for it
+
+  // a click on an item rates its replacements: an explicit ask, like the button
+  const replacements = useCallback(
+    (id: number) => (store.result ? replacementsFor(store.result, toJS(store.settings), id, prices, pools, cache) : Promise.resolve(null)),
+    [store, prices, pools, cache],
+  );
 
   const refreshPrices = () => {
     setPricesState('loading');
@@ -273,7 +279,7 @@ const RaidPage: React.FC = observer(() => {
                   // the loadout beside the boss results on wide screens, staying in view while they scroll
                   <div className="flex flex-col xl:flex-row gap-6 items-start">
                     <div className="w-full xl:w-[26rem] shrink-0 xl:sticky xl:top-16 xl:max-h-[calc(100vh-5rem)] flex flex-col">
-                      <LoadoutView result={result} prices={prices} />
+                      <LoadoutView result={result} prices={prices} replacements={replacements} />
                     </div>
                     <div className="w-full min-w-0 grow">
                       <BossResults result={result} />
