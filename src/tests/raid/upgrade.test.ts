@@ -162,6 +162,41 @@ describe('upgradeLoadout', () => {
     expect(result.itemIds).not.toContain(OATH_CHEST);
   });
 
+  test('gives back expensive boots bought early when the money buys a faster weapon', async () => {
+    const [MACE, WHIP, PRIMORDIAL, DRAGON_BOOTS] = [24417, 4151, 13239, 11840];
+    const job = (weaponId: number) => {
+      const style = weaponId === MACE ? 'crush' as const : 'slash' as const;
+      return {
+        style, weaponId, combatStyle: getCombatStylesForCategory(item(weaponId).category).find((st) => st.type === style)!, ammoId: null, spellName: null, dartId: null,
+      };
+    };
+    const setup = (key: string, weaponId: number): Candidate => {
+      const j = job(weaponId);
+      const player = buildPlayer(basePlayer(inputs, j.style), j, { feet: PRIMORDIAL });
+      return {
+        phaseKey: key, style: j.style, dps: weaponId === MACE ? 22 : 12, setup: { id: `${key}-${weaponId}`, name: 'x', player }, itemIds: [weaponId, PRIMORDIAL],
+      };
+    };
+    const picks = [setup('a', WHIP), setup('b', WHIP)];
+    // the Primordial boots leave too little for the mace
+    const prices = new Map([[PRIMORDIAL, 80e6], [DRAGON_BOOTS, 2e6], [MACE, 50e6]]);
+    const feet = (st: BulkSetup) => st.player.equipment.feet?.id;
+    const result = await upgradeLoadout(input({
+      plan: plan(picks),
+      candidates: [...picks, setup('a', MACE), setup('b', MACE)],
+      pool: [MACE, WHIP, PRIMORDIAL, DRAGON_BOOTS].map(item),
+      priceOf: (id) => prices.get(id) ?? 0,
+      budget: 100e6,
+      playerFor: (st) => basePlayer(inputs, st),
+    }), async (setups) => setups.map((st) => {
+      const boots = { [PRIMORDIAL]: 2, [DRAGON_BOOTS]: 1.5 }[feet(st) ?? 0] ?? 0;
+      return (st.player.equipment.weapon?.id === MACE ? 20 : 10) + boots;
+    }));
+    expect(result.picks.map((p) => p.candidate!.setup.player.equipment.weapon?.id)).toEqual([MACE, MACE]);
+    expect(result.itemIds).not.toContain(PRIMORDIAL);
+    expect(result.cost).toBeLessThanOrEqual(100e6);
+  });
+
   test('two variants of one item merge into the one that has both: Avernic treads (pe) and (pr) become (max)', async () => {
     const [PE, PR, MAX] = [31092, 31091, 31097];
     const withFeet = (c: Candidate, feet: number): Candidate => {

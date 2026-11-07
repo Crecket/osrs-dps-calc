@@ -50,7 +50,7 @@ export interface UpgradeInput {
 }
 
 /** The passes in the order they run, for progress */
-const STEPS = ['Upgrading gear', 'Leaving armour sets', 'Trying other weapons', 'Camping switches', 'Swapping for cheaper items', 'Building kits', 'Filling free cells'] as const;
+const STEPS = ['Upgrading gear', 'Leaving armour sets', 'Trying other weapons', 'Camping switches', 'Swapping for cheaper items', 'Selling back expensive items', 'Building kits', 'Filling free cells'] as const;
 
 // besides the searched items, the items with the best bonuses for the style tried per slot
 const TOP_PER_SLOT = 6;
@@ -59,6 +59,10 @@ const PRICE_BANDS = [100_000, 1_000_000, 10_000_000, 100_000_000];
 // as in the assembly's cost-aware pass: free upgrades first, but tiny gains don't win on price alone
 const COST_SMOOTHING = 100_000;
 const MAX_STEPS = 60;
+// the most expensive armour pieces tried back for a cheaper one, the money freed going to the rest (a weapon upgrade
+// rather than 142m Avernic treads), kept only when the raid gets this much faster
+const MAX_SELL_BACK = 4;
+const SELL_BACK_SECONDS = 1;
 // times the step leaves a set and climbs again
 const MAX_SET_ROUNDS = 4;
 // weapons given to single units, and the other weapons tried per unit
@@ -434,10 +438,11 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
    * unit leaves its group for one of its own. On its own when it fits, else together with one armour change elsewhere
    * that frees the money or the bag cell (melee wearing the ranged boots instead of its own pair).
    */
-  const otherWeapons = new Map<Unit, Candidate[]>();
+  const otherWeapons = new Map<Unit, { from: Candidate; options: Candidate[] }>();
   const weaponOptions = async (u: Unit): Promise<Candidate[]> => {
+    // built from the unit's gear: stale once that changed (another pass gave its boots back)
     const known = otherWeapons.get(u);
-    if (known) return known;
+    if (known?.from === u.candidate) return known.options;
     const own = u.candidate.setup.player.equipment.weapon!;
     const group = (st: BestStyle) => (st === 'ranged' || st === 'magic' ? st : 'melee');
     // the phase's best setup of each other weapon of the unit's style group
@@ -466,7 +471,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     const dps = await rate(built.map((c) => c.setup), u.monster);
     const rated = built.map((c, i) => ({ ...c, dps: dps[i] }))
       .filter((c) => seconds(u.pick.hp, c.dps) < seconds(u.pick.hp, u.candidate.dps) - MIN_GAIN);
-    otherWeapons.set(u, rated);
+    otherWeapons.set(u, { from: u.candidate, options: rated });
     return rated;
   };
 
@@ -730,6 +735,68 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     }
     await climb();
   }
+  /**
+   * The climb buys greedily, by time per gp, and never gives an item back: an expensive piece bought early (Avernic
+   * treads) can stand where the money would buy more time elsewhere, a better weapon most of all. Each of the most
+   * expensive armour pieces is tried back for the cheaper item that loses least in each setup wearing it, the freed
+   * money spent by the climb and the weapon step again; the raid as it was comes back unless that is faster.
+   */
+  const raidTime = () => groups.reduce((n, g) => n + g.units.reduce((m, u) => m + seconds(u.pick.hp, u.candidate.dps), 0), 0);
+  const snapshot = () => {
+    const kept = groups.map((g) => ({
+      g, units: [...g.units], candidates: g.units.map((u) => u.candidate), items: g.items, moves: g.moves,
+    }));
+    return () => {
+      groups.splice(0, groups.length, ...kept.map((k) => k.g));
+      kept.forEach((k) => {
+        Object.assign(k.g, { units: k.units, items: k.items, moves: k.moves });
+        k.units.forEach((u, i) => {
+          // eslint-disable-next-line no-param-reassign
+          u.candidate = k.candidates[i];
+        });
+      });
+    };
+  };
+  const sellBack = async (id: number): Promise<boolean> => {
+    const wearing = groups.filter((g) => g.items.includes(id));
+    const changes = wearing.map((group) => group.moves
+      .filter((m) => m.slot !== 'stance' && m.from === id && priceOf(m.to) < priceOf(id))
+      .reduce<Move | null>((a, m) => (!a || gainOf(group, m.next) > gainOf(group, a.next) ? m : a), null));
+    if (wearing.length === 0 || changes.some((m) => !m)) return false;
+    const before = raidTime();
+    const restore = snapshot();
+    wearing.forEach((group, i) => {
+      const move = changes[i]!;
+      group.units.forEach((u, j) => {
+        // eslint-disable-next-line no-param-reassign
+        u.candidate = move.next[j];
+      });
+      group.items = swapped(group.items, move);
+    });
+    for (const group of groups) {
+      // eslint-disable-next-line no-await-in-loop
+      group.moves = await movesFor(group);
+    }
+    // the weapon step first: the climb alone would buy the item straight back
+    // eslint-disable-next-line no-await-in-loop
+    for (let round = 0; round < MAX_WEAPON_ADDS && await addWeapons(); round++) await climb();
+    await climb();
+    if (raidTime() < before - SELL_BACK_SECONDS) return true;
+    restore();
+    return false;
+  };
+  await startStep('Selling back expensive items');
+  const expensive = [...loadout()]
+    .filter((id) => !required.has(id) && priceOf(id) > FREE_PRICE
+      && groups.some((g) => g.units[0].candidate.setup.player.equipment.weapon?.id !== undefined
+        && g.items.includes(id) && getCanonicalItemId(g.units[0].candidate.setup.player.equipment.weapon.id) !== id))
+    .sort((a, b) => priceOf(b) - priceOf(a))
+    .slice(0, MAX_SELL_BACK);
+  for (const id of expensive) {
+    // eslint-disable-next-line no-await-in-loop
+    await sellBack(id);
+  }
+
   /**
    * A setup's kit built up as a whole: pieces that each save too little for their cell (or nothing, short of a max hit)
    * can together, like melee armour over the ranged for all of a melee phase. Changes that save the most time per gp go
