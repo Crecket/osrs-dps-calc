@@ -60,6 +60,11 @@ const MAX_SET_ROUNDS = 4;
 const MAX_WEAPON_ADDS = 4;
 // armour switches swapped for pieces another setup wears
 const MAX_CAMPS = 12;
+// items swapped for cheaper ones doing the same damage, the cheaper items rated per slot, and the seconds over the raid
+// such a swap may lose (rounding)
+const MAX_CHEAPEN = 16;
+const CHEAPER_TRIES = 8;
+const CHEAPEN_LOSS = 0.05;
 const WEAPONS_PER_UNIT = 5;
 const MIN_GAIN = 1e-6;
 // what an armour switch (an item only one setup wears) must save over the raid for its bag cell: most players camp the
@@ -612,7 +617,60 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   let camped = 0;
   // eslint-disable-next-line no-await-in-loop
   while (camped < MAX_CAMPS && await campSwitches()) camped += 1;
-  if (camped > 0) {
+
+  /**
+   * Items that cost more than one doing the same damage go: the climb only takes changes that save time, so Oathplate
+   * bought for its strength on a crush setup (its accuracy is slash) stays where Bandos and a faceguard do the same.
+   * A piece only one setup wears is swapped for the cheaper pool item, at least as strong for the style by bonuses, that
+   * loses no time; the most money first, one at a time.
+   */
+  const cheapen = async (): Promise<boolean> => {
+    const current = loadout();
+    const cost = costOf(current);
+    let best: { group: Group; rated: Candidate[]; saving: number } | null = null;
+    for (const group of groups) {
+      const c = group.units[0].candidate;
+      const { equipment } = c.setup.player;
+      const value = valueFor(c);
+      const weapon = equipment.weapon!;
+      for (const slot of SLOTS) {
+        const mine = equipment[slot];
+        if (slot === 'ammo' || !mine) continue;
+        const id = getCanonicalItemId(mine.id);
+        if (required.has(id) || groups.some((g) => g !== group && g.items.includes(id))) continue;
+        const options = (bySlot.get(slot) ?? []).filter((e) => e.id !== mine.id && value(e) >= value(mine)
+          && (isCrystalWeapon(weapon) || !isCrystalArmour(e)))
+          .map((e) => ({ e, items: [...group.items.filter((x) => x !== id), getCanonicalItemId(e.id)] }))
+          .map((o) => ({ ...o, saving: cost - costOf(loadout({ group, items: o.items })) }))
+          .filter((o) => o.saving > 0 && loadout({ group, items: o.items }).size <= Math.max(maxItems, current.size))
+          .sort((a, b) => b.saving - a.saving)
+          .slice(0, CHEAPER_TRIES);
+        for (const o of options) {
+          if (best && o.saving <= best.saving) break;
+          const next = build(group, (st) => ({ ...st, gear: { ...st.gear, [slot]: o.e.id } }));
+          if (!next || !next.every((n) => crystalOk(n.setup.player.equipment))) continue;
+          // eslint-disable-next-line no-await-in-loop
+          const rated = await Promise.all(group.units.map((u, i) => rate([next[i].setup], u.monster).then(([d]) => ({ ...next[i], dps: d }))));
+          if (-gainOf(group, rated) > CHEAPEN_LOSS) continue;
+          best = { group, rated, saving: o.saving };
+          break;
+        }
+      }
+    }
+    if (!best) return false;
+    const { group, rated } = best;
+    group.units.forEach((u, i) => {
+      // eslint-disable-next-line no-param-reassign
+      u.candidate = rated[i];
+    });
+    group.items = [...new Set(rated.flatMap((x) => x.itemIds))];
+    group.moves = await movesFor(group);
+    return true;
+  };
+  let cheapened = 0;
+  // eslint-disable-next-line no-await-in-loop
+  while (cheapened < MAX_CHEAPEN && await cheapen()) cheapened += 1;
+  if (camped > 0 || cheapened > 0) {
     for (const group of groups) {
       // eslint-disable-next-line no-await-in-loop
       group.moves = await movesFor(group);

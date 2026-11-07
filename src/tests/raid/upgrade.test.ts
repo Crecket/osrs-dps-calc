@@ -104,6 +104,31 @@ describe('upgradeLoadout', () => {
     expect([STRENGTH, GLORY]).toContain(neck);
   });
 
+  test('a crush setup drops Oathplate (slash accuracy) for cheaper gear with the same strength', async () => {
+    const [MACE, OATH_CHEST, BANDOS, INQ_HAUBERK] = [24417, 30753, 11832, 24420];
+    const pound = getCombatStylesForCategory(item(MACE).category).find((st) => st.type === 'crush')!;
+    const player = buildPlayer(basePlayer(inputs, 'crush'), {
+      style: 'crush', weaponId: MACE, combatStyle: pound, ammoId: null, spellName: null, dartId: null,
+    }, { body: OATH_CHEST });
+    const picks: Candidate[] = ['a', 'b'].map((key) => ({
+      phaseKey: key, style: 'crush', dps: 14, setup: { id: key, name: 'mace', player }, itemIds: [MACE, OATH_CHEST],
+    }));
+    // the hauberk is out of reach
+    const prices = new Map([[OATH_CHEST, 80e6], [BANDOS, 20e6], [INQ_HAUBERK, 200e6]]);
+    // DPS from the body's crush accuracy and strength: Oathplate and Bandos alike
+    const body = (st: BulkSetup) => st.player.equipment.body;
+    const result = await upgradeLoadout(input({
+      plan: plan(picks),
+      candidates: picks,
+      pool: [MACE, OATH_CHEST, BANDOS, INQ_HAUBERK].map(item),
+      priceOf: (id) => prices.get(id) ?? 0,
+      budget: 100e6,
+      playerFor: () => basePlayer(inputs, 'crush'),
+    }), async (setups) => setups.map((st) => 10 + (body(st)?.bonuses.str ?? 0) + (body(st)?.offensive.crush ?? 0) / 4));
+    expect(result.picks[0].candidate!.setup.player.equipment.body?.id).toBe(BANDOS);
+    expect(result.cost).toBe(20e6);
+  });
+
   test('two variants of one item merge into the one that has both: Avernic treads (pe) and (pr) become (max)', async () => {
     const [PE, PR, MAX] = [31092, 31091, 31097];
     const withFeet = (c: Candidate, feet: number): Candidate => {
