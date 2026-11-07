@@ -9,6 +9,7 @@ import {
   flatAddTransformer,
   flatLimitTransformer,
   HitDistribution,
+  rerolledMax,
   Hitsplat,
   HitTransformer, linearMaxTransformer,
   linearMinTransformer,
@@ -1499,9 +1500,13 @@ export default class PlayerVsNPCCalc extends BaseCalc {
         + (this.monster.defensive.stab > this.monster.defensive.crush ? 1 : 0)
         + (this.monster.defensive.slash > this.monster.defensive.crush ? 1 : 0);
 
-      for (let i = 1; i < rerolls; i++) {
-        dist = dist.transform(linearMaxTransformer(max), { transformInaccurate: false });
-      }
+      dist = new AttackDistribution(dist.dists.map((d) => {
+        const fast = rerolledMax(d, max, rerolls - 1);
+        if (fast) return fast;
+        let slow = d;
+        for (let i = 1; i < rerolls; i++) slow = slow.transform(linearMaxTransformer(max), { transformInaccurate: false });
+        return slow;
+      }));
     }
 
     if (this.isUsingMeleeStyle() && this.wearing('Crimson kisten') && this.opts.usingSpecialAttack) {

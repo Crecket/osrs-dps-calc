@@ -1,5 +1,7 @@
 import { expect, test, describe } from '@jest/globals';
-import { HitDistribution, Hitsplat, WeightedHit } from '@/lib/HitDist';
+import {
+  HitDistribution, Hitsplat, linearMaxTransformer, rerolledMax, WeightedHit,
+} from '@/lib/HitDist';
 
 describe('HitDistribution', () => {
   describe('cumulative', () => {
@@ -52,5 +54,34 @@ describe('HitDistribution', () => {
       expect(cumulative.hits).toContainEqual(new WeightedHit(0.125, [new Hitsplat(1, false)]));
       expect(cumulative.hits).toContainEqual(new WeightedHit(0.125, [new Hitsplat(2, true)]));
     });
+  });
+});
+
+describe('rerolledMax', () => {
+  const asMap = (d: HitDistribution) => {
+    const m = new Map<string, number>();
+    d.hits.forEach((h) => {
+      const key = h.hitsplats.map((s) => `${s.damage}${s.accurate ? '' : 'x'}`).join(',');
+      m.set(key, (m.get(key) ?? 0) + h.probability);
+    });
+    return m;
+  };
+
+  test.each([1, 2, 3])('matches %i linear max transforms of the accurate hits', (times) => {
+    // an accuracy roll with a miss, a hit above every reroll, and uneven weights
+    const d = HitDistribution.linear(0.6, 0, 40);
+    d.addHit(new WeightedHit(0.3, [Hitsplat.INACCURATE]));
+    d.addHit(new WeightedHit(0.1, [new Hitsplat(45)]));
+    let slow = d;
+    for (let i = 0; i < times; i++) slow = slow.transform(linearMaxTransformer(40), { transformInaccurate: false });
+    const fast = rerolledMax(d, 40, times)!;
+    const [a, b] = [asMap(slow), asMap(fast)];
+    expect([...b.keys()].sort()).toEqual([...a.keys()].sort());
+    a.forEach((p, key) => expect(b.get(key)).toBeCloseTo(p, 12));
+  });
+
+  test('leaves multi-hitsplat hits to the transforms', () => {
+    const d = new HitDistribution([new WeightedHit(1, [new Hitsplat(1), new Hitsplat(2)])]);
+    expect(rerolledMax(d, 10, 1)).toBeNull();
   });
 });

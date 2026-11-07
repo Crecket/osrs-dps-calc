@@ -653,6 +653,46 @@ export function linearMaxTransformer(maximum: number, offset: number = 0): HitTr
   };
 }
 
+/**
+ * `times` applications of linearMaxTransformer(maximum) to the accurate hits (inaccurate ones stay), worked out at once:
+ * each accurate hit of d in 0..maximum becomes the largest of d and `times` uniform rolls of 0..maximum, so
+ * P(k) = q(k) * F(k) + P(accurate hit below k) * (F(k) - F(k - 1)) with F(k) = ((k + 1) / (maximum + 1)) ^ times. That
+ * is O(maximum) where the transforms build maximum + 1 hits for every hit, each time. Null when a hit has several
+ * hitsplats, which the transforms handle.
+ */
+export function rerolledMax(dist: HitDistribution, maximum: number, times: number): HitDistribution | null {
+  if (!Number.isInteger(maximum) || maximum < 0 || maximum > MAX_INDEXED_DAMAGE) return null;
+  const q = new Float64Array(maximum + 1);
+  const merger = new Merger();
+  let accurate = false;
+  for (const h of dist.hits) {
+    if (h.hitsplats.length !== 1) {
+      merger.result();
+      return null;
+    }
+    const splat = h.hitsplats[0];
+    if (splat.accurate && Number.isInteger(splat.damage) && splat.damage >= 0 && splat.damage <= maximum) {
+      q[splat.damage] += h.probability;
+      accurate = true;
+    } else {
+      // inaccurate, or above every roll: unchanged
+      merger.add(h.hitsplats, h.probability);
+    }
+  }
+  if (accurate) {
+    let below = 0;
+    let prevF = 0;
+    for (let k = 0; k <= maximum; k++) {
+      const f = ((k + 1) / (maximum + 1)) ** times;
+      const p = q[k] * f + below * (f - prevF);
+      if (p > 0) merger.add(accurateList(k), p);
+      below += q[k];
+      prevF = f;
+    }
+  }
+  return merger.result();
+}
+
 export function cappedRerollTransformer(limit: number, rollMax: number, offset: number = 0): HitTransformer {
   return (h) => {
     if (h.damage <= limit) {
