@@ -75,6 +75,11 @@ const BOOT_SWITCH_SECONDS = 30;
 // what a switch must save per bag cell once the planning is done and cells and money are left over: an empty cell is
 // worth nothing, so a melee piece over the ranged armour (a Bandos chestplate saves ~6s) goes in rather than nothing
 const FILL_SECONDS = 3;
+// a switch this cheap is one everybody brings (the Infernal cape, Fighter torso, Ava's assembler, a defender): it takes a
+// cell at the fill bar from the start and the climb, rating time per gp, puts it before anything bought
+const FREE_PRICE = 1_000_000;
+// changes built up into one setup's kit before it is judged as a whole
+const MAX_KIT = 8;
 const switchSeconds = (slot: GearSlot | 'stance'): number => {
   if (slot === 'feet') return BOOT_SWITCH_SECONDS;
   if (slot === 'stance' || slot === 'ammo') return 0;
@@ -254,7 +259,9 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   // the last climb fills the cells left over at a lower bar
   let filling = false;
   const fillGain = (from: number, to: number) => MIN_GAIN + FILL_SECONDS * Math.max(0, to - from);
-  const needed = (slot: GearSlot | 'stance', from: number, to: number) => (filling ? fillGain(from, to) : switchGain(slot, from, to));
+  const isFree = (id: number) => priceOf(id) <= FREE_PRICE;
+  const needed = (move: Move, from: number, to: number) => (filling || isFree(move.to)
+    ? fillGain(from, to) : switchGain(move.slot, from, to));
 
   /** Single changes while one fits, then pairs of them */
   const climb = async () => {
@@ -273,7 +280,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           if (nextCost > cap || next.size > Math.max(maxItems, current.size)) continue;
           const gain = gainOf(group, move.next);
           // NaN when a setup does no damage
-          if (!(gain > needed(move.slot, current.size, next.size))) continue;
+          if (!(gain > needed(move, current.size, next.size))) continue;
           const score = gain / (Math.max(0, nextCost - cost) + COST_SMOOTHING);
           if (!best || score > best.score) {
             best = {
@@ -318,7 +325,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           const next = a.group === b.group
             ? loadout({ group: a.group, items: swapped(swapped(a.group.items, a.move), b.move) })
             : loadout({ group: a.group, items: swapped(a.group.items, a.move) }, { group: b.group, items: swapped(b.group.items, b.move) });
-          if (costOf(next) > cap || next.size > Math.max(maxItems, current.size) || gain <= Math.max(needed(a.move.slot, current.size, next.size), needed(b.move.slot, current.size, next.size))) continue;
+          if (costOf(next) > cap || next.size > Math.max(maxItems, current.size) || gain <= Math.max(needed(a.move, current.size, next.size), needed(b.move, current.size, next.size))) continue;
           best = { a, b, gain };
           break;
         }
@@ -334,7 +341,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
         const dps = await Promise.all(group.units.map((u, i) => rate([next[i].setup], u.monster).then(([d]) => d)));
         const rated = next.map((n, i) => ({ ...n, dps: dps[i] }));
         const size = loadout({ group, items: swapped(swapped(group.items, a.move), b.move) }).size;
-        if (!(gainOf(group, rated) > (filling ? fillGain(current.size, size) : minGainFor(current.size, size)))) continue;
+        if (!(gainOf(group, rated) > (filling || (isFree(a.move.to) && isFree(b.move.to)) ? fillGain(current.size, size) : minGainFor(current.size, size)))) continue;
         group.units.forEach((u, i) => {
           // eslint-disable-next-line no-param-reassign
           u.candidate = rated[i];
@@ -628,7 +635,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           // eslint-disable-next-line no-await-in-loop
           const rated = await Promise.all(group.units.map((u, i) => rate([next[i].setup], u.monster).then(([d]) => ({ ...next[i], dps: d }))));
           const loss = -gainOf(group, rated);
-          if (loss <= switchSeconds(slot) && (!best || loss < best.loss)) best = { group, rated, loss };
+          if (loss <= (isFree(id) ? FILL_SECONDS : switchSeconds(slot)) && (!best || loss < best.loss)) best = { group, rated, loss };
         }
       }
     }
@@ -709,10 +716,77 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     }
     await climb();
   }
+  /**
+   * A setup's kit built up as a whole: pieces that each save too little for their cell (or nothing, short of a max hit)
+   * can together, like melee armour over the ranged for all of a melee phase. Changes that save the most time per gp go
+   * in one at a time, then ones that only add the style's bonuses towards the next max hit; the kit keeps the longest
+   * run of them that saves more than its new cells must.
+   */
+  const kit = async (group: Group): Promise<boolean> => {
+    type State = { candidates: Candidate[]; items: number[]; moves: Move[] };
+    const save = (): State => ({ candidates: group.units.map((u) => u.candidate), items: group.items, moves: group.moves });
+    const restore = (st: State) => {
+      group.units.forEach((u, i) => {
+        // eslint-disable-next-line no-param-reassign
+        u.candidate = st.candidates[i];
+      });
+      Object.assign(group, { items: st.items, moves: st.moves });
+    };
+    const start = save();
+    const timeOf = () => group.units.reduce((n, u) => n + seconds(u.pick.hp, u.candidate.dps), 0);
+    const startTime = timeOf();
+    const states: { state: State; net: number }[] = [];
+    let bar = 0;
+    for (let step = 0; step < MAX_KIT; step++) {
+      const current = loadout();
+      const cost = costOf(current);
+      const cap = Math.max(budget, cost);
+      const value = valueFor(group.units[0].candidate);
+      const { equipment } = group.units[0].candidate.setup.player;
+      const options = group.moves.filter((m) => m.slot !== 'stance').map((move) => {
+        const next = loadout({ group, items: swapped(group.items, move) });
+        const from = equipment[move.slot as GearSlot];
+        const to = move.next[0].setup.player.equipment[move.slot as GearSlot];
+        return {
+          move, next, gain: gainOf(group, move.next), more: to ? value(to) - (from ? value(from) : 0) : 0, extra: costOf(next) - cost,
+        };
+      }).filter((o) => costOf(o.next) <= cap && o.next.size <= Math.max(maxItems, current.size)
+        && Number.isFinite(o.gain) && o.gain > -MIN_GAIN);
+      const saving = options.filter((o) => o.gain > MIN_GAIN);
+      const pick = saving.length > 0
+        ? saving.reduce((a, b) => (b.gain / (Math.max(0, b.extra) + COST_SMOOTHING) > a.gain / (Math.max(0, a.extra) + COST_SMOOTHING) ? b : a))
+        : options.filter((o) => o.more > 0)
+          .reduce<typeof options[number] | null>((a, b) => (!a || b.more / (Math.max(0, b.extra) + COST_SMOOTHING) > a.more / (Math.max(0, a.extra) + COST_SMOOTHING) ? b : a), null);
+      if (!pick) break;
+      const cells = pick.next.size - current.size;
+      bar += Math.max(0, cells) * (filling || isFree(pick.move.to) ? FILL_SECONDS : switchSeconds(pick.move.slot));
+      group.units.forEach((u, i) => {
+        // eslint-disable-next-line no-param-reassign
+        u.candidate = pick.move.next[i];
+      });
+      group.items = swapped(group.items, pick.move);
+      // eslint-disable-next-line no-await-in-loop
+      group.moves = await movesFor(group);
+      states.push({ state: save(), net: startTime - timeOf() - bar });
+    }
+    const best = states.reduce<typeof states[number] | null>((a, b) => (b.net > (a?.net ?? MIN_GAIN) ? b : a), null);
+    restore(best?.state ?? start);
+    return !!best;
+  };
+  const kits = async () => {
+    let changed = false;
+    for (const group of [...groups]) {
+      // eslint-disable-next-line no-await-in-loop
+      if (await kit(group)) changed = true;
+    }
+    if (changed) await climb();
+  };
+  await kits();
   // bag cells and money left: switches that save less than a cell is normally worth, the most time per gp first
   if (loadout().size < maxItems && costOf(loadout()) < budget) {
     filling = true;
     await climb();
+    await kits();
   }
   const upgraded = new Map(groups.flatMap((g) => g.units.map((u) => [u.pick, u.candidate] as const)));
   const picks = plan.picks.map((p) => {

@@ -275,6 +275,25 @@ describe('upgradeLoadout', () => {
     expect((await upgradeLoadout(input({ ...withHands, maxItems: 4 }), hands)).itemIds).not.toContain(VAMBRACES);
   });
 
+  test('a kit judged as a whole: two pieces that save nothing alone go in when together they reach the next max hit', async () => {
+    const PEGASIAN = 13237;
+    const both = async (setups: BulkSetup[]) => setups.map((s) => (s.player.equipment.hands?.id === VAMBRACES && s.player.equipment.feet?.id === PEGASIAN ? 15 : 10));
+    const result = await upgradeLoadout(input({ pool: [...pool, item(VAMBRACES), item(PEGASIAN)], excluded: new Set([ANGUISH]) }), both);
+    expect(result.itemIds).toEqual(expect.arrayContaining([VAMBRACES, PEGASIAN]));
+  });
+
+  test('a free switch everybody brings gets the last cell before a bought one saving more', async () => {
+    const ASSEMBLER = 22109;
+    const rated = async (setups: BulkSetup[]) => setups.map((s) => 10 + (s.player.equipment.hands?.id === VAMBRACES ? 0.3 : 0)
+      + (s.player.equipment.cape?.id === ASSEMBLER ? 1 : 0));
+    // the vambraces save about 6s and are free, the assembler about 18s for 20m: one cell left
+    const result = await upgradeLoadout(input({
+      pool: [...pool, item(VAMBRACES), item(ASSEMBLER)], excluded: new Set([ANGUISH]), maxItems: 5, priceOf: (id) => (id === ASSEMBLER ? 20e6 : 0),
+    }), rated);
+    expect(result.itemIds).toContain(VAMBRACES);
+    expect(result.itemIds).not.toContain(ASSEMBLER);
+  });
+
   test('a ranged setup keeps its ring: the Lightbearer is never swapped for a Venator ring', async () => {
     const ring = async (setups: BulkSetup[]) => setups.map((s) => (s.player.equipment.ring?.id === VENATOR_RING ? 12 : 10));
     const result = await upgradeLoadout(input({ pool: [...pool, item(VENATOR_RING)], excluded: new Set([ANGUISH]) }), ring);
