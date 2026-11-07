@@ -4,7 +4,9 @@
  */
 import { Monster } from '@/types/Monster';
 import { EquipmentPiece, Player } from '@/types/Player';
-import { bestPool, GearSlot, WeaponJob } from '@/best/lib/candidates';
+import {
+  bestPool, GearSlot, WeaponJob, withoutOutclassed,
+} from '@/best/lib/candidates';
 import {
   referenceJob, searchWeapon, SearchResult, styleEffects,
 } from '@/best/lib/search';
@@ -33,7 +35,7 @@ const getPool = (excluded: number[] = []) => {
   if (key !== poolKey) {
     if (!fullPool) fullPool = bestPool();
     const leftOut = new Set(excluded);
-    pool = leftOut.size === 0 ? fullPool : fullPool.filter((e) => !leftOut.has(e.id));
+    pool = withoutOutclassed(leftOut.size === 0 ? fullPool : fullPool.filter((e) => !leftOut.has(e.id)));
     poolById = new Map(pool.map((e) => [e.id, e]));
     poolKey = key;
   }

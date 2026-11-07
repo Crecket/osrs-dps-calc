@@ -6,7 +6,7 @@ import { getCanonicalItemId } from '@/lib/Equipment';
 import { BUILD_ID } from '@/lib/build';
 import { EquipmentCategory } from '@/enums/EquipmentCategory';
 import { BestRunDeps, runBestSetup } from '@/best/lib/run';
-import { bestPool } from '@/best/lib/candidates';
+import { bestPool, withoutOutclassed } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
 import {
   AccountInputs, BestInputs, BEST_STYLES, BestStyle,
@@ -352,7 +352,7 @@ export const runRaid = async (
   const monsters = new Map(phases.map((p) => [p.phase.key, p.monster]));
   const baseRequired = baseRequiredItems(settings);
   const costOf = (ids: number[]) => ids.reduce((n, id) => n + priceOf(id), 0);
-  const kitPool = items.filter((e) => !excluded.has(getCanonicalItemId(e.id)));
+  const kitPool = withoutOutclassed(items.filter((e) => !excluded.has(getCanonicalItemId(e.id))));
   /**
    * In order of what matters most, never over the budget: (1) a viable setup for every room, kits and weapons from at
    * most CORE_SHARE of the budget; (2) the best spec weapon the rest pays for; (3) the player's part of the team's Defence

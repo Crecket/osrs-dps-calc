@@ -6,7 +6,7 @@ import { availableEquipment, getCanonicalItemId } from '@/lib/Equipment';
 import { EquipmentPiece, Player } from '@/types/Player';
 import { basePlayer } from '@/best/lib/basePlayer';
 import {
-  bestPool, GearSlot, WeaponJob, weaponJobs,
+  bestPool, GearSlot, WeaponJob, weaponJobs, withoutOutclassed,
 } from '@/best/lib/candidates';
 import { buildPlayer, SearchResult } from '@/best/lib/search';
 import { BestPayload, BestResult, EffectIds } from '@/best/worker/protocol';
@@ -58,7 +58,7 @@ const getPool = (excluded: number[]) => {
   if (key !== poolKey) {
     if (!fullPool) fullPool = bestPool();
     const leftOut = new Set(excluded);
-    pool = leftOut.size === 0 ? fullPool : fullPool.filter((e) => !leftOut.has(e.id));
+    pool = withoutOutclassed(leftOut.size === 0 ? fullPool : fullPool.filter((e) => !leftOut.has(e.id)));
     poolKey = key;
   }
   return pool;

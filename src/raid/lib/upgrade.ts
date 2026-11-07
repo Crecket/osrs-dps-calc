@@ -12,7 +12,7 @@ import { PlayerCombatStyle } from '@/types/PlayerCombatStyle';
 import { getCombatStylesForCategory } from '@/utils';
 import { BestRunDeps } from '@/best/lib/run';
 import {
-  crystalOk, GearSlot, isCrystalArmour, isCrystalWeapon, scoreKind, styleScore,
+  crystalOk, GearSlot, isCrystalArmour, isCrystalWeapon, scoreKind, styleScore, withoutOutclassed,
 } from '@/best/lib/candidates';
 import { SETS } from '@/best/lib/effectItems';
 import { hashKey } from '@/best/lib/resultCache';
@@ -138,7 +138,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   const required = new Set(input.requiredIds);
   const searched = new Set(input.candidates.flatMap((c) => c.itemIds));
   const bySlot = new Map<string, EquipmentPiece[]>();
-  input.pool.filter((e) => !excluded.has(getCanonicalItemId(e.id))).forEach((e) => {
+  withoutOutclassed(input.pool.filter((e) => !excluded.has(getCanonicalItemId(e.id)))).forEach((e) => {
     bySlot.set(e.slot, [...(bySlot.get(e.slot) ?? []), e]);
   });
 

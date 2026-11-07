@@ -90,6 +90,23 @@ export const bestPool = (items: EquipmentPiece[] = availableEquipment): Equipmen
   // data artefacts held in the weapon slot: greegrees, Gnomeball (-1), crates and Christmas dinner (0)
   && !(e.slot === 'weapon' && e.speed <= 1));
 
+/**
+ * Items another item outclasses outright, the better one by name: Elite void is regular void with prayer, and the same
+ * melee set effect, so a tie on damage never picks the regular piece. Dropped only while the better item is in the pool.
+ */
+const OUTCLASSED: Record<string, string> = {
+  'Void knight top': 'Elite void top',
+  'Void knight top (or)': 'Elite void top (or)',
+  'Void knight robe': 'Elite void robe',
+  'Void knight robe (or)': 'Elite void robe (or)',
+};
+
+/** The pool without items whose better version it holds (after exclusions, so an excluded elite piece keeps the regular one) */
+export const withoutOutclassed = (pool: EquipmentPiece[]): EquipmentPiece[] => {
+  const names = new Set(pool.map((e) => e.name));
+  return pool.filter((e) => !(OUTCLASSED[e.name] && names.has(OUTCLASSED[e.name])));
+};
+
 /** What gear is scored on: the job's style, or 'rangedStrength' for ranged weapons that hit with the melee strength bonus. */
 export type ScoreKind = BestStyle | 'rangedStrength';
 

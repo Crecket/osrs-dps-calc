@@ -4,7 +4,7 @@ import { BLOWPIPE_IDS } from '@/lib/constants';
 import { EquipmentPiece } from '@/types/Player';
 import { isEffectItem } from '@/best/lib/effectItems';
 import {
-  bestPool, isPvpOnly, paretoFront, slotCandidates, styleScore, weaponJobs,
+  bestPool, isPvpOnly, paretoFront, slotCandidates, styleScore, weaponJobs, withoutOutclassed,
 } from '@/best/lib/candidates';
 import { BEST_STYLES } from '@/best/types';
 import { Monster } from '@/types/Monster';
@@ -341,5 +341,18 @@ describe('weaponJobs', () => {
     jobs.forEach((j) => expect(Object.keys(j).sort())
       .toEqual(['ammoId', 'combatStyle', 'dartId', 'spellName', 'style', 'weaponId']));
     expect(weaponJobs([...pool].reverse(), 'crush')).toEqual(jobs);
+  });
+});
+
+describe('withoutOutclassed', () => {
+  test('drops regular void pieces while the elite ones are in the pool, and keeps them when the elite are left out', () => {
+    const names = (items: EquipmentPiece[]) => new Set(items.map((e) => e.name));
+    const kept = names(withoutOutclassed(pool));
+    expect(kept.has('Elite void top')).toBe(true);
+    expect(kept.has('Void knight top')).toBe(false);
+    expect(kept.has('Void knight robe')).toBe(false);
+    expect(kept.has('Void knight gloves')).toBe(true);
+    const noElite = names(withoutOutclassed(pool.filter((e) => !e.name.startsWith('Elite void'))));
+    expect(noElite.has('Void knight top')).toBe(true);
   });
 });
