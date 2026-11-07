@@ -274,22 +274,7 @@ describe('RaidPage', () => {
     await unmount();
   });
 
-  test('changing brews re-plans without the button when nothing needs searching', async () => {
-    const { container, unmount } = await mount();
-    await act(async () => button(container, 'Find raid gear')!.click());
-    await wait(20);
-    mockNeeded.mockReturnValue(0);
-    const brews = [...container.querySelectorAll<HTMLInputElement>('input[type=number]')]
-      .find((i) => i.value === '6')!;
-    await change(brews, '8');
-    await wait(SETTLE_MS + 50);
-    expect(mockRunRaid).toHaveBeenCalledTimes(2);
-    expect(mockRunRaid.mock.calls[1][0].supplies.brews).toBe(8);
-    expect(container.textContent).not.toContain('Inputs changed');
-    await unmount();
-  });
-
-  test('a change that needs new searches never starts a run by itself, even right after a cheap one', async () => {
+  test('a change never starts a run by itself, even one that needs no new search: only the button runs', async () => {
     const { container, unmount } = await mount();
     await act(async () => button(container, 'Find raid gear')!.click());
     await wait(20);
@@ -299,15 +284,17 @@ describe('RaidPage', () => {
       .find((i) => i.value === '6')!;
     await change(brews, '8');
     await wait(SETTLE_MS + 50);
-    expect(mockRunRaid).toHaveBeenCalledTimes(2);
-    // the re-plan is done and its inputs need no searches
-    await wait(SETTLE_MS + 50);
-    // marking an item owned changes the searches
+    expect(mockRunRaid).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Inputs changed');
     mockNeeded.mockReturnValue(18);
     await change(brews, '9');
     await wait(SETTLE_MS + 50);
-    expect(mockRunRaid).toHaveBeenCalledTimes(2);
+    expect(mockRunRaid).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain('18 searches to run');
+    await act(async () => button(container, 'Find raid gear')!.click());
+    await wait(20);
+    expect(mockRunRaid).toHaveBeenCalledTimes(2);
+    expect(mockRunRaid.mock.calls[1][0].supplies.brews).toBe(9);
     await unmount();
   });
 

@@ -115,11 +115,7 @@ const RaidPage: React.FC = observer(() => {
     }
   }, [ready, store, prices, pools, cache]);
 
-  // cheap changes (supplies, magic slots, rules, owned items that need no new search) re-plan straight away
-  useEffect(() => {
-    // not after a failure or a stop, so it doesn't retry by itself
-    if (ready && !running && !error && !stopped && needed === 0 && !blockReason && (store.stale || !store.result)) run();
-  }, [ready, running, error, stopped, needed, blockReason, runKey, store, run]);
+  // runs only start from the button: a change, however cheap, marks the result stale and waits for it
 
   const refreshPrices = () => {
     setPricesState('loading');
