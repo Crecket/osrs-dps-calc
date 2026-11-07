@@ -45,7 +45,12 @@ export interface UpgradeInput {
   excluded: Set<number>;
   extraDps: number;
   playerFor: (style: BestStyle) => Player;
+  /** Each pass as it starts, for the page's progress */
+  onStep?: (label: string, done: number, total: number) => void;
 }
+
+/** The passes in the order they run, for progress */
+const STEPS = ['Upgrading gear', 'Leaving armour sets', 'Trying other weapons', 'Camping switches', 'Swapping for cheaper items', 'Building kits', 'Filling free cells'] as const;
 
 // besides the searched items, the items with the best bonuses for the style tried per slot
 const TOP_PER_SLOT = 6;
@@ -543,9 +548,16 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     return true;
   };
 
+  const startStep = async (label: typeof STEPS[number]) => {
+    input.onStep?.(label, STEPS.indexOf(label), STEPS.length);
+    await yieldToBrowser();
+  };
+  await startStep('Upgrading gear');
   await climb();
+  await startStep('Leaving armour sets');
   // eslint-disable-next-line no-await-in-loop
   for (let round = 0; round < MAX_SET_ROUNDS && await leaveSet(); round++) await climb();
+  await startStep('Trying other weapons');
   // eslint-disable-next-line no-await-in-loop
   for (let round = 0; round < MAX_WEAPON_ADDS && await addWeapons(); round++) await climb();
 
@@ -652,6 +664,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   // after the variant merge, which keeps one item that covers both without a loss; the money a camped switch frees goes
   // to the climb again, with every group's moves as its setups now are
   let camped = 0;
+  await startStep('Camping switches');
   // eslint-disable-next-line no-await-in-loop
   while (camped < MAX_CAMPS && await campSwitches()) camped += 1;
   // a camped switch can leave two groups in the same items
@@ -707,6 +720,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     return true;
   };
   let cheapened = 0;
+  await startStep('Swapping for cheaper items');
   // eslint-disable-next-line no-await-in-loop
   while (cheapened < MAX_CHEAPEN && await cheapen()) cheapened += 1;
   if (camped > 0 || cheapened > 0) {
@@ -781,10 +795,12 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     }
     if (changed) await climb();
   };
+  await startStep('Building kits');
   await kits();
   // bag cells and money left: switches that save less than a cell is normally worth, the most time per gp first
   if (loadout().size < maxItems && costOf(loadout()) < budget) {
     filling = true;
+    await startStep('Filling free cells');
     await climb();
     await kits();
   }

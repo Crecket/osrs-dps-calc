@@ -34,6 +34,8 @@ export interface RaidProgress {
   /** The current search's own progress */
   inner: { done: number; total: number; phase: BestPhase } | null;
   cached: number;
+  /** After the searches: the planning step running, and how far through its passes it is */
+  planning?: { label: string; done: number; total: number } | null;
 }
 
 /** Weapons searched per style and phase */

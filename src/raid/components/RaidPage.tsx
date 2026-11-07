@@ -138,7 +138,11 @@ const RaidPage: React.FC = observer(() => {
   };
 
   const overall = progress && progress.searches > 0 ? (progress.search / progress.searches) * 100 : 0;
-  const inner = progress?.inner && progress.inner.total > 0 ? (progress.inner.done / progress.inner.total) * 100 : 0;
+  const { planning } = progress ?? {};
+  const share = (p: { done: number; total: number } | null | undefined) => (p && p.total > 0 ? (p.done / p.total) * 100 : 0);
+  const inner = share(planning ?? progress?.inner);
+  const innerLabel = planning?.label
+    ?? (progress?.inner ? `${PHASE_LABELS[progress.inner.phase]} · step ${progress.inner.done} of ${progress.inner.total}` : ' ');
   const { result, stale } = store;
 
   return (
@@ -242,12 +246,12 @@ const RaidPage: React.FC = observer(() => {
                     <>
                       <span>
                         {progress && progress.searches > 0
-                          ? `${progress.search} of ${progress.searches} searches done${progress.cached > 0 ? ` (${progress.cached} cached)` : ''}${progress.phaseLabel ? ` · running ${progress.phaseLabel}` : ''}`
+                          ? `${progress.search} of ${progress.searches} searches done${progress.cached > 0 ? ` (${progress.cached} cached)` : ''}${!planning && progress.phaseLabel ? ` · running ${progress.phaseLabel}` : ''}`
                           : 'Planning the loadout from the cached searches…'}
                       </span>
                       <Bar label="Searches" value={overall} />
-                      <span className="text-xs text-gray-500 dark:text-gray-300">{progress?.inner ? PHASE_LABELS[progress.inner.phase] : ' '}</span>
-                      <Bar label="Current search" value={inner} />
+                      <span className="text-xs text-gray-500 dark:text-gray-300">{innerLabel}</span>
+                      <Bar label={planning ? 'Planning' : 'Current search'} value={inner} />
                     </>
                   )}
                   {!running && blockReason && (

@@ -323,7 +323,16 @@ export const runRaid = async (
   const {
     phases, priceOf, tiers, base, pool: items,
   } = prepare(settings, prices);
-  const candidates = await raidCandidates(phases, base, tiers, deps, onProgress, cache, search);
+  // the searches' last progress, kept for the planning steps after them
+  let last: RaidProgress = {
+    search: 0, searches: 0, phaseLabel: '', inner: null, cached: 0,
+  };
+  const candidates = await raidCandidates(phases, base, tiers, deps, (p) => {
+    last = p;
+    onProgress(p);
+  }, cache, search);
+  const planning = (label: string, done = 0, total = 0) => onProgress({ ...last, inner: null, planning: { label, done, total } });
+  planning('Ranking spec weapons');
   const extraDps = settings.magic === 'thralls' ? THRALL_DPS : 0;
   const excluded = new Set(excludedOf(settings));
   const specs = await specRanking(phases, candidates, [...excluded], deps, cache);
@@ -351,7 +360,11 @@ export const runRaid = async (
    * is left. A bad setup with a great spec or drain weapon is no plan. The bosses' Defence is the configured specs'
    * throughout: the team does them, whatever this player carries.
    */
+  let attempt = 0;
   const assemble = async (maxItems: number) => {
+    attempt += 1;
+    const tryLabel = `Planning the loadout${attempt > 1 ? ` (fitting the bag, try ${attempt})` : ''}`;
+    planning(`${tryLabel} · picking a setup per room`);
     const core = await planKits({
       units,
       monsters,
@@ -385,6 +398,7 @@ export const runRaid = async (
       excluded,
       extraDps,
       playerFor,
+      onStep: (label, done, total) => planning(`${tryLabel} · ${label}`, done, total),
     }, rate);
   };
   // the main setup worn is the one leaving the fewest switches (Masori, the Zaryte crossbow and the book beside it
@@ -420,6 +434,7 @@ export const runRaid = async (
   }
   // the upgraded setups count as candidates for the weapon cells, and each held setup is rated on every phase its style
   // can deal, so a held weapon shows on every phase with its real DPS in the loadout's gear
+  planning('Rating the held weapons on every phase');
   const heldSetups = plan.picks.flatMap((p) => (p.candidate ? [p.candidate] : []))
     .filter((c, i, list) => list.findIndex((o) => o.setup.id === c.setup.id) === i);
   const canDeal = (p: typeof phases[number], style: BestStyle) => (!p.phase.allowedStyles || p.phase.allowedStyles.includes(style))
