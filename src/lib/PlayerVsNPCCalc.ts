@@ -1770,7 +1770,7 @@ export default class PlayerVsNPCCalc extends BaseCalc {
     }
 
     if (this.tdUnshieldedBonusApplies()) {
-      const bonusDmg = Math.max(0, this.getAttackSpeed() ** 2 - 16);
+      const bonusDmg = Math.max(0, (this.player.attackSpeed ?? calculateAttackSpeed(this.player, this.monster)) ** 2 - 16);
       dist = dist.transform(
         flatAddTransformer(bonusDmg),
         { transformInaccurate: false },
@@ -2159,8 +2159,10 @@ export default class PlayerVsNPCCalc extends BaseCalc {
    * Returns the player's attack speed.
    */
   public getAttackSpeed(): number {
-    return this.player.attackSpeed
+    const speed = this.player.attackSpeed
       ?? calculateAttackSpeed(this.player, this.monster);
+    const floor = this.monster.inputs.minAttackSpeed;
+    return floor ? Math.max(speed, floor) : speed;
   }
 
   public getExpectedAttackSpeed() {

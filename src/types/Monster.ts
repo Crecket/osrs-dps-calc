@@ -105,6 +105,11 @@ export interface Monster {
      * The monster's current HP, for effects like Ruby bolt (e), or Vardorvis defence.
      */
     monsterCurrentHp: number;
+    /**
+     * The fewest ticks an attack takes here, for fights that leave no time for fast weapons between attacks (running to
+     * safe tiles): a 2-tick weapon attacks as a 4-tick one with 4. Not exposed as a UI option.
+     */
+    minAttackSpeed?: number;
     defenceReductions: {
       vulnerability: boolean;
       accursed: boolean;

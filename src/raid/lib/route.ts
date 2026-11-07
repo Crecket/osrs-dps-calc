@@ -60,6 +60,7 @@ export const routePhases = (
   const merged = { ...source.defaults, ...counts[source.key] };
   const monster = prepareMonster(inState(findMonster(phase.monsterId, phase.version), phase), {
     defenceReductions: { elderMaul: merged.elderMaul, dwh: merged.dwh, tonalztic: merged.tonalztic },
+    ...(phase.state?.minAttackSpeed ? { minAttackSpeed: phase.state.minAttackSpeed } : {}),
   });
   return {
     boss, phase, counts: merged, monster: { id: phase.key, monster },

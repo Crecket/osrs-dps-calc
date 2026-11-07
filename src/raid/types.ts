@@ -35,6 +35,8 @@ export interface RaidPhase {
     flatArmour?: number;
     /** Every hit lands (a stunned boss): no Defence level or defence bonuses */
     alwaysHit?: boolean;
+    /** The fewest ticks an attack takes: no time for fast weapons between running to safe tiles */
+    minAttackSpeed?: number;
   };
 }
 

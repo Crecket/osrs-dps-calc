@@ -34,26 +34,34 @@ describe('raid definitions', () => {
     expect(flying.monster.monster.version).toBe('Flying');
   });
 
-  test('Bork walks with flat armour and is stunned for part of his health bar, when every melee hit lands', () => {
+  test('Bork walks with flat armour for a quarter of his health bar, then is stunned, when every hit lands', () => {
     const phases = routePhases(fa, fa.defaultRoute, {});
     const walking = phases.find((p) => p.phase.key === 'bork:0')!;
     const stunned = phases.find((p) => p.phase.key === 'bork:2')!;
     expect(phases.map((p) => p.phase.key).filter((k) => k.startsWith('bork'))).toEqual(['bork:0', 'bork:2', 'bork:1']);
-    expect(walking.monster.monster.skills.hp).toBe(900);
+    expect(walking.monster.monster.skills.hp).toBe(375);
     expect(walking.monster.monster.defensive.flat_armour).toBe(10);
     expect(walking.phase.allowedStyles).toEqual(['ranged']);
-    expect(stunned.monster.monster.skills.hp).toBe(600);
+    expect(stunned.monster.monster.skills.hp).toBe(1125);
     expect(stunned.monster.monster.defensive.flat_armour).toBe(0);
     expect(stunned.monster.monster.skills.def).toBe(0);
     expect(stunned.monster.monster.defensive.crush).toBe(-64);
-    expect(stunned.phase.allowedStyles).toEqual(['stab', 'slash', 'crush']);
+    expect(stunned.phase.allowedStyles).toBeUndefined();
+    // a third of it ranged by the players on the cannons, the rest any style (melee, mostly)
+    expect(stunned.phase.parts).toEqual([{ styles: ['ranged'], share: 1 / 3 }, { share: 2 / 3 }]);
   });
 
   test('style rules from the strategy', () => {
     const phase = (key: string) => routePhases(fa, fa.defaultRoute, {}).find((p) => p.phase.key === key)!.phase;
     expect(phase('ocellus:1').allowedStyles).toEqual(['ranged']);
     expect(phase('ocellus:2').parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { styles: ['stab', 'slash', 'crush'], share: 0.5 }]);
-    ['dreadnoth:0', 'xarth:0', 'ocellus:0'].forEach((key) => expect(phase(key).parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }]));
+    ['dreadnoth:0', 'ocellus:0'].forEach((key) => expect(phase(key).parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }]));
+    expect(phase('xarth:0').parts).toEqual([{ styles: ['ranged'], share: 1 / 3 }, { share: 2 / 3 }]);
+  });
+
+  test('the Blade leaves no time for fast weapons: a 2-tick weapon attacks as a 4-tick one', () => {
+    const blade = routePhases(fa, fa.defaultRoute, {}).find((p) => p.phase.key === 'ocellus:1')!;
+    expect(blade.monster.monster.inputs.minAttackSpeed).toBe(4);
   });
 
   test('stunned Bork keeps the Defence drained while he walked, and has no specs of his own', () => {

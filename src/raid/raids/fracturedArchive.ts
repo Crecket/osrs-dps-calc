@@ -4,6 +4,8 @@ import { DefenceCounts, PhasePart, RaidDef } from '@/raid/types';
 const specs = (elderMaul: number, tonalztic: number): DefenceCounts => ({ elderMaul, dwh: 0, tonalztic });
 // can't be meleed the whole fight: half the health bar is ranged
 const HALF_RANGED: PhasePart[] = [{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }];
+// a third of the health bar is ranged
+const THIRD_RANGED: PhasePart[] = [{ styles: ['ranged'], share: 1 / 3 }, { share: 2 / 3 }];
 
 const fracturedArchive: RaidDef = {
   id: 'fractured-archive',
@@ -39,8 +41,9 @@ const fracturedArchive: RaidDef = {
           id: 'bork',
           name: 'Bork',
           phases: [
-            // Bork walks with 8-14 flat armour (more as the Smorks lose health), ranged; a heavy cannonball stuns him,
-            // with no flat armour and every melee hit landing: about 40% of his health is dealt then
+            // Bork walks with 8-14 flat armour (more as the Smorks lose health), ranged while the tank melees him; a heavy
+            // cannonball stuns him after about 30s, with no flat armour and every hit landing: the other 75% of his health
+            // is dealt then, mostly in melee (a third of it ranged, as players on the cannons range him)
             {
               key: 'bork:0',
               label: 'Bork',
@@ -48,7 +51,7 @@ const fracturedArchive: RaidDef = {
               version: '',
               defaults: specs(2, 0),
               allowedStyles: ['ranged'],
-              hpShare: 0.6,
+              hpShare: 0.25,
               state: { flatArmour: 10 },
             },
             {
@@ -59,8 +62,8 @@ const fracturedArchive: RaidDef = {
               // the specs are done while he walks, and their drain stays
               defaults: specs(0, 0),
               defenceFrom: 'bork:0',
-              allowedStyles: ['stab', 'slash', 'crush'],
-              hpShare: 0.4,
+              parts: THIRD_RANGED,
+              hpShare: 0.75,
               state: { flatArmour: 0, alwaysHit: true },
             },
             {
@@ -123,7 +126,7 @@ const fracturedArchive: RaidDef = {
           id: 'xarth',
           name: 'Xarth',
           phases: [{
-            key: 'xarth:0', label: 'Xarth', monsterId: 16684, version: '', defaults: specs(0, 2), parts: HALF_RANGED,
+            key: 'xarth:0', label: 'Xarth', monsterId: 16684, version: '', defaults: specs(0, 2), parts: THIRD_RANGED,
           }],
         },
       ],
@@ -145,6 +148,8 @@ const fracturedArchive: RaidDef = {
             version: 'Phase 2',
             defaults: specs(2, 4),
             allowedStyles: ['ranged'],
+            // running to safe tiles between the blades leaves no time for 2-3 tick weapons
+            state: { minAttackSpeed: 4 },
           },
           {
             key: 'ocellus:2',
