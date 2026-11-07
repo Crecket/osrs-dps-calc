@@ -63,9 +63,10 @@ const MAX_CAMPS = 12;
 const WEAPONS_PER_UNIT = 5;
 const MIN_GAIN = 1e-6;
 // what an armour switch (an item only one setup wears) must save over the raid for its bag cell: most players camp the
-// main setup's piece rather than bring a slightly better one, boots most of all
-const SWITCH_SECONDS = 30;
-const BOOT_SWITCH_SECONDS = 60;
+// main setup's piece rather than bring a slightly better one, boots most of all. Low enough that a melee set over the
+// ranged armour (an Inquisitor's piece saves ~17s over a raid's melee phases) still pays.
+const SWITCH_SECONDS = 15;
+const BOOT_SWITCH_SECONDS = 30;
 const switchSeconds = (slot: GearSlot | 'stance'): number => {
   if (slot === 'feet') return BOOT_SWITCH_SECONDS;
   if (slot === 'stance' || slot === 'ammo') return 0;
