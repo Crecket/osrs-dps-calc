@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 import {
-  TaskChunk, TaskPool, TaskResult, WorkerLike,
+  TaskChunk, TaskPool, TaskResult, WorkerLike, WorkerLimit,
 } from '@/bulk/worker/TaskPool';
 import { WORKER_JSON_REPLACER, WORKER_JSON_REVIVER } from '@/utils';
 
@@ -126,10 +126,127 @@ describe('TaskPool', () => {
     expect(busy.filter((w) => w.terminated).length).toBe(1);
   });
 
-  test('a worker crash during a run rejects it', async () => {
-    const pool = new TaskPool<number[], number>({ size: 1, createWorker: () => new FakeWorker({ crashOnRun: 1 }) });
+  test('a chunk that crashes its worker twice rejects the run', async () => {
+    let created = 0;
+    const pool = new TaskPool<number[], number>({
+      size: 1,
+      createWorker: () => {
+        created += 1;
+        return new FakeWorker({ crashOnRun: 1 });
+      },
+    });
 
     await expect(pool.run([[1]], () => {})).rejects.toThrow('boom');
+    expect(created).toBe(2);
+  });
+
+  test('a chunk that crashes its worker once is retried on a new worker, and the run completes', async () => {
+    const workers: FakeWorker[] = [];
+    const pool = new TaskPool<number[], number>({
+      size: 1,
+      createWorker: () => {
+        // only the first worker crashes
+        const w = new FakeWorker(workers.length === 0 ? { crashOnRun: 1 } : {});
+        workers.push(w);
+        return w;
+      },
+    });
+    const progress: { done: number; total: number }[] = [];
+
+    const results = await pool.run([[1, 2], [3]], (p) => progress.push({ done: p.done, total: p.total }), (p) => p.length);
+
+    expect(results).toEqual([1, 4, 9]);
+    expect(progress[progress.length - 1]).toEqual({ done: 3, total: 3 });
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminated).toBe(true);
+  });
+
+  test('two chunks crashing once each get a retry each', async () => {
+    const crashed = new Set<number>();
+    const pool = new TaskPool<number[], number>({
+      size: 2,
+      createWorker: () => {
+        const w = new FakeWorker();
+        const post = w.postMessage.bind(w);
+        w.postMessage = (m: string) => {
+          const { chunkId } = JSON.parse(m, WORKER_JSON_REVIVER) as TaskChunk<number[]>;
+          if (crashed.has(chunkId)) {
+            post(m);
+            return;
+          }
+          crashed.add(chunkId);
+          setTimeout(() => w.onerror?.({ message: 'boom' }), 0);
+        };
+        return w;
+      },
+    });
+
+    await expect(pool.run([[1], [2]], () => {})).resolves.toEqual([1, 4]);
+    expect(crashed.size).toBe(2);
+  });
+
+  test('a retried chunk goes before the chunks still waiting', async () => {
+    const order: number[] = [];
+    let created = 0;
+    const pool = new TaskPool<number[], number>({
+      size: 1,
+      createWorker: () => {
+        created += 1;
+        const w = new FakeWorker(created === 1 ? { crashOnRun: 1 } : {});
+        const post = w.postMessage.bind(w);
+        w.postMessage = (m: string) => {
+          order.push((JSON.parse(m, WORKER_JSON_REVIVER) as TaskChunk<number[]>).chunkId);
+          post(m);
+        };
+        return w;
+      },
+    });
+
+    await pool.run([[1], [2], [3]], () => {});
+
+    expect(order).toEqual([0, 0, 1, 2]);
+  });
+
+  test('a worker reporting two errors counts as one crash', async () => {
+    let created = 0;
+    const pool = new TaskPool<number[], number>({
+      size: 1,
+      createWorker: () => {
+        created += 1;
+        if (created > 1) return new FakeWorker();
+        const w = new FakeWorker();
+        w.postMessage = () => {
+          setTimeout(() => {
+            w.onerror?.({ message: 'boom' });
+            w.onerror?.({ message: 'boom' });
+          }, 0);
+        };
+        return w;
+      },
+    });
+
+    await expect(pool.run([[2]], () => {})).resolves.toEqual([4]);
+    expect(created).toBe(2);
+  });
+
+  test('a retry waits for the shared limit when another pool has every worker busy', async () => {
+    const limit = new WorkerLimit(1);
+    let created = 0;
+    const crashing = new TaskPool<number[], number>({
+      limit,
+      size: 1,
+      createWorker: () => {
+        created += 1;
+        return new FakeWorker(created === 1 ? { crashOnRun: 1 } : {});
+      },
+    });
+    const other = new TaskPool<number[], number>({ limit, size: 1, createWorker: () => new FakeWorker({ delay: () => 5 }) });
+
+    const a = crashing.run([[2]], () => {});
+    const b = other.run([[3]], () => {});
+
+    expect(await a).toEqual([4]);
+    expect(await b).toEqual([9]);
   });
 
   test('no payloads resolves immediately with [] and spawns no workers', async () => {
@@ -190,7 +307,7 @@ describe('TaskPool', () => {
     await expect(b).rejects.toThrow('cancelled');
   });
 
-  test('a worker crash fails only the run whose chunk it had', async () => {
+  test('a chunk crashing twice fails only the run whose chunk it was', async () => {
     const pool = new TaskPool<number[], number>({ size: 2, createWorker: () => new FakeWorker({ crashOnRun: 1, delay: () => 2 }) });
     const a = pool.run([[1]], () => {}, undefined, { concurrent: true });
     const b = pool.run([[2]], () => {}, undefined, { concurrent: true });

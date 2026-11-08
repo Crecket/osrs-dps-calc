@@ -27,16 +27,18 @@ export interface TaskProgress<R> {
   total: number;
 }
 
-interface PoolWorker {
+interface PoolWorker<P> {
   worker: WorkerLike;
-  // the run whose chunk this worker is computing, or null when idle
-  runId: number | null;
+  // the chunk this worker is computing, or null when idle
+  chunk: TaskChunk<P> | null;
 }
 
 interface Run<P, R> {
   runId: number;
   queue: TaskChunk<P>[];
   outstanding: number;
+  // chunks that have crashed a worker once: a second crash fails the run
+  crashed: Set<number>;
   // results by chunk id, so that results stay in payload order however the chunks finish
   chunks: R[][];
   done: number;
@@ -96,7 +98,8 @@ export class WorkerLimit {
 /**
  * A pool of workers that computes every payload of its runs, one payload per message. It never debounces or drops
  * payloads. Starting a run cancels the earlier ones, unless it is `concurrent`: concurrent runs share the workers, the
- * oldest run's payloads first, so a worker one run leaves idle picks up another's.
+ * oldest run's payloads first, so a worker one run leaves idle picks up another's. A payload whose worker crashes is
+ * retried once.
  */
 export class TaskPool<P, R> {
   private size: number;
@@ -109,7 +112,7 @@ export class TaskPool<P, R> {
 
   private limit?: WorkerLimit;
 
-  private workers: PoolWorker[] = [];
+  private workers: PoolWorker<P>[] = [];
 
   // in start order: dispatch serves the oldest run first
   private runs = new Map<number, Run<P, R>>();
@@ -153,7 +156,7 @@ export class TaskPool<P, R> {
 
     return new Promise<R[]>((resolve, reject) => {
       this.runs.set(runId, {
-        runId, queue, outstanding: 0, chunks: [], done: 0, total, lastProgress: Date.now(), onProgress, resolve, reject,
+        runId, queue, outstanding: 0, crashed: new Set(), chunks: [], done: 0, total, lastProgress: Date.now(), onProgress, resolve, reject,
       });
       this.ensureWorkers(this.pending());
       this.dispatch();
@@ -167,13 +170,13 @@ export class TaskPool<P, R> {
     this.runs.clear();
     if (this.terminateOnCancel) {
       // a busy worker would finish its stale chunk before taking new work; ensureWorkers spawns replacements on the next run
-      this.workers.filter((w) => w.runId !== null).forEach((w) => this.endWorker(w));
+      this.workers.filter((w) => w.chunk !== null).forEach((w) => this.endWorker(w));
       this.limit?.wake(this);
     }
     cancelled.forEach((run) => run.reject(new Error('cancelled')));
   }
 
-  private endWorker(pw: PoolWorker) {
+  private endWorker(pw: PoolWorker<P>) {
     pw.worker.terminate();
     this.workers = this.workers.filter((w) => w !== pw);
     this.limit?.release();
@@ -181,7 +184,7 @@ export class TaskPool<P, R> {
 
   /** Ends an idle worker, for another pool sharing the limit; false when none is idle */
   retireIdleWorker(): boolean {
-    const idle = this.workers.find((w) => w.runId === null);
+    const idle = this.workers.find((w) => w.chunk === null);
     if (!idle) return false;
     this.endWorker(idle);
     return true;
@@ -209,7 +212,7 @@ export class TaskPool<P, R> {
   private ensureWorkers(chunks: number) {
     while (this.workers.length < Math.min(this.size, chunks)) {
       if (this.limit && !this.limit.take(this)) return;
-      const pw: PoolWorker = { worker: this.createWorker(), runId: null };
+      const pw: PoolWorker<P> = { worker: this.createWorker(), chunk: null };
       pw.worker.onmessage = (e) => this.onResponse(pw, e.data);
       pw.worker.onerror = (e) => this.onWorkerError(pw, e?.message);
       this.workers.push(pw);
@@ -218,19 +221,19 @@ export class TaskPool<P, R> {
 
   private dispatch() {
     for (const pw of this.workers) {
-      if (pw.runId !== null) continue;
+      if (pw.chunk !== null) continue;
       // the oldest run with payloads left
       const run = [...this.runs.values()].find((r) => r.queue.length > 0);
       if (!run) return;
       const chunk = run.queue.shift()!;
-      pw.runId = run.runId;
+      pw.chunk = chunk;
       run.outstanding += 1;
       pw.worker.postMessage(JSON.stringify(chunk, WORKER_JSON_REPLACER));
     }
   }
 
-  private onResponse(pw: PoolWorker, data: string) {
-    pw.runId = null;
+  private onResponse(pw: PoolWorker<P>, data: string) {
+    pw.chunk = null;
     const res = JSON.parse(data, WORKER_JSON_REVIVER) as TaskResult<R>;
     const run = this.runs.get(res.runId);
 
@@ -253,16 +256,26 @@ export class TaskPool<P, R> {
     }
 
     this.dispatch();
-    if (pw.runId === null) this.limit?.wake(this);
+    if (pw.chunk === null) this.limit?.wake(this);
   }
 
-  private onWorkerError(pw: PoolWorker, message?: string) {
-    // a crashed worker can't be trusted to respond; drop it, and fail the run only if the crash was on one of its chunks
+  private onWorkerError(pw: PoolWorker<P>, message?: string) {
+    // a worker keeps running after an uncaught error, so one can report more than one before it is gone
+    if (!this.workers.includes(pw)) return;
+    // a crashed worker can't be trusted to respond; drop it. A crash can be the worker's heap rather than the chunk, so the
+    // chunk gets one more try on a new worker; crashing again fails the run
     this.endWorker(pw);
-    const run = pw.runId === null ? undefined : this.runs.get(pw.runId);
-    if (run) {
-      this.runs.delete(run.runId);
-      run.reject(new Error(message || 'A calculation worker crashed'));
+    const { chunk } = pw;
+    const run = chunk === null ? undefined : this.runs.get(chunk.runId);
+    if (run && chunk) {
+      if (run.crashed.has(chunk.chunkId)) {
+        this.runs.delete(run.runId);
+        run.reject(new Error(message || 'A calculation worker crashed'));
+      } else {
+        run.crashed.add(chunk.chunkId);
+        run.outstanding -= 1;
+        run.queue.unshift(chunk);
+      }
     }
 
     this.fill();
