@@ -46,7 +46,7 @@ const Bar: React.FC<{ label: string; value: number }> = ({ label, value }) => (
   </div>
 );
 
-/** Time since it appeared; left out of screen readers' status updates, which would read every second */
+/** Time since it appeared, in even-width digits so it holds still; left out of screen readers' status updates, which would read every second */
 const Elapsed: React.FC = () => {
   const [start] = useState(() => Date.now());
   const [now, setNow] = useState(start);
@@ -55,7 +55,7 @@ const Elapsed: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
   const seconds = Math.floor((now - start) / 1000);
-  return <span aria-hidden>{`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}</span>;
+  return <span aria-hidden className="shrink-0 tabular-nums">{`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}</span>;
 };
 
 /** How long the inputs stay unchanged before the page checks the cache and re-plans */
@@ -282,13 +282,14 @@ const RaidPage: React.FC = observer(() => {
                 <div className="px-4 py-1.5 flex flex-col gap-1 text-sm border-b border-body-300 dark:border-dark-200" role="status">
                   {running && (
                     <>
-                      <span>
-                        {progress && progress.searches > 0
-                          ? `${progress.search} of ${progress.searches} searches done${progress.cached > 0 ? ` (${progress.cached} cached)` : ''}${!planning && progress.phaseLabel ? ` · running ${progress.phaseLabel}` : ''}`
-                          : 'Planning the loadout from the cached searches…'}
-                        {' · '}
+                      <div className="flex justify-between items-start gap-4">
+                        <span>
+                          {progress && progress.searches > 0
+                            ? `${progress.search} of ${progress.searches} searches done${progress.cached > 0 ? ` (${progress.cached} cached)` : ''}${!planning && progress.phaseLabel ? ` · running ${progress.phaseLabel}` : ''}`
+                            : 'Planning the loadout from the cached searches…'}
+                        </span>
                         <Elapsed />
-                      </span>
+                      </div>
                       <Bar label="Searches" value={overall} />
                       <span className="text-xs text-gray-500 dark:text-gray-300">{innerLabel}</span>
                       <Bar label={planning ? 'Planning' : 'Current search'} value={inner} />
