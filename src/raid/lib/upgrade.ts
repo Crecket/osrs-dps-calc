@@ -59,6 +59,8 @@ const PRICE_BANDS = [100_000, 1_000_000, 10_000_000, 100_000_000];
 // as in the assembly's cost-aware pass: free upgrades first, but tiny gains don't win on price alone
 const COST_SMOOTHING = 100_000;
 const MAX_STEPS = 60;
+// boot changes for every setup at once per climb
+const MAX_BOOT_ROUNDS = 4;
 // the most expensive armour pieces tried back for a cheaper one, the money freed going to the rest (a weapon upgrade
 // rather than 142m Avernic treads), kept only when the raid gets this much faster
 const MAX_SELL_BACK = 4;
@@ -86,7 +88,8 @@ const MIN_GAIN = 1e-6;
 // main setup's piece rather than bring a slightly better one, boots most of all. Low enough that a melee set over the
 // ranged armour (an Inquisitor's piece saves ~17s over a raid's melee phases) still pays.
 const SWITCH_SECONDS = 15;
-const BOOT_SWITCH_SECONDS = 30;
+// boots are never switched: almost nobody does, so every setup wears one pair, changed for all at once (shareBoots)
+const BOOT_SWITCH_SECONDS = Infinity;
 // what a switch must save per bag cell once the planning is done and cells and money are left over: an empty cell is
 // worth nothing, so a melee piece over the ranged armour (a Bandos chestplate saves ~6s) goes in rather than nothing
 const FILL_SECONDS = 3;
@@ -101,10 +104,10 @@ const switchSeconds = (slot: GearSlot | 'stance'): number => {
   return SWITCH_SECONDS;
 };
 /** What a change in `slot` growing the loadout from `from` items to `to` must save: an armour switch its cell's worth */
-const switchGain = (slot: GearSlot | 'stance', from: number, to: number) => Math.max(
+const switchGain = (slot: GearSlot | 'stance', from: number, to: number) => (to > from ? Math.max(
   minGainFor(from, to),
-  MIN_GAIN + switchSeconds(slot) * Math.max(0, to - from),
-);
+  MIN_GAIN + switchSeconds(slot) * (to - from),
+) : minGainFor(from, to));
 const SLOTS = GEAR_SLOT_ORDER.filter((s): s is GearSlot => s !== 'weapon');
 
 interface Unit {
@@ -275,8 +278,71 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   let filling = false;
   const fillGain = (from: number, to: number) => MIN_GAIN + FILL_SECONDS * Math.max(0, to - from);
   const isFree = (id: number) => priceOf(id) <= FREE_PRICE;
-  const needed = (move: Move, from: number, to: number) => (filling || isFree(move.to)
-    ? fillGain(from, to) : switchGain(move.slot, from, to));
+  const needed = (move: Move, from: number, to: number) => {
+    if (move.slot === 'feet' && to > from) return Infinity;
+    return filling || isFree(move.to) ? fillGain(from, to) : switchGain(move.slot, from, to);
+  };
+
+  /**
+   * One pair of boots for every setup: another pair is tried on all of them at once, the most time per gp first. While
+   * setups wear different pairs (as searched), the pair losing least goes on all of them, whatever it costs in time.
+   */
+  const shareBoots = async (): Promise<boolean> => {
+    const wearers = groups;
+    if (!wearers.length || !bySlot.has('feet')) return false;
+    const feetOf = (g: Group) => {
+      const e = g.units[0].candidate.setup.player.equipment.feet;
+      return e ? getCanonicalItemId(e.id) : null;
+    };
+    const worn = [...new Set(wearers.map(feetOf))];
+    const mixed = worn.length > 1;
+    const current = loadout();
+    const cost = costOf(current);
+    const cap = Math.max(budget, cost);
+    const values = wearers.map((g) => valueFor(g.units[0].candidate));
+    const pool = bySlot.get('feet') ?? [];
+    // the pairs worn, and the strongest of the pool for each setup's style
+    const options = [...new Set([
+      ...worn.filter((id): id is number => id !== null),
+      ...values.flatMap((value) => [...pool].sort((a, b) => value(b) - value(a)).slice(0, TOP_PER_SLOT).map((e) => getCanonicalItemId(e.id))),
+      ...PRICE_BANDS.flatMap((band) => values.map((value) => pool.filter((e) => priceOf(e.id) <= band)
+        .sort((a, b) => value(b) - value(a))[0]).filter((e): e is EquipmentPiece => !!e).map((e) => getCanonicalItemId(e.id))),
+    ])].filter((id) => mixed || id !== worn[0]);
+    let best: { rated: Candidate[][]; items: number[][]; score: number; gain: number } | null = null;
+    for (const id of options) {
+      const built = wearers.map((g) => build(g, (st) => ({ ...st, gear: { ...st.gear, feet: id } })));
+      if (built.some((b) => !b)) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const rated = await Promise.all(wearers.map((g, k) => Promise.all(g.units.map((u, n) => rate([built[k]![n].setup], u.monster)
+        .then(([d]) => ({ ...built[k]![n], dps: d }))))));
+      const items = rated.map((r, k) => [...new Set([...wearers[k].items.filter((x) => x !== feetOf(wearers[k])), id])]);
+      const next = loadout(...wearers.map((g, k) => ({ group: g, items: items[k] })));
+      const nextCost = costOf(next);
+      if (nextCost > cap || next.size > Math.max(maxItems, current.size)) continue;
+      const gain = wearers.reduce((n, g, k) => n + gainOf(g, rated[k]), 0);
+      if (!Number.isFinite(gain)) continue;
+      if (!mixed && !(gain > minGainFor(current.size, next.size) + moneyBar(nextCost - cost))) continue;
+      const score = mixed ? gain : gain / (Math.max(0, nextCost - cost) + COST_SMOOTHING);
+      if (!best || score > best.score) {
+        best = {
+          rated, items, score, gain,
+        };
+      }
+    }
+    if (!best) return false;
+    const { rated, items } = best;
+    for (let k = 0; k < wearers.length; k++) {
+      const g = wearers[k];
+      g.units.forEach((u, n) => {
+        // eslint-disable-next-line no-param-reassign
+        u.candidate = rated[k][n];
+      });
+      g.items = items[k];
+      // eslint-disable-next-line no-await-in-loop
+      g.moves = await movesFor(g);
+    }
+    return true;
+  };
 
   /** Single changes while one fits, then pairs of them */
   const climb = async () => {
@@ -377,6 +443,8 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
         }
       }
     }
+    // eslint-disable-next-line no-await-in-loop
+    for (let round = 0; round < MAX_BOOT_ROUNDS && await shareBoots(); round++);
   };
 
   /**
@@ -664,7 +732,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           // eslint-disable-next-line no-await-in-loop
           const rated = await Promise.all(group.units.map((u, i) => rate([next[i].setup], u.monster).then(([d]) => ({ ...next[i], dps: d }))));
           const loss = -gainOf(group, rated);
-          if (loss <= (isFree(id) ? FILL_SECONDS : switchSeconds(slot)) && (!best || loss < best.loss)) best = { group, rated, loss };
+          if (loss <= (isFree(id) && slot !== 'feet' ? FILL_SECONDS : switchSeconds(slot)) && (!best || loss < best.loss)) best = { group, rated, loss };
         }
       }
     }
@@ -880,6 +948,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           move, next, gain: gainOf(group, move.next), more: to ? value(to) - (from ? value(from) : 0) : 0, extra: costOf(next) - cost,
         };
       }).filter((o) => costOf(o.next) <= cap && o.next.size <= Math.max(maxItems, current.size)
+        && !(o.move.slot === 'feet' && o.next.size > current.size)
         && Number.isFinite(o.gain) && o.gain > -MIN_GAIN);
       const saving = options.filter((o) => o.gain > MIN_GAIN);
       const pick = saving.length > 0
@@ -888,7 +957,8 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           .reduce<typeof options[number] | null>((a, b) => (!a || b.more / (Math.max(0, b.extra) + COST_SMOOTHING) > a.more / (Math.max(0, a.extra) + COST_SMOOTHING) ? b : a), null);
       if (!pick) break;
       const cells = pick.next.size - current.size;
-      bar += Math.max(0, cells) * (filling || isFree(pick.move.to) ? FILL_SECONDS : switchSeconds(pick.move.slot)) + moneyBar(pick.extra);
+      // (boots never take a cell: they are filtered above, and Infinity times no cells is no number)
+      bar += (cells > 0 ? cells * (filling || isFree(pick.move.to) ? FILL_SECONDS : switchSeconds(pick.move.slot)) : 0) + moneyBar(pick.extra);
       group.units.forEach((u, i) => {
         // eslint-disable-next-line no-param-reassign
         u.candidate = pick.move.next[i];

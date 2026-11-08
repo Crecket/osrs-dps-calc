@@ -31,6 +31,9 @@ const EXCLUDED_NAME = /\(unobtainable item\)|\(beta\)|\(historical\)|\(deadman( 
 const EXCLUDED_ITEM_IDS = new Set([
   21433, // Wilderness champion amulet: +100 to every attack from a past event, not obtainable in normal play
   30380, // Gloves of the Damned: not obtainable in the main game
+  13237, // Pegasian boots: far too dear for their bonus to ever be worth buying (the Avernic treads (max) price still counts them)
+  2577, // Ranger boots: the same, a clue reward priced far above what +8 ranged attack is worth
+  33790, // Spine: not a weapon to plan with
   616, // Beads of the Dead: +1 to everything, never worth a slot over any real amulet
   // minigame-only ammo: Barbarian Assault's Bullet, Field, Blunt and Barbed arrow (upstream lets bows fire them)
   22227, 22228, 22229, 22230,

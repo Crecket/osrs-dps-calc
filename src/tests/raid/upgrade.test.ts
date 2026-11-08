@@ -245,7 +245,7 @@ describe('upgradeLoadout', () => {
     expect(result.itemIds).not.toContain(ACB);
   });
 
-  test('two variants of one item merge into the one that has both: Avernic treads (pe) and (pr) become (max)', async () => {
+  test('setups searched in different boots end in one pair for all: nobody switches boots', async () => {
     const [PE, PR, MAX] = [31092, 31091, 31097];
     const withFeet = (c: Candidate, feet: number): Candidate => {
       const player = buildPlayer(playerFor(), {
@@ -256,7 +256,7 @@ describe('upgradeLoadout', () => {
     const picks = [withFeet(candidate('a', 10), PE), withFeet(candidate('b', 10), PR)];
     const result = await upgradeLoadout(input({
       plan: plan(picks), candidates: picks, pool: [...pool, item(PE), item(PR), item(MAX)], priceOf: () => 0,
-    }), async (setups) => setups.map(() => 10));
+    }), async (setups) => setups.map((st) => ({ [MAX]: 10.5, [PE]: 10.2, [PR]: 10.2 }[st.player.equipment.feet?.id ?? 0] ?? 10)));
     expect(result.itemIds).toContain(MAX);
     expect(result.itemIds).not.toContain(PE);
     expect(result.itemIds).not.toContain(PR);
@@ -359,10 +359,52 @@ describe('upgradeLoadout', () => {
   });
 
   test('a kit judged as a whole: two pieces that save nothing alone go in when together they reach the next max hit', async () => {
-    const PEGASIAN = 13237;
-    const both = async (setups: BulkSetup[]) => setups.map((s) => (s.player.equipment.hands?.id === VAMBRACES && s.player.equipment.feet?.id === PEGASIAN ? 15 : 10));
-    const result = await upgradeLoadout(input({ pool: [...pool, item(VAMBRACES), item(PEGASIAN)], excluded: new Set([ANGUISH]) }), both);
-    expect(result.itemIds).toEqual(expect.arrayContaining([VAMBRACES, PEGASIAN]));
+    const ASSEMBLER = 22109;
+    const both = async (setups: BulkSetup[]) => setups.map((s) => (s.player.equipment.hands?.id === VAMBRACES && s.player.equipment.cape?.id === ASSEMBLER ? 15 : 10));
+    const result = await upgradeLoadout(input({ pool: [...pool, item(VAMBRACES), item(ASSEMBLER)], excluded: new Set([ANGUISH]) }), both);
+    expect(result.itemIds).toEqual(expect.arrayContaining([VAMBRACES, ASSEMBLER]));
+  });
+
+  test('one pair of boots for every setup: a melee pair beside the ranged one is never added', async () => {
+    const [PRIMORDIAL, DRAGON_BOOTS] = [13239, 11840];
+    const MACE = 24417;
+    const pound = getCombatStylesForCategory(item(MACE).category).find((st) => st.type === 'crush')!;
+    const melee: Candidate = {
+      phaseKey: 'b',
+      style: 'crush',
+      dps: 10,
+      setup: {
+        id: 'b',
+        name: 'mace',
+        player: buildPlayer(basePlayer(inputs, 'crush'), {
+          style: 'crush', weaponId: MACE, combatStyle: pound, ammoId: null, spellName: null, dartId: null,
+        }, { feet: DRAGON_BOOTS }),
+      },
+      itemIds: [MACE, DRAGON_BOOTS],
+    };
+    const ranged = candidate('a', 10);
+    const withBoots: Candidate = {
+      ...ranged,
+      setup: {
+        ...ranged.setup,
+        player: buildPlayer(playerFor(), {
+          style: 'ranged', weaponId: TBOW, combatStyle: rapid, ammoId: DRAGON_ARROW, spellName: null, dartId: null,
+        }, { head: MASK, neck: BONECRUSHER, feet: DRAGON_BOOTS }),
+      },
+      itemIds: [...ranged.itemIds, DRAGON_BOOTS],
+    };
+    // the Primordial boots save the melee setup a lot, and do nothing for the ranged one
+    const result = await upgradeLoadout(input({
+      plan: plan([withBoots, melee]),
+      candidates: [withBoots, melee],
+      pool: [...pool, item(MACE), item(PRIMORDIAL), item(DRAGON_BOOTS)],
+      priceOf: (id) => (id === PRIMORDIAL ? 10e6 : 0),
+      playerFor: (st) => basePlayer(inputs, st),
+    }), async (setups) => setups.map((st) => (st.player.equipment.weapon?.id === MACE && st.player.equipment.feet?.id === PRIMORDIAL ? 20 : 10)));
+    const feet = new Set(result.picks.map((p) => p.candidate!.setup.player.equipment.feet?.id));
+    expect(feet.size).toBe(1);
+    // worth it for all: the ranged setup wears them too
+    expect([...feet]).toEqual([PRIMORDIAL]);
   });
 
   test('a free switch everybody brings gets the last cell before a bought one saving more', async () => {
