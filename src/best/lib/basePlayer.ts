@@ -1,4 +1,4 @@
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
 import { Player } from '@/types/Player';
 import { potionBoosts } from '@/bulk/lib/filters';
 import { BestInputs, BestStyle } from '@/best/types';
@@ -7,7 +7,7 @@ import { allUnlocked, defaultPotions, stylePrayers } from '@/best/lib/loadout';
 /** The naked player the search dresses: skills, prayers, potions and conditions for one style, no equipment. */
 // eslint-disable-next-line import/prefer-default-export
 export const basePlayer = (inputs: BestInputs, style: BestStyle): Player => {
-  const player = generateEmptyPlayer();
+  const player = createEmptyPlayer();
   const { conditions } = inputs;
   player.skills = { ...inputs.skills };
   // saved unlocks from older versions are ignored: only the levels limit the prayers

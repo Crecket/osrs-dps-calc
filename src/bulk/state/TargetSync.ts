@@ -1,8 +1,6 @@
-import {
-  IReactionDisposer, reaction, runInAction, toJS,
-} from 'mobx';
+import { IReactionDisposer, reaction, toJS } from 'mobx';
 import isEqual from 'lodash.isequal';
-import { GlobalState } from '@/state';
+import RootStore from '@/state/RootStore';
 import { Monster } from '@/types/Monster';
 import { newId } from '@/bulk/lib/presetIO';
 import { BulkMonster } from '@/bulk/types';
@@ -25,12 +23,19 @@ export interface TargetHolder {
 class TargetSync {
   private disposers: IReactionDisposer[] = [];
 
+  // the panel's monster at the last load or save. The panel fills in its inputs, so after a load it can differ from the
+  // target without anything having been edited
+  private synced: Monster | null = null;
+
+  private maxHp = 0;
+
   /**
    * @param delay ms to batch panel edits (typing in a number input) into one change of target
    */
-  constructor(private holder: TargetHolder, private calc: GlobalState, private delay = 300) {}
+  constructor(private holder: TargetHolder, private calc: RootStore, private delay = 300) {}
 
   start() {
+    this.maxHp = this.calc.monster.maxHp;
     this.disposers.push(
       reaction(
         () => [this.holder.targetScope, this.holder.canSave, toJS(this.holder.target?.monster)] as const,
@@ -38,9 +43,18 @@ class TargetSync {
         { fireImmediately: true, equals: (a, b) => isEqual(a, b) },
       ),
       reaction(
-        () => toJS(this.calc.monster),
+        () => this.calc.monster.snapshot,
         () => this.save(),
         { delay: this.delay || undefined, equals: (a, b) => isEqual(a, b) },
+      ),
+      // upstream's MonsterStore.start, except that loading a target keeps its saved current HP
+      reaction(
+        () => this.calc.monster.maxHp,
+        (maxHp) => {
+          if (maxHp === this.maxHp) return;
+          this.maxHp = maxHp;
+          this.calc.monster.updateInputs({ monsterCurrentHp: maxHp });
+        },
       ),
     );
   }
@@ -51,23 +65,26 @@ class TargetSync {
   }
 
   private load() {
-    const target = this.holder.target;
+    const target = toJS(this.holder.target?.monster);
     if (!target) {
       // a preset without a target takes whatever the panel shows, so there is always something to compare against
+      this.synced = null;
       this.save();
       return;
     }
-    if (isEqual(toJS(target.monster), toJS(this.calc.monster))) return;
-    runInAction(() => {
-      this.calc.monster = toJS(target.monster);
-    });
+    if (isEqual(target, this.synced)) return;
+    const { inputs, ...definition } = target;
+    this.calc.monster.load(definition, inputs);
+    this.maxHp = this.calc.monster.maxHp;
+    this.synced = this.calc.monster.snapshot;
   }
 
   private save() {
     if (!this.holder.canSave) return;
-    const monster: Monster = toJS(this.calc.monster);
+    const monster = this.calc.monster.snapshot;
+    if (isEqual(monster, this.synced)) return;
+    this.synced = monster;
     const current = this.holder.target;
-    if (current && isEqual(toJS(current.monster), monster)) return;
     // keep the entry's id while it's the same monster, so only a different monster counts as a new target
     const same = current && current.monster.id === monster.id && current.monster.name === monster.name;
     this.holder.setTarget({ id: same ? current.id : newId(), monster });

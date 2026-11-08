@@ -1,5 +1,5 @@
 import { Player } from '@/types/Player';
-import { ImportableData } from '@/types/State';
+import type { ImportableData } from '@/state/RootStore';
 import { BulkSetup, GEAR_SLOT_ORDER } from '@/bulk/types';
 import { fromCalculatorState } from '@/bulk/lib/presetIO';
 import { uniqueNewSetups } from '@/bulk/lib/dedupe';

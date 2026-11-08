@@ -1,10 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React from 'react';
 import { observer } from 'mobx-react-lite';
 import { IconX } from '@tabler/icons-react';
 import { getCdnImage } from '@/utils';
-import { GlobalState, StoreProvider } from '@/state';
 import { availableEquipment } from '@/lib/Equipment';
-import EquipmentSelect from '@/app/components/player/equipment/EquipmentSelect';
+import EquipmentSearch from '@/bulk/components/EquipmentSearch';
 import { bestPool } from '@/best/lib/candidates';
 import { EquipmentPiece } from '@/types/Player';
 import { useBestStore } from '@/best/state/BestStore';
@@ -21,9 +20,6 @@ const inPool = (e: EquipmentPiece) => {
 const ExcludedItems: React.FC = observer(() => {
   const store = useBestStore();
   const excluded = store.inputs.excludedItemIds ?? [];
-  // upstream's item search reads the monster from a calculator store, so give it a scratch one
-  const [scratch] = useState(() => new GlobalState());
-  const filter = useMemo(() => inPool, []);
   const items = excluded.map((id) => availableEquipment.find((e) => e.id === id)).filter((e): e is EquipmentPiece => e !== undefined);
 
   return (
@@ -32,9 +28,7 @@ const ExcludedItems: React.FC = observer(() => {
         The search never uses these. Right-click an item in a result to add it here, or search for one.
       </p>
       <div className="max-w-sm">
-        <StoreProvider store={scratch}>
-          <EquipmentSelect customAvailableEquipmentFilter={filter} onSelectedItemChange={(item) => item && store.excludeItem(item.equipment.id)} />
-        </StoreProvider>
+        <EquipmentSearch filter={inPool} onPick={(item) => store.excludeItem(item.id)} />
       </div>
       {items.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">

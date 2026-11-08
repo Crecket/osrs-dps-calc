@@ -35,7 +35,7 @@ const JOBS_PER_STYLE = 24;
 
 const inputs = (slayer: boolean): BestInputs => ({
   skills: {
-    atk: 99, def: 99, hp: 99, magic: 99, prayer: 99, ranged: 99, str: 99, mining: 99, herblore: 99,
+    atk: 99, def: 99, hp: 99, magic: 99, prayer: 99, ranged: 99, str: 99, mining: 99, herblore: 99, farming: 99,
   },
   unlocks: DEFAULT_UNLOCKS,
   conditions: { ...DEFAULT_CONDITIONS, onSlayerTask: slayer },

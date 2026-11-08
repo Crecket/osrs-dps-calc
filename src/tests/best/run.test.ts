@@ -19,7 +19,7 @@ const pool = bestPool();
 
 const inputs = (styles: BestStyle[], topN = 3): BestInputs => ({
   skills: {
-    atk: 99, def: 99, hp: 99, magic: 99, prayer: 99, ranged: 99, str: 99, mining: 99, herblore: 99,
+    atk: 99, def: 99, hp: 99, magic: 99, prayer: 99, ranged: 99, str: 99, mining: 99, herblore: 99, farming: 99,
   },
   unlocks: DEFAULT_UNLOCKS,
   conditions: DEFAULT_CONDITIONS,
@@ -113,20 +113,20 @@ describe('unionEffects', () => {
 });
 
 describe('weaponVariants', () => {
-  const scythe = availableEquipment.find((e) => e.name === 'Scythe of Vitur' && e.version === 'Charged')!.id;
-  const holy = availableEquipment.find((e) => e.name === 'Holy Scythe of Vitur' && e.version === 'Charged')!.id;
-  const sanguine = availableEquipment.find((e) => e.name === 'Sanguine Scythe of Vitur' && e.version === 'Charged')!.id;
-  const jobs = weaponJobs(pool, 'slash').filter((j) => [scythe, holy, sanguine].includes(j.weaponId));
+  const armadyl = availableEquipment.find((e) => e.name === 'Armadyl godsword')!.id;
+  const bandos = availableEquipment.find((e) => e.name === 'Bandos godsword')!.id;
+  const saradomin = availableEquipment.find((e) => e.name === 'Saradomin godsword')!.id;
+  const jobs = weaponJobs(pool, 'slash').filter((j) => [armadyl, bandos, saradomin].includes(j.weaponId));
 
   test('weapons with the same stats and the same DPS in every job are variants of the lowest id', () => {
     expect(new Set(jobs.map((j) => j.weaponId)).size).toBe(3);
     const dps = (j: WeaponJob) => (j.combatStyle.name === 'Chop' ? 10 : 8);
-    expect(weaponVariants(jobs, dps)).toEqual(new Map([[holy, scythe], [sanguine, scythe]]));
+    expect(weaponVariants(jobs, dps)).toEqual(new Map([[bandos, armadyl], [saradomin, armadyl]]));
   });
 
   test('a weapon whose DPS differs in one job is no variant', () => {
-    const dps = (j: WeaponJob) => (j.weaponId === holy && j.combatStyle.name === 'Reap' ? 7 : 10);
-    expect(weaponVariants(jobs, dps)).toEqual(new Map([[sanguine, scythe]]));
+    const dps = (j: WeaponJob) => (j.weaponId === bandos && j.combatStyle.name === 'Slash' ? 7 : 10);
+    expect(weaponVariants(jobs, dps)).toEqual(new Map([[saradomin, armadyl]]));
   });
 
   test('weapons with different stats are never variants', () => {
@@ -333,21 +333,21 @@ describe('runBestSetup', () => {
     expect(o.rows[0].dps).toBeGreaterThan(Math.max(...others));
   }, 60000);
 
-  test('cosmetic weapon variants collapse into the lowest id: one exhaustive search, one row, the variants named', async () => {
-    const scythes = availableEquipment.filter((e) => /^(Holy |Sanguine )?Scythe of Vitur$/.test(e.name) && e.version === 'Charged').map((e) => e.id);
-    expect(scythes).toHaveLength(3);
+  test('weapons that calculate the same collapse into the lowest id: one exhaustive search, one row, the variants named', async () => {
+    const godswords = pool.filter((e) => / godsword$/.test(e.name) && e.offensive.slash === 132).map((e) => e.id).sort((a, b) => a - b);
+    expect(godswords.length).toBeGreaterThan(3);
+    const others = pool.filter((e) => e.slot === 'weapon' && !godswords.includes(e.id)).map((e) => e.id);
     const { deps, calls } = fakeDeps();
-    const [o] = await runBestSetup(inputs(['slash']), vorkath, deps, () => {}, opts);
+    const [o] = await runBestSetup({ ...inputs(['slash']), excludedItemIds: others }, vorkath, deps, () => {}, opts);
 
     const exhaustive = calls.flat().flatMap((p) => (p.kind === 'search' && p.mode === 'exhaustive' ? p.jobs : []));
-    expect(exhaustive.filter((j) => scythes.includes(j.weaponId))).toHaveLength(1);
+    expect(exhaustive.filter((j) => godswords.includes(j.weaponId))).toHaveLength(1);
     const names = o.setups.map((s) => s.player.equipment.weapon!.name);
-    expect(names).toContain('Scythe of Vitur');
-    expect(names.filter((n) => /Scythe of Vitur/.test(n)).every((n) => n === 'Scythe of Vitur')).toBe(true);
-    const setup = o.setups.find((s) => s.player.equipment.weapon!.name === 'Scythe of Vitur')!;
-    expect(setup.name).toContain('Holy Scythe of Vitur');
-    expect(setup.name).toContain('Sanguine Scythe of Vitur');
-    expect(o.variants[setup.player.equipment.weapon!.id]).toEqual(scythes.filter((id) => id !== setup.player.equipment.weapon!.id));
+    expect(names).toContain('Armadyl godsword');
+    expect(names.filter((n) => / godsword$/.test(n)).every((n) => n === 'Armadyl godsword')).toBe(true);
+    const setup = o.setups.find((s) => s.player.equipment.weapon!.name === 'Armadyl godsword')!;
+    expect(setup.name).toContain('Bandos godsword');
+    expect(o.variants[setup.player.equipment.weapon!.id]).toEqual(godswords.filter((id) => id !== setup.player.equipment.weapon!.id));
   }, 60000);
 
   test('excluded items never appear in the results', async () => {

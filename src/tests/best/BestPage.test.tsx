@@ -51,7 +51,7 @@ const { STORAGE_KEY } = require('@/bulk/state/BulkStore') as typeof import('@/bu
 const { monsterFromSearch } = require('@/bulk/lib/presetIO') as typeof import('@/bulk/lib/presetIO');
 const { getMonsters } = require('@/lib/Monsters') as typeof import('@/lib/Monsters');
 const { availableEquipment } = require('@/lib/Equipment') as typeof import('@/lib/Equipment');
-const { generateEmptyPlayer } = require('@/state') as typeof import('@/state');
+const { createEmptyPlayer } = require('@/state/PlayerStore') as typeof import('@/state/PlayerStore');
 const { TaskPool } = require('@/bulk/worker/TaskPool') as typeof import('@/bulk/worker/TaskPool');
 const { BulkPool } = require('@/bulk/worker/BulkPool') as typeof import('@/bulk/worker/BulkPool');
 const { PRESETS_CHANNEL } = require('@/bulk/state/presetChannel') as typeof import('@/bulk/state/presetChannel');
@@ -65,7 +65,7 @@ const wait = (ms: number) => act(() => new Promise<void>((r) => { setTimeout(r, 
 // results show no setup names, so tests tell outcomes apart by their DPS
 const outcome = (name: string, dps = 7.5): StyleOutcome => ({
   style: 'slash',
-  setups: [{ id: 'best-slash-0', name, player: generateEmptyPlayer(name) }],
+  setups: [{ id: 'best-slash-0', name, player: createEmptyPlayer(name) }],
   rows: [{
     setupId: 'best-slash-0', monsterId: 'm', maxHit: 40, accuracy: 0.8, dps, ttk: 30, spec: null, issues: [],
   }],
@@ -369,23 +369,23 @@ describe('BestPage', () => {
   });
 
   test('right-clicking a weapon that stands for cosmetic variants excludes those copies too', async () => {
-    const [scythe, holy, sanguine] = ['Scythe of Vitur', 'Holy Scythe of Vitur', 'Sanguine Scythe of Vitur']
+    const [axe, or, trailblazer] = ['Infernal axe', 'Infernal axe (or)', 'Infernal axe (or) (Trailblazer Reloaded)']
       .map((name) => availableEquipment.find((e) => e.name === name && e.version === 'Charged')!);
-    const withWeapon = outcome('Scythe of Vitur (Chop) — or Holy Scythe of Vitur, Sanguine Scythe of Vitur');
-    withWeapon.setups[0].player.equipment.weapon = scythe;
+    const withWeapon = outcome('Infernal axe (Chop) — or Infernal axe (or), Infernal axe (or) (Trailblazer Reloaded)');
+    withWeapon.setups[0].player.equipment.weapon = axe;
     // a weapon that only calculates the same isn't a copy, so it stays
     const rapier = availableEquipment.find((e) => e.name === 'Ghrazi rapier')!;
-    withWeapon.variants = { [scythe.id]: [holy.id, sanguine.id, rapier.id] };
+    withWeapon.variants = { [axe.id]: [or.id, trailblazer.id, rapier.id] };
     mockRun.mockResolvedValue([withWeapon]);
     const { container, unmount } = await mount();
     await act(async () => find(container).click());
     await wait(10);
 
-    const cell = container.querySelector(`img[alt="${scythe.name}"]`)!.closest('div')!;
+    const cell = container.querySelector(`img[alt="${axe.name}"]`)!.closest('div')!;
     await act(async () => { cell.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); });
     await wait(10);
-    expect((mockData.get(BEST_STORAGE_KEY) as { inputs: BestInputs }).inputs.excludedItemIds).toEqual([scythe.id, holy.id, sanguine.id]);
-    expect(mockToast.info).toHaveBeenCalledWith(`Excluded ${scythe.name}, ${holy.name} and ${sanguine.name}. Click Find best setup to update the results.`);
+    expect((mockData.get(BEST_STORAGE_KEY) as { inputs: BestInputs }).inputs.excludedItemIds).toEqual([axe.id, or.id, trailblazer.id]);
+    expect(mockToast.info).toHaveBeenCalledWith(`Excluded ${axe.name}, ${or.name} and ${trailblazer.name}. Click Find best setup to update the results.`);
     expect(mockRun).toHaveBeenCalledTimes(1);
     await unmount();
   });
@@ -419,7 +419,7 @@ describe('BestPage', () => {
     const [whip, rapier] = ['Abyssal whip', 'Ghrazi rapier'].map((name) => availableEquipment.find((e) => e.name === name)!);
     const [ultor, berserker] = ['Ultor ring', 'Berserker ring (i)'].map((name) => availableEquipment.find((e) => e.name === name)!);
     const setup = (id: string, name: string, weapon: typeof whip, ring: typeof whip) => {
-      const player = generateEmptyPlayer(name);
+      const player = createEmptyPlayer(name);
       player.equipment.weapon = weapon;
       player.equipment.ring = ring;
       return { id, name, player };

@@ -3,7 +3,8 @@
  * Max Mage presets (src/app/components/player/equipment/EquipmentPresets.tsx), plus a weapon. The loadouts are stored
  * as item ids and go through the same import path as a share link, so upstream's item re-resolution applies.
  */
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
+import { IMPORT_VERSION } from '@/state/RootStore';
 import { getMonsters } from '@/lib/Monsters';
 import { availableEquipment } from '@/lib/Equipment';
 import { getCombatStylesForCategory, PotionMap } from '@/utils';
@@ -12,7 +13,6 @@ import Potion from '@/enums/Potion';
 import { EquipmentCategory } from '@/enums/EquipmentCategory';
 import { EquipmentPiece, Player, PlayerEquipment } from '@/types/Player';
 import { spells } from '@/types/Spell';
-import { IMPORT_VERSION } from '@/types/State';
 import { prepareMonster } from '@/bulk/lib/compute';
 import { migrateImportable } from '@/bulk/lib/presetIO';
 import { BulkSetup } from '@/bulk/types';
@@ -145,7 +145,7 @@ const DEFAULTS: DefaultSetup[] = BASE_DEFAULTS
 export const DEFAULT_SETUP_NAMES = DEFAULTS.map((d) => d.name);
 
 const toPlayer = (d: DefaultSetup, warnings: string[]): Player => {
-  const player = generateEmptyPlayer(d.name);
+  const player = createEmptyPlayer(d.name);
   for (const [slot, id] of Object.entries(d.slots)) {
     // only the id is needed: the import below re-resolves the item
     player.equipment[slot as keyof PlayerEquipment] = id === null ? null : ({ id } as EquipmentPiece);
@@ -177,7 +177,7 @@ export const defaultSetups = (): { setups: BulkSetup[]; warnings: string[] } => 
   const { setups, warnings } = migrateImportable({
     serializationVersion: IMPORT_VERSION,
     loadouts,
-    selectedLoadout: 0,
+    selectedLoadout: '',
     monster: prepareMonster(getMonsters()[0]),
   });
   return { setups, warnings: [...styleWarnings, ...warnings] };

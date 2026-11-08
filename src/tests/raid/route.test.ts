@@ -89,7 +89,7 @@ describe('raid definitions', () => {
       'bork:2': 0,
       'bork:1': 1,
       // the list says 120; the engine's data floors Ezekiel at 78 (60% of 130)
-      'ezekiel:0': 78,
+      'ezekiel:0': 120,
       'moia:0': 117,
       'dreadnoth:0': 0,
       'dagonhai:0': 0,

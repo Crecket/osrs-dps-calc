@@ -5,8 +5,7 @@ import { observer } from 'mobx-react-lite';
 import {
   IconEye, IconEyeOff, IconPlus, IconX,
 } from '@tabler/icons-react';
-import { GlobalState, StoreProvider } from '@/state';
-import EquipmentSelect from '@/app/components/player/equipment/EquipmentSelect';
+import EquipmentSearch from '@/bulk/components/EquipmentSearch';
 import { availableEquipment } from '@/lib/Equipment';
 import { getCdnImage, PotionMap } from '@/utils';
 import Potion from '@/enums/Potion';
@@ -130,8 +129,6 @@ const OverridePicker: React.FC<{
   onPick: (slot: keyof PlayerEquipment, id: number | null) => void;
   onClose: () => void;
 }> = ({ overrides, onPick, onClose }) => {
-  // upstream's item search reads the monster from a calculator store, so give it a scratch one
-  const [scratch] = useState(() => new GlobalState());
   const [slot, setSlot] = useState<keyof PlayerEquipment | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   // a stable filter, so the item list isn't rebuilt on every render
@@ -145,14 +142,8 @@ const OverridePicker: React.FC<{
       <SlotGrid overrides={overrides} selected={slot} onSelect={setSlot} />
       {slot && (
         <div className="mt-2 flex flex-col gap-1.5">
-          <StoreProvider store={scratch}>
-            {/* keyed by slot, so switching slots starts a fresh search */}
-            <EquipmentSelect
-              key={slot}
-              customAvailableEquipmentFilter={itemFilter}
-              onSelectedItemChange={(item) => item && onPick(slot, item.equipment.id)}
-            />
-          </StoreProvider>
+          {/* keyed by slot, so switching slots starts a fresh search */}
+          <EquipmentSearch key={slot} filter={itemFilter} onPick={(item) => onPick(slot, item.id)} />
           <button type="button" className="self-start text-xs underline text-gray-500 dark:text-gray-300 hover:text-orange-300" onClick={() => onPick(slot, null)}>
             {`Or leave the ${slot} slot empty`}
           </button>

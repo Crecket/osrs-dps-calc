@@ -18,7 +18,7 @@ import { findEquipment, getTestMonster } from '@/tests/utils/TestUtils';
 const pool = bestPool();
 
 const skills99 = {
-  atk: 99, def: 99, hp: 99, magic: 99, prayer: 99, ranged: 99, str: 99, mining: 99, herblore: 99,
+  atk: 99, def: 99, hp: 99, magic: 99, prayer: 99, ranged: 99, str: 99, mining: 99, herblore: 99, farming: 99,
 };
 
 const inputs: BestInputs = {

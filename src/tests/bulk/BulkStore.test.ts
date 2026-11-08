@@ -7,7 +7,7 @@ import { monsterFromSearch, newId } from '@/bulk/lib/presetIO';
 import { Prayer } from '@/enums/Prayer';
 import { DEFAULT_SETUP_NAMES } from '@/bulk/lib/defaultSetups';
 import { getMonsters } from '@/lib/Monsters';
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
 import { BulkPreset, LegacyBulkPreset } from '@/bulk/types';
 import fixture from './fixtures/preset-v10.json';
 
@@ -52,7 +52,7 @@ describe('BulkStore', () => {
     await store.load();
 
     clearSetups(store);
-    store.addSetups([{ id: 's1', name: 'Whip', player: generateEmptyPlayer('Whip') }]);
+    store.addSetups([{ id: 's1', name: 'Whip', player: createEmptyPlayer('Whip') }]);
     store.setMonster(abyssal());
     store.renameSetup('s1', 'Whip 2');
     await new Promise((r) => { setTimeout(r, 0); });
@@ -88,7 +88,7 @@ describe('BulkStore', () => {
 
     clearSetups(store);
     expect(store.canRun).toEqual({ ok: false, reason: 'Add at least one setup' });
-    store.addSetups([{ id: 's1', name: 'Whip', player: generateEmptyPlayer('Whip') }]);
+    store.addSetups([{ id: 's1', name: 'Whip', player: createEmptyPlayer('Whip') }]);
     expect(store.canRun).toEqual({ ok: false, reason: 'Pick a monster' });
     store.setMonster(abyssal());
     expect(store.canRun).toEqual({ ok: true });
@@ -160,7 +160,7 @@ describe('BulkStore', () => {
     await store.load();
     clearSetups(store);
     const m = abyssal();
-    store.addSetups([{ id: 's1', name: 'A', player: generateEmptyPlayer('A') }]);
+    store.addSetups([{ id: 's1', name: 'A', player: createEmptyPlayer('A') }]);
     store.setMonster(m);
 
     store.removeSetup('s1');
@@ -205,8 +205,8 @@ describe('BulkStore', () => {
     await store.load();
     const before = store.active!.setups.length;
     const make = () => {
-      const a = generateEmptyPlayer('A');
-      const b = generateEmptyPlayer('B');
+      const a = createEmptyPlayer('A');
+      const b = createEmptyPlayer('B');
       b.prayers = [Prayer.PIETY];
       return [{ id: newId(), name: 'A', player: a }, { id: newId(), name: 'B', player: b }];
     };

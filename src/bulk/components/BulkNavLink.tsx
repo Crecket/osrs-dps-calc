@@ -18,7 +18,7 @@ const raidHref = () => `${process.env.NEXT_PUBLIC_BASE_PATH || ''}${RAID_PATH}`;
 const className = 'transition-all hover:scale-105 no-underline text-white border border-body-500 bg-orange-700 py-1.5 px-2.5 rounded-md dark:border-dark-200 flex items-center gap-1';
 
 /**
- * Rendered from the upstream TopBar; kept here so the upstream file only gains one import and one element.
+ * Rendered from the upstream Header; kept here so the upstream file only gains one import and one element.
  */
 const BulkNavLink: React.FC = () => {
   const pathname = usePathname();

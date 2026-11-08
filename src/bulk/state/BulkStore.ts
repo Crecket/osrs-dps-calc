@@ -1,9 +1,9 @@
 import { createContext, useContext } from 'react';
 import localforage from 'localforage';
 import { makeAutoObservable, toJS } from 'mobx';
-import { IMPORT_VERSION } from '@/types/State';
+import { IMPORT_VERSION } from '@/state/RootStore';
 import { Player } from '@/types/Player';
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
 import { loadPreset, newId } from '@/bulk/lib/presetIO';
 import { uniqueNewSetups } from '@/bulk/lib/dedupe';
 import { defaultSetups } from '@/bulk/lib/defaultSetups';
@@ -220,7 +220,7 @@ export class BulkStore implements TargetHolder {
     const names = new Set(this.active?.setups.map((s) => s.name));
     let name = 'New setup';
     for (let n = 2; names.has(name); n += 1) name = `New setup ${n}`;
-    const setup: BulkSetup = { id: newId(), name, player: generateEmptyPlayer(name) };
+    const setup: BulkSetup = { id: newId(), name, player: createEmptyPlayer(name) };
     if (this.active) {
       this.active.setups.push(setup);
       this.touch(this.active);

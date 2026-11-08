@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 import v8 from 'node:v8';
-import { GlobalState } from '@/state';
+import RootStore from '@/state/RootStore';
 import { BulkStore, PresetStorage } from '@/bulk/state/BulkStore';
 import TargetSync from '@/bulk/state/TargetSync';
 import { monsterFromSearch } from '@/bulk/lib/presetIO';
@@ -24,7 +24,7 @@ const byName = (name: string) => monsterFromSearch(getMonsters().find((m) => m.n
 const setup = async () => {
   const bulk = new BulkStore(new MemoryStorage());
   await bulk.load();
-  const calc = new GlobalState();
+  const calc = new RootStore();
   const sync = new TargetSync(bulk, calc, 0);
   return { bulk, calc, sync };
 };
@@ -35,7 +35,7 @@ describe('TargetSync', () => {
     bulk.setMonster(byName('Vasa Nistirio'));
     sync.start();
 
-    expect(calc.monster.name).toBe('Vasa Nistirio');
+    expect(calc.monster.definition.name).toBe('Vasa Nistirio');
     sync.dispose();
   });
 
@@ -44,7 +44,7 @@ describe('TargetSync', () => {
     bulk.setMonster(byName('Vasa Nistirio'));
     sync.start();
 
-    calc.updateMonster({ inputs: { isFromCoxCm: true, partySize: 3 } });
+    calc.monster.updateInputs({ isFromCoxCm: true, partySize: 3 });
 
     expect(bulk.active?.monster?.monster.inputs.isFromCoxCm).toBe(true);
     expect(bulk.active?.monster?.monster.inputs.partySize).toBe(3);
@@ -56,7 +56,7 @@ describe('TargetSync', () => {
     sync.start();
 
     const vorkath = getMonsters().find((m) => m.name === 'Vorkath')!;
-    calc.updateMonster(vorkath);
+    calc.monster.select(vorkath);
 
     expect(bulk.active?.monster?.monster.name).toBe('Vorkath');
     sync.dispose();
@@ -72,8 +72,33 @@ describe('TargetSync', () => {
 
     bulk.setActive(first);
 
-    expect(calc.monster.name).toBe('Vasa Nistirio');
+    expect(calc.monster.definition.name).toBe('Vasa Nistirio');
     expect(bulk.active?.monster?.monster.name).toBe('Vasa Nistirio');
+    sync.dispose();
+  });
+
+  test('a saved current HP survives loading the target', async () => {
+    const { bulk, calc, sync } = await setup();
+    const vasa = byName('Vasa Nistirio');
+    vasa.monster.inputs.monsterCurrentHp = 123;
+    bulk.setMonster(vasa);
+    sync.start();
+
+    expect(calc.monster.inputs.monsterCurrentHp).toBe(123);
+    expect(bulk.active?.monster?.monster.inputs.monsterCurrentHp).toBe(123);
+    sync.dispose();
+  });
+
+  test('a setting that changes the max HP resets the current HP, like the calculator', async () => {
+    const { bulk, calc, sync } = await setup();
+    bulk.setMonster(byName('Vasa Nistirio'));
+    sync.start();
+    const { maxHp } = calc.monster;
+
+    calc.monster.updateInputs({ partySize: 5 });
+
+    expect(calc.monster.maxHp).toBeGreaterThan(maxHp);
+    expect(bulk.active?.monster?.monster.inputs.monsterCurrentHp).toBe(calc.monster.maxHp);
     sync.dispose();
   });
 

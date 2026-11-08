@@ -5,7 +5,7 @@ import {
   importShortlink, loadPreset, migrateImportable, presetFromJson, presetToJson,
 } from '@/bulk/lib/presetIO';
 import { BulkPreset, LegacyBulkPreset } from '@/bulk/types';
-import { IMPORT_VERSION, ImportableData } from '@/types/State';
+import { IMPORT_VERSION, ImportableData } from '@/state/RootStore';
 import { CUSTOM_MONSTER_BASE } from '@/lib/Monsters';
 import fixture from './fixtures/preset-v10.json';
 
@@ -146,7 +146,7 @@ describe('migrateImportable', () => {
     const data = {
       serializationVersion: IMPORT_VERSION,
       loadouts: [],
-      selectedLoadout: 0,
+      selectedLoadout: '',
       monster: fixturePreset().monsters[0].monster,
     } as unknown as ImportableData;
 
@@ -209,7 +209,7 @@ describe('importShortlink', () => {
     mocked.mockResolvedValue({
       serializationVersion: IMPORT_VERSION,
       loadouts: raw.setups.map((s) => s.player),
-      selectedLoadout: 0,
+      selectedLoadout: '',
       monster: raw.monsters[1].monster,
     } as unknown as ImportableData);
 

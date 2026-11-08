@@ -4,7 +4,7 @@ import {
 } from '@/bulk/lib/format';
 import { prepareMonster } from '@/bulk/lib/compute';
 import { getMonsters } from '@/lib/Monsters';
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
 import { BulkRow, BulkSetup } from '@/bulk/types';
 import { findEquipment } from '@/tests/utils/TestUtils';
 import { defaultSetups } from '@/bulk/lib/defaultSetups';
@@ -34,7 +34,7 @@ describe('summarizeInputs', () => {
 
 describe('rowsToCsv', () => {
   test('one line per row with gear names in slot order', () => {
-    const player = generateEmptyPlayer('Whip, "fast"');
+    const player = createEmptyPlayer('Whip, "fast"');
     player.equipment.weapon = findEquipment('Abyssal whip');
     const setups: BulkSetup[] = [{ id: 's', name: 'Whip, "fast"', player }];
     const rows: BulkRow[] = [{
@@ -70,7 +70,7 @@ describe('monsterLabel', () => {
 
 describe('styleLabel', () => {
   test('the combat style, or the spell for a magic setup casting one', () => {
-    const whip = generateEmptyPlayer();
+    const whip = createEmptyPlayer();
     whip.equipment.weapon = findEquipment('Abyssal whip');
     whip.style = { name: 'Lash', type: 'slash', stance: 'Controlled' };
     expect(styleLabel(whip)).toBe('Lash');

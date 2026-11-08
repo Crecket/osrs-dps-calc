@@ -4,7 +4,7 @@ import { handleChunk } from '@/bulk/worker/protocol';
 import { monsterFromSearch } from '@/bulk/lib/presetIO';
 import { BulkSetup } from '@/bulk/types';
 import { getMonsters } from '@/lib/Monsters';
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
 import { WORKER_JSON_REPLACER, WORKER_JSON_REVIVER } from '@/utils';
 
 class FakeWorker implements WorkerLike {
@@ -40,7 +40,7 @@ class FakeWorker implements WorkerLike {
 const setups = (n: number, prefix = 's'): BulkSetup[] => Array.from({ length: n }, (_, i) => ({
   id: `${prefix}${i}`,
   name: `${prefix}${i}`,
-  player: generateEmptyPlayer(`${prefix}${i}`),
+  player: createEmptyPlayer(`${prefix}${i}`),
 }));
 const monsters = (n: number) => getMonsters().slice(0, n).map(monsterFromSearch);
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 import { availableEquipment } from '@/lib/Equipment';
 import { getCombatStylesForCategory } from '@/utils';
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
 import { buildPlayer } from '@/best/lib/search';
 import { BulkSetup } from '@/bulk/types';
 import {
@@ -13,7 +13,7 @@ const rapid = getCombatStylesForCategory(tbow.category).find((s) => s.stance ===
 const setup = (gear: Record<string, number>): BulkSetup => ({
   id: 'main',
   name: 'main',
-  player: buildPlayer(generateEmptyPlayer(), {
+  player: buildPlayer(createEmptyPlayer(), {
     style: 'ranged', weaponId: 20997, combatStyle: rapid, ammoId: 11212, spellName: null, dartId: null,
   }, gear),
 });
@@ -64,7 +64,7 @@ describe('layoutLoadout', () => {
     const main: BulkSetup = {
       id: 'main',
       name: 'main',
-      player: buildPlayer(generateEmptyPlayer(), {
+      player: buildPlayer(createEmptyPlayer(), {
         style: 'slash', weaponId: 22325, combatStyle: getCombatStylesForCategory(scythe.category).find((s) => s.type === 'slash')!, ammoId: null, spellName: null, dartId: null,
       }, {}),
     };
@@ -86,7 +86,7 @@ describe('layoutLoadout', () => {
     const main: BulkSetup = {
       id: 'main',
       name: 'main',
-      player: buildPlayer(generateEmptyPlayer(), {
+      player: buildPlayer(createEmptyPlayer(), {
         style: 'slash', weaponId: 4151, combatStyle: getCombatStylesForCategory(whip.category).find((s) => s.type === 'slash')!, ammoId: null, spellName: null, dartId: null,
       }, { head: 27235 }),
     };
@@ -129,7 +129,7 @@ describe('slotEfficientLayout', () => {
     const melee: BulkSetup = {
       id: 'melee',
       name: 'melee',
-      player: buildPlayer(generateEmptyPlayer(), {
+      player: buildPlayer(createEmptyPlayer(), {
         style: 'slash', weaponId: 4151, combatStyle: getCombatStylesForCategory(whip.category).find((s) => s.type === 'slash')!, ammoId: null, spellName: null, dartId: null,
       }, {}),
     };

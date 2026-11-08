@@ -38,6 +38,8 @@ export const EFFECT_ITEM_NAMES: ReadonlySet<string> = new Set<string>([
   "Dizana's max cape",
   "Dizana's quiver",
   'Echo boots',
+  'Magic secateurs',
+  'Magic secateurs (nz)',
   'Elite void robe',
   'Elite void robe (or)',
   'Elite void top',

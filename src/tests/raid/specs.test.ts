@@ -5,7 +5,7 @@ import { routePhases } from '@/raid/lib/route';
 import { SearchCache } from '@/raid/lib/searchCache';
 import { Candidate } from '@/raid/lib/candidates';
 import { buildPlayer } from '@/best/lib/search';
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
 import { availableEquipment } from '@/lib/Equipment';
 import { getCombatStylesForCategory } from '@/utils';
 import {
@@ -72,7 +72,7 @@ describe('specRanking', () => {
     setup: {
       id: 'c',
       name: 'c',
-      player: buildPlayer(generateEmptyPlayer(), {
+      player: buildPlayer(createEmptyPlayer(), {
         style: 'ranged', weaponId: 20997, combatStyle: rapid, ammoId: 11212, spellName: null, dartId: null,
       }, {}),
     } as BulkSetup,

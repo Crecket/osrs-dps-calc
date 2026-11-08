@@ -6,7 +6,7 @@ import { observable } from 'mobx';
 import BulkTable from '@/bulk/components/BulkTable';
 import { defaultSort } from '@/bulk/lib/table';
 import { BulkRow, BulkSetup } from '@/bulk/types';
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -24,7 +24,7 @@ describe('BulkTable', () => {
     });
 
     render([]);
-    setups.push({ id: 's1', name: 'Whip', player: generateEmptyPlayer('Whip') });
+    setups.push({ id: 's1', name: 'Whip', player: createEmptyPlayer('Whip') });
     render([{
       setupId: 's1', monsterId: 'm1', maxHit: 10, accuracy: 0.5, dps: 1.234, ttk: 30, spec: null, issues: [],
     }]);

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { toast } from 'react-toastify';
-import { GlobalState, StoreProvider } from '@/state';
+import RootStore from '@/state/RootStore';
+import RootStoreProvider from '@/state/RootStoreProvider';
 import MonsterContainer from '@/app/components/monster/MonsterContainer';
 import { useBulkStore } from '@/bulk/state/BulkStore';
 import TargetSync, { TargetHolder } from '@/bulk/state/TargetSync';
@@ -15,7 +16,7 @@ import { buttonClass } from '@/bulk/components/Panel';
 const TargetMonster: React.FC<{ holder?: TargetHolder }> = observer(({ holder: given }) => {
   const bulk = useBulkStore();
   const holder = given ?? bulk;
-  const [calc] = useState(() => new GlobalState());
+  const [calc] = useState(() => new RootStore());
 
   useEffect(() => {
     const sync = new TargetSync(holder, calc);
@@ -41,9 +42,9 @@ const TargetMonster: React.FC<{ holder?: TargetHolder }> = observer(({ holder: g
       <div className="flex justify-end">
         <button type="button" className={buttonClass} onClick={importCalculatorMonster}>Use calculator&apos;s monster</button>
       </div>
-      <StoreProvider store={calc}>
+      <RootStoreProvider store={calc}>
         <MonsterContainer />
-      </StoreProvider>
+      </RootStoreProvider>
     </div>
   );
 });

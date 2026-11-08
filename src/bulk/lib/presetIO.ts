@@ -1,16 +1,14 @@
 /**
  * Loading and saving bulk presets. Imported data is always passed through upstream's own import logic
- * (GlobalState.updateImportedData) on a scratch store, so upstream's migrations and item re-resolution apply to presets
+ * (RootStore.importData) on a scratch store, so upstream's migrations and item re-resolution apply to presets
  * exactly as they do to the calculator's share links and saved sessions.
  */
 import localforage from 'localforage';
-import { toJS } from 'mobx';
-import { GlobalState } from '@/state';
+import RootStore, { IMPORT_VERSION, ImportableData } from '@/state/RootStore';
 import { getMonsters, INITIAL_MONSTER_INPUTS } from '@/lib/Monsters';
 import { fetchShortlinkData, WORKER_JSON_REPLACER, WORKER_JSON_REVIVER } from '@/utils';
-import { IMPORT_VERSION, ImportableData } from '@/types/State';
 import { Monster } from '@/types/Monster';
-import { Player, PlayerEquipment } from '@/types/Player';
+import { PlayerEquipment } from '@/types/Player';
 import { prepareMonster } from '@/bulk/lib/compute';
 import { readFilters } from '@/bulk/lib/filters';
 import {
@@ -46,10 +44,11 @@ export const migrateImportable = (data: ImportableData, names?: string[]): { set
     .filter(([, v]) => v && Object.hasOwn(v, 'id'))
     .map(([slot, v]) => ({ slot, ...(v as { id: number; name?: string }) })));
 
-  const scratch = new GlobalState();
-  scratch.updateImportedData(input);
+  const scratch = new RootStore();
+  scratch.importData(input);
 
-  const loadouts = (toJS(scratch.loadouts) as Player[]).slice(0, input.loadouts.length);
+  // a store always has a loadout, even when there were none to import
+  const loadouts = scratch.loadouts.loadouts.map((l) => l.snapshot).slice(0, input.loadouts.length);
   const warnings: string[] = [];
   const setups = loadouts.map((player, i): BulkSetup => {
     for (const { slot, id, name } of savedItems[i]) {
@@ -63,7 +62,7 @@ export const migrateImportable = (data: ImportableData, names?: string[]): { set
   });
 
   // the migrations above were applied to input.monster.inputs in place
-  const { inputs, ...base } = toJS(scratch.monster);
+  const { inputs, ...base } = scratch.monster.snapshot;
   const migratedInputs: Partial<Monster['inputs']> = { ...inputs, ...input.monster.inputs };
   if (!hadCurrentHp) delete migratedInputs.monsterCurrentHp;
   const monster = prepareMonster(base, migratedInputs);
@@ -79,7 +78,7 @@ export const loadPreset = (raw: BulkPreset | LegacyBulkPreset): { preset: BulkPr
     const result = migrateImportable({
       serializationVersion: raw.serializationVersion,
       loadouts: list.map((s) => s.player),
-      selectedLoadout: 0,
+      selectedLoadout: '',
       monster: prepareMonster(getMonsters()[0]),
     }, list.map((s) => s.name));
     warnings.push(...result.warnings);
@@ -111,7 +110,7 @@ export const loadPreset = (raw: BulkPreset | LegacyBulkPreset): { preset: BulkPr
       const result = migrateImportable({
         serializationVersion: raw.serializationVersion,
         loadouts: [],
-        selectedLoadout: 0,
+        selectedLoadout: '',
         monster: entry.monster,
       });
       monster = { ...result.monster, id: entry.id };

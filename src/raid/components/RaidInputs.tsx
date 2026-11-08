@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { toast } from 'react-toastify';
 import { IconX } from '@tabler/icons-react';
-import { GlobalState, StoreProvider } from '@/state';
-import EquipmentSelect from '@/app/components/player/equipment/EquipmentSelect';
+import EquipmentSearch from '@/bulk/components/EquipmentSearch';
 import { bestPool } from '@/best/lib/candidates';
 import { dartOptions } from '@/raid/lib/runRaid';
 import { EquipmentPiece } from '@/types/Player';
@@ -101,8 +100,6 @@ const inPool = (e: EquipmentPiece) => {
 const ItemSearch: React.FC = observer(() => {
   const store = useRaidStore();
   const [mode, setMode] = useState<AddMode>('owned');
-  // upstream's item search reads the monster from a calculator store, so give it a scratch one
-  const [scratch] = useState(() => new GlobalState());
   const add = (id: number) => {
     if (mode === 'owned') {
       if (!store.settings.ownedIds.includes(id)) store.toggleOwned(id);
@@ -118,9 +115,7 @@ const ItemSearch: React.FC = observer(() => {
         {ADD_MODES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
       </select>
       <div className="grow min-w-0">
-        <StoreProvider store={scratch}>
-          <EquipmentSelect customAvailableEquipmentFilter={inPool} onSelectedItemChange={(item) => item && add(item.equipment.id)} />
-        </StoreProvider>
+        <EquipmentSearch filter={inPool} onPick={(item) => add(item.id)} />
       </div>
     </div>
   );

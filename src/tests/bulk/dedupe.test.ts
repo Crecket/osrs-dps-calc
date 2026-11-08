@@ -1,7 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 import { setupKey, uniqueNewSetups } from '@/bulk/lib/dedupe';
 import { BulkSetup } from '@/bulk/types';
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
 import { availableEquipment } from '@/lib/Equipment';
 import { Prayer } from '@/enums/Prayer';
 import { Player } from '@/types/Player';
@@ -11,7 +11,7 @@ const whip = availableEquipment.find((e) => e.id === 4151)!;
 const fang = availableEquipment.find((e) => e.id === 26219)!;
 
 const player = (name: string, edit: (p: Player) => void = () => {}): Player => {
-  const p = generateEmptyPlayer(name);
+  const p = createEmptyPlayer(name);
   p.equipment.weapon = whip;
   edit(p);
   return p;

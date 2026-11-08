@@ -91,8 +91,8 @@ one_off_renames = {
     "Frozen abyssal whip": "Abyssal whip",
     "Holy ghrazi rapier": "Ghrazi rapier",
     "Holy sanguinesti staff": "Sanguinesti staff",
-    "Holy scythe of vitur": "Scythe of Vitur",
-    "Sanguine scythe of vitur": "Scythe of Vitur",
+    "Holy Scythe of Vitur": "Scythe of Vitur",
+    "Sanguine Scythe of Vitur": "Scythe of Vitur",
     "Dragon hunter crossbow (b)": "Dragon hunter crossbow",
     "Obsidian cape (r)": "Obsidian cape",
     "Elidinis' ward (or)": "Elidinis' ward (f)",
@@ -224,6 +224,14 @@ def main():
         #       but this'll stop duplicate entries appearing in the equipment search
         elif re.match(r"^Agility cape", item["name"]):
             handle_base_variant(all_items, item, item['name'], [item['version']])
+        # Pete Kayer's Challenges variants
+        elif item['name'].endswith(" (Pete Kayer's Challenges)"):
+            handle_base_variant(
+                all_items,
+                item,
+                item["name"].removesuffix(" (Pete Kayer's Challenges)"),
+                ["", "Normal", "Undamaged", "Restored"],
+            )
 
     mapping_dict = {}
     for k, v in sorted(data.items(), key=lambda item: item[1].base_name):

@@ -10,7 +10,7 @@ import { getCanonicalItemId } from '@/lib/Equipment';
 import { findEquipment } from '@/tests/utils/TestUtils';
 import { BestInputs } from '@/best/types';
 import TargetSync from '@/bulk/state/TargetSync';
-import { GlobalState } from '@/state';
+import RootStore from '@/state/RootStore';
 
 class MemoryStorage implements PresetStorage {
   data = new Map<string, unknown>();
@@ -38,7 +38,7 @@ describe('BestStore', () => {
     expect(store.loaded).toBe(true);
     expect(store.monster).toBeNull();
     expect(store.inputs.skills).toEqual({
-      atk: 99, def: 99, hp: 99, magic: 99, prayer: 99, ranged: 99, str: 99, mining: 99, herblore: 99,
+      atk: 99, def: 99, hp: 99, magic: 99, prayer: 99, ranged: 99, str: 99, mining: 99, herblore: 99, farming: 99,
     });
     expect(store.inputs.styles).toEqual(['stab', 'slash', 'crush', 'ranged', 'magic']);
     expect(store.inputs.topN).toBe(5);
@@ -233,7 +233,7 @@ describe('BestStore', () => {
       await flush();
 
       const store = new BestStore(storage);
-      const calc = new GlobalState();
+      const calc = new RootStore();
       const sync = new TargetSync(store, calc, 0);
       sync.start();
       await store.load();
@@ -248,7 +248,7 @@ describe('BestStore', () => {
     test('adopts the panel monster when nothing was saved', async () => {
       const storage = new MemoryStorage();
       const store = new BestStore(storage);
-      const calc = new GlobalState();
+      const calc = new RootStore();
       const sync = new TargetSync(store, calc, 0);
       sync.start();
       expect(store.monster).toBeNull();

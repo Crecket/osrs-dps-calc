@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { groupByWeapon } from '@/best/lib/groups';
 import { defaultSort } from '@/bulk/lib/table';
 import { BulkRow, BulkSetup } from '@/bulk/types';
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
 import { findEquipment } from '@/tests/utils/TestUtils';
 
 const whip = findEquipment('Abyssal whip');
@@ -11,7 +11,7 @@ const ultor = findEquipment('Ultor ring');
 const torture = findEquipment('Amulet of torture');
 
 const setup = (id: string, weapon: typeof whip, ring: typeof whip | null, neck: typeof whip | null = torture): BulkSetup => {
-  const player = generateEmptyPlayer(id);
+  const player = createEmptyPlayer(id);
   player.equipment.weapon = weapon;
   player.equipment.ring = ring;
   player.equipment.neck = neck;

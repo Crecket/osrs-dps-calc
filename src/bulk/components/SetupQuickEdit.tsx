@@ -1,12 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
-import { StoreProvider, useStore } from '@/state';
+import RootStoreProvider from '@/state/RootStoreProvider';
 import Prayers from '@/app/components/player/Prayers';
 import SkillInput from '@/app/components/player/skills/SkillInput';
 import UsernameLookup from '@/app/components/player/skills/UsernameLookup';
-import BuffItem from '@/app/components/player/buffs/BuffItem';
-import Potion from '@/enums/Potion';
-import { PotionMap } from '@/utils';
+import PotionList from '@/app/components/player/skills/PotionList';
 import attack from '@/public/img/bonuses/attack.png';
 import strength from '@/public/img/bonuses/strength.png';
 import defence from '@/public/img/bonuses/defence.png';
@@ -20,31 +18,11 @@ import { BulkSetup } from '@/bulk/types';
 
 export type QuickEditKind = 'prayers' | 'potions' | 'levels';
 
-// upstream's potion list, as in its Skills panel, bound to whichever store is provided
-const PotionList: React.FC = observer(() => {
-  const store = useStore();
-  return (
-    <div className="w-64 max-h-72 overflow-y-auto bg-white dark:bg-dark-500 rounded border border-gray-300 dark:border-dark-200">
-      {Object.entries(PotionMap).sort((a, b) => a[1].order - b[1].order).map(([k, v]) => {
-        const potion: Potion = parseInt(k);
-        return (
-          <BuffItem
-            key={k}
-            potion={potion}
-            name={v.name}
-            image={v.image}
-            active={store.player.buffs.potions.includes(potion)}
-            setActive={store.togglePlayerPotion}
-          />
-        );
-      })}
-    </div>
-  );
-});
-
 const LevelInputs: React.FC = () => (
   <div className="w-[26rem]">
-    <UsernameLookup />
+    <div className="flex items-center">
+      <UsernameLookup />
+    </div>
     {/* upstream's own grid (each skill is an icon cell and an input cell), with room for the icons */}
     <div className="mt-3 grid items-center gap-x-2 gap-y-1 [&_img]:min-w-[21px]" style={{ gridTemplateColumns: 'auto 1fr auto 1fr' }}>
       <SkillInput name="Attack" field="atk" image={attack} />
@@ -80,11 +58,15 @@ const QuickEditPopover: React.FC<{ setupId: string; kind: QuickEditKind; onClose
 
   return (
     <div ref={ref} className="absolute z-20 top-full left-0 mt-1 p-2 rounded shadow-xl bg-tile dark:bg-dark-300 border border-body-300 dark:border-dark-200 text-black dark:text-white">
-      <StoreProvider store={calc}>
+      <RootStoreProvider store={calc}>
         {kind === 'prayers' && <div className="-mx-4 -mb-8"><Prayers /></div>}
-        {kind === 'potions' && <PotionList />}
+        {kind === 'potions' && (
+          <div className="w-64 max-h-72 overflow-y-auto bg-white dark:bg-dark-500 rounded border border-gray-300 dark:border-dark-200">
+            <PotionList />
+          </div>
+        )}
         {kind === 'levels' && <LevelInputs />}
-      </StoreProvider>
+      </RootStoreProvider>
     </div>
   );
 };

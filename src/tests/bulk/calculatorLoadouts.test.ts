@@ -1,14 +1,14 @@
 import { describe, expect, test } from '@jest/globals';
 import { hasGear, newCalculatorSetups } from '@/bulk/lib/calculatorLoadouts';
 import { fromCalculatorState, monsterFromSearch } from '@/bulk/lib/presetIO';
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
 import { getMonsters } from '@/lib/Monsters';
 import { availableEquipment } from '@/lib/Equipment';
-import { IMPORT_VERSION, ImportableData } from '@/types/State';
+import { IMPORT_VERSION, ImportableData } from '@/state/RootStore';
 import { Player } from '@/types/Player';
 
 const withWeapon = (name: string, id: number): Player => {
-  const p = generateEmptyPlayer(name);
+  const p = createEmptyPlayer(name);
   p.equipment.weapon = availableEquipment.find((e) => e.id === id)!;
   return p;
 };
@@ -16,7 +16,7 @@ const withWeapon = (name: string, id: number): Player => {
 const state = (loadouts: Player[]): ImportableData => ({
   serializationVersion: IMPORT_VERSION,
   loadouts,
-  selectedLoadout: 0,
+  selectedLoadout: '',
   monster: monsterFromSearch(getMonsters()[0]).monster,
 } as unknown as ImportableData);
 
@@ -40,13 +40,13 @@ describe('newCalculatorSetups', () => {
   });
 
   test('gearless loadouts are ignored', () => {
-    expect(newCalculatorSetups(state([generateEmptyPlayer('Loadout 1')]), [])).toEqual([]);
+    expect(newCalculatorSetups(state([createEmptyPlayer('Loadout 1')]), [])).toEqual([]);
   });
 });
 
 describe('hasGear', () => {
   test('true only with something equipped', () => {
-    expect(hasGear(generateEmptyPlayer())).toBe(false);
+    expect(hasGear(createEmptyPlayer())).toBe(false);
     expect(hasGear(withWeapon('Whip', 4151))).toBe(true);
   });
 });

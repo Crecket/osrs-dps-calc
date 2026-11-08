@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { PlayerSkills } from '@/types/Player';
-import { ImportableData } from '@/types/State';
+import type { ImportableData } from '@/state/RootStore';
 import { StaticImageData } from 'next/image';
 import Ancient from '@/public/img/potions/Ancient brew.png';
 import Attack from '@/public/img/potions/Attack.png';
@@ -113,6 +113,7 @@ export const fetchPlayerSkills = async (username: string) => {
     magic: skillData[7].level,
     mining: skillData[15].level,
     herblore: skillData[16].level,
+    farming: skillData[20].level,
   };
 };
 
@@ -540,10 +541,12 @@ export const CombatStyleMap: { [k in EquipmentCategory]: { [k: string]: { image:
   },
   [EquipmentCategory.POWERED_STAFF]: {
     Accurate: { image: '263' },
+    Accurate2: { image: '263' },
     Longrange: { image: '265' },
   },
   [EquipmentCategory.POWERED_WAND]: {
     Accurate: { image: '263' },
+    Accurate2: { image: '263' },
     Longrange: { image: '265' },
   },
   [EquipmentCategory.THROWN]: {
@@ -603,6 +606,11 @@ export const CombatStyleMap: { [k in EquipmentCategory]: { [k: string]: { image:
     'Thrust-Acc': { image: '266' },
     'Thrust-Agg': { image: '267' },
     Smash: { image: '256' },
+  },
+  [EquipmentCategory.POWERED_BOOK]: {
+    Accurate: { image: '263' },
+    Accurate2: { image: '263' },
+    Longrange: { image: '265' },
   },
 };
 
@@ -693,11 +701,14 @@ export const getCombatStylesForCategory = (style: EquipmentCategory): PlayerComb
         { name: 'Fend', type: 'stab', stance: 'Defensive' },
       ];
       break;
+    case EquipmentCategory.POWERED_BOOK:
     case EquipmentCategory.POWERED_STAFF:
     case EquipmentCategory.POWERED_WAND:
       ret = [
         { name: 'Accurate', type: 'magic', stance: 'Accurate' },
-        { name: 'Accurate', type: 'magic', stance: 'Accurate' },
+        {
+          name: 'Accurate2', displayNameOverride: 'Accurate', type: 'magic', stance: 'Accurate',
+        },
         { name: 'Longrange', type: 'magic', stance: 'Longrange' },
       ];
       break;

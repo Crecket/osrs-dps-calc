@@ -3,7 +3,7 @@ import {
   defaultSort, firstClickDir, mergeRows, runKey, selectRows, SortState,
 } from '@/bulk/lib/table';
 import { BulkPreset, BulkRow } from '@/bulk/types';
-import { generateEmptyPlayer } from '@/state';
+import { createEmptyPlayer } from '@/state/PlayerStore';
 import { monsterFromSearch } from '@/bulk/lib/presetIO';
 import { getMonsters } from '@/lib/Monsters';
 import { Prayer } from '@/enums/Prayer';
@@ -84,7 +84,7 @@ describe('runKey', () => {
     createdAt: 0,
     updatedAt: 0,
     serializationVersion: 1,
-    setups: setupIds.map((id) => ({ id, name: id, player: generateEmptyPlayer(id) })),
+    setups: setupIds.map((id) => ({ id, name: id, player: createEmptyPlayer(id) })),
     monster: monsterId ? { id: monsterId, monster: { id: 1 } as never } : null,
   });
 
@@ -107,7 +107,7 @@ describe('runKey', () => {
   test('changes when a setup or the target is edited in place', () => {
     const real = (): BulkPreset => {
       const p = preset([], null);
-      p.setups = [{ id: 'a', name: 'A', player: generateEmptyPlayer('A') }];
+      p.setups = [{ id: 'a', name: 'A', player: createEmptyPlayer('A') }];
       p.monster = { ...monsterFromSearch(getMonsters().find((m) => m.name === 'Vasa Nistirio')!), id: 'm' };
       return p;
     };
