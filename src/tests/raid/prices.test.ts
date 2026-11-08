@@ -133,5 +133,15 @@ describe('fetchPrices', () => {
     localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify({ at: 0, mapping, latest }));
     const stale = await fetchPrices(failingFetch, 10 * 60 * 60 * 1000);
     expect(stale?.byId.get(1)).toBe(10);
+    expect(stale?.at).toBe(0);
+    expect(stale?.fetchFailed).toBe(true);
+  });
+
+  test('only a failed fetch is marked as failed', async () => {
+    expect((await fetchPrices(okFetch, 1000))?.fetchFailed).toBeUndefined();
+    // from the cache, without fetching
+    expect((await fetchPrices(failingFetch, 2000))?.fetchFailed).toBeUndefined();
+    expect((await fetchPrices(okFetch, 3000, 0))?.fetchFailed).toBeUndefined();
+    expect((await fetchPrices(failingFetch, 4000, 0))?.fetchFailed).toBe(true);
   });
 });

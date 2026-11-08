@@ -75,6 +75,7 @@ const RaidPage: React.FC = observer(() => {
   const [cacheLoaded, setCacheLoaded] = useState(false);
   const [prices, setPrices] = useState<Prices | null>(null);
   const [pricesState, setPricesState] = useState<'loading' | 'ok' | 'missing'>('loading');
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<RaidProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -164,11 +165,13 @@ const RaidPage: React.FC = observer(() => {
 
   const refreshPrices = () => {
     setPricesState('loading');
+    setRefreshFailed(false);
     // a failed refresh keeps the prices the page has
     const fallback = prices;
     fetchPrices(undefined, Date.now(), 0).catch(() => null).then((p) => {
       setPrices(p ?? fallback);
       setPricesState(p ?? fallback ? 'ok' : 'missing');
+      setRefreshFailed(!p || !!p.fetchFailed);
     });
   };
 
@@ -302,6 +305,12 @@ const RaidPage: React.FC = observer(() => {
                     <span className="flex items-center gap-1 text-orange-500 dark:text-orange-200">
                       <IconAlertTriangle size={14} aria-hidden />
                       {`${blockReason}: pick Standard spells or No spells, or turn boss rules off.`}
+                    </span>
+                  )}
+                  {!running && refreshFailed && (
+                    <span className="flex items-center gap-1 text-orange-500 dark:text-orange-200">
+                      <IconAlertTriangle size={14} aria-hidden />
+                      {`Could not refresh the prices${prices?.at !== undefined ? `: still using those from ${new Date(prices.at).toLocaleString()}` : ''}.`}
                     </span>
                   )}
                   {!running && !blockReason && error && <span className="text-red-400">{`The search failed: ${error}`}</span>}

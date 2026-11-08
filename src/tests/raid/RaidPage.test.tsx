@@ -30,9 +30,10 @@ jest.mock('@/raid/lib/runRaid', () => {
     searchesNeeded: () => mockNeeded(),
   };
 });
+const mockFetchPrices = jest.fn<() => Promise<unknown>>();
 jest.mock('@/raid/lib/prices', () => {
   const actual = jest.requireActual('@/raid/lib/prices') as object;
-  return { ...actual, fetchPrices: async () => null };
+  return { ...actual, fetchPrices: () => mockFetchPrices() };
 });
 jest.mock('react-toastify', () => ({ toast: { success: jest.fn(), info: jest.fn(), error: jest.fn() }, ToastContainer: () => null }));
 jest.mock('@/best/worker/createBestWorker', () => ({ __esModule: true, default: () => { throw new Error('no workers'); } }));
@@ -98,6 +99,8 @@ describe('RaidPage', () => {
     mockData.clear();
     mockRunRaid.mockReset();
     mockNeeded.mockReset();
+    mockFetchPrices.mockReset();
+    mockFetchPrices.mockResolvedValue(null);
     mockNeeded.mockReturnValue(18);
     mockRunRaid.mockImplementation(async (settings) => result(settings));
   });
@@ -244,6 +247,39 @@ describe('RaidPage', () => {
     // only the warning: the results stay as they are
     expect(container.querySelector('.opacity-60')).toBeNull();
     expect(mockRunRaid).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  test('a failed price refresh says so and keeps the prices; a good one clears it, and neither runs anything', async () => {
+    const snapshot = (at: number, fetchFailed?: boolean) => ({
+      at, byId: new Map(), byName: new Map(), fetchFailed,
+    });
+    mockFetchPrices.mockResolvedValue(snapshot(1000));
+    const { container, unmount } = await mount();
+    const clickRefresh = async () => {
+      await act(async () => button(container, '· refresh')!.click());
+      await wait(5);
+    };
+    expect(container.textContent).not.toContain('Could not refresh');
+
+    mockFetchPrices.mockResolvedValue(snapshot(1000, true));
+    await clickRefresh();
+    expect(container.textContent).toContain('Could not refresh the prices: still using those from');
+    expect(container.textContent).not.toContain('Prices changed');
+
+    mockFetchPrices.mockResolvedValue(snapshot(2000));
+    await clickRefresh();
+    expect(container.textContent).not.toContain('Could not refresh');
+
+    expect(mockRunRaid).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  test('a failed refresh without any prices says so too', async () => {
+    const { container, unmount } = await mount();
+    await act(async () => button(container, 'try again')!.click());
+    await wait(5);
+    expect(container.textContent).toContain('Could not refresh the prices.');
     await unmount();
   });
 
