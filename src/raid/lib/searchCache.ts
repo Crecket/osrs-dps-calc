@@ -10,8 +10,9 @@ import { ENGINE_ID } from '@/lib/build';
 import type { PresetStorage } from '@/bulk/state/BulkStore';
 
 export const SEARCH_CACHE_KEY = 'dps-raid-searches';
+export const SPEC_CACHE_KEY = 'dps-raid-search-specs';
 // bump when the search or the stored form changes, so old results aren't reused
-const CACHE_VERSION = 5;
+const CACHE_VERSION = 6;
 
 /**
  * Everything of a player that changes its damage, besides its gear: levels, boosts, prayers, buffs, style, spell, and
@@ -29,11 +30,15 @@ export interface StoredCandidate {
   dps: number;
 }
 
-interface Saved {
+interface SavedSearches {
   version: string;
   entries: [string, StoredCandidate[]][];
+}
+
+interface SavedSpecs {
+  version: string;
   /** Expected spec damage by spec setup key */
-  specs?: [string, number][];
+  specs: [string, number][];
 }
 
 // spec damage and the loadout upgrade's DPS lookups
@@ -58,8 +63,8 @@ const currentVersion = () => {
 };
 
 /**
- * Finished raid searches by key, kept across page loads in least-recently-used order. Writes are debounced; a failed
- * read starts empty.
+ * Finished raid searches by key, kept across page loads in least-recently-used order. Writes are debounced, and the
+ * searches and the spec lookups are stored apart so that a write only rewrites what changed; a failed read starts empty.
  */
 export class SearchCache {
   private entries = new Map<string, StoredCandidate[]>();
@@ -71,17 +76,26 @@ export class SearchCache {
   // when the oldest unsaved write was made; null when all are saved
   private dirtySince: number | null = null;
 
+  private searchesDirty = false;
+
+  private specsDirty = false;
+
   constructor(private storage: PresetStorage = localforage, private limit = 300) {}
 
   async load() {
     try {
-      const saved = await this.storage.getItem<Saved>(SEARCH_CACHE_KEY);
+      const saved = await this.storage.getItem<SavedSearches>(SEARCH_CACHE_KEY);
       if (saved && saved.version === currentVersion() && Array.isArray(saved.entries)) {
         this.entries = new Map(saved.entries);
-        if (Array.isArray(saved.specs)) this.specs = new Map(saved.specs);
       } else if (saved) {
         // searches from older data or an older search: deleted, so they don't sit in storage until the next save
         await this.storage.removeItem?.(SEARCH_CACHE_KEY);
+      }
+      const savedSpecs = await this.storage.getItem<SavedSpecs>(SPEC_CACHE_KEY);
+      if (savedSpecs && savedSpecs.version === currentVersion() && Array.isArray(savedSpecs.specs)) {
+        this.specs = new Map(savedSpecs.specs);
+      } else if (savedSpecs) {
+        await this.storage.removeItem?.(SPEC_CACHE_KEY);
       }
     } catch (e) {
       console.warn('[raid] Could not read cached searches', e);
@@ -100,9 +114,10 @@ export class SearchCache {
   get(key: string): StoredCandidate[] | undefined {
     const value = this.entries.get(key);
     if (value !== undefined) {
-      // most recently used goes last
+      // most recently used goes last; saved with the next write, as a use alone isn't worth one
       this.entries.delete(key);
       this.entries.set(key, value);
+      this.searchesDirty = true;
     }
     return value;
   }
@@ -115,6 +130,7 @@ export class SearchCache {
     this.specs.delete(key);
     this.specs.set(key, expected);
     while (this.specs.size > SPEC_LIMIT) this.specs.delete(this.specs.keys().next().value!);
+    this.specsDirty = true;
     this.scheduleSave();
   }
 
@@ -122,6 +138,7 @@ export class SearchCache {
     this.entries.delete(key);
     this.entries.set(key, value);
     while (this.entries.size > this.limit) this.entries.delete(this.entries.keys().next().value!);
+    this.searchesDirty = true;
     this.scheduleSave();
   }
 
@@ -140,9 +157,13 @@ export class SearchCache {
     this.timer = null;
     if (this.dirtySince === null) return;
     this.dirtySince = null;
-    const data: Saved = { version: currentVersion(), entries: [...this.entries], specs: [...this.specs] };
+    const writes: Promise<unknown>[] = [];
+    if (this.searchesDirty) writes.push(this.storage.setItem<SavedSearches>(SEARCH_CACHE_KEY, { version: currentVersion(), entries: [...this.entries] }));
+    if (this.specsDirty) writes.push(this.storage.setItem<SavedSpecs>(SPEC_CACHE_KEY, { version: currentVersion(), specs: [...this.specs] }));
+    this.searchesDirty = false;
+    this.specsDirty = false;
     try {
-      await this.storage.setItem(SEARCH_CACHE_KEY, data);
+      await Promise.all(writes);
     } catch (e) {
       console.warn('[raid] Could not save cached searches', e);
     }
