@@ -74,6 +74,9 @@ const MAX_CAMPS = 12;
 const MAX_CHEAPEN = 16;
 const CHEAPER_TRIES = 8;
 const CHEAPEN_LOSS = 0.05;
+// and per gp saved, the seconds a swap may lose besides: the money goes to the climb again (an Armadyl crossbow 0.1s
+// faster than the Dragon crossbow for 40m)
+const CHEAPEN_SECONDS_PER_GP = 1 / 100e6;
 const WEAPONS_PER_UNIT = 5;
 const MIN_GAIN = 1e-6;
 // what an armour switch (an item only one setup wears) must save over the raid for its bag cell: most players camp the
@@ -439,6 +442,21 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
    * that frees the money or the bag cell (melee wearing the ranged boots instead of its own pair).
    */
   const otherWeapons = new Map<Unit, { from: Candidate; options: Candidate[] }>();
+  /** Candidate `c`'s weapon (its ammo and stance) in the armour `u` wears; null when it can't be built */
+  const inGearOf = (u: Unit, c: Candidate): Candidate | null => {
+    const mine = toStored(u.candidate.setup, u.candidate.style, 0);
+    const theirs = toStored(c.setup, c.style, 0);
+    const weapon = c.setup.player.equipment.weapon!;
+    const gear = {
+      ...mine.gear,
+      ammo: theirs.gear.ammo ?? null,
+      shield: weapon.isTwoHanded ? null : (mine.gear.shield ?? theirs.gear.shield ?? null),
+    };
+    const next = fromStored({ ...theirs, gear }, u.pick.key, input.playerFor(theirs.style));
+    if (!next || !crystalOk(next.setup.player.equipment)) return null;
+    variant += 1;
+    return { ...next, setup: { ...next.setup, id: `upgrade-${variant}` } };
+  };
   const weaponOptions = async (u: Unit): Promise<Candidate[]> => {
     // built from the unit's gear: stale once that changed (another pass gave its boots back)
     const known = otherWeapons.get(u);
@@ -454,19 +472,9 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
         if (!best.has(id) || best.get(id)!.dps < c.dps) best.set(id, c);
       });
     const picked = [...best.values()].sort((a, b) => b.dps - a.dps).slice(0, WEAPONS_PER_UNIT);
-    const mine = toStored(u.candidate.setup, u.candidate.style, 0);
     const built = picked.flatMap((c) => {
-      const theirs = toStored(c.setup, c.style, 0);
-      const weapon = c.setup.player.equipment.weapon!;
-      const gear = {
-        ...mine.gear,
-        ammo: theirs.gear.ammo ?? null,
-        shield: weapon.isTwoHanded ? null : (mine.gear.shield ?? theirs.gear.shield ?? null),
-      };
-      const next = fromStored({ ...theirs, gear }, u.pick.key, input.playerFor(theirs.style));
-      if (!next || !crystalOk(next.setup.player.equipment)) return [];
-      variant += 1;
-      return [{ ...next, setup: { ...next.setup, id: `upgrade-${variant}` } }];
+      const next = inGearOf(u, c);
+      return next ? [next] : [];
     });
     const dps = await rate(built.map((c) => c.setup), u.monster);
     const rated = built.map((c, i) => ({ ...c, dps: dps[i] }))
@@ -681,6 +689,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
    * A piece only one setup wears is swapped for the cheaper pool item, at least as strong for the style by bonuses, that
    * loses no time; the most money first, one at a time.
    */
+  const allowedLoss = (saving: number) => CHEAPEN_LOSS + saving * CHEAPEN_SECONDS_PER_GP;
   const cheapen = async (): Promise<boolean> => {
     const current = loadout();
     const cost = costOf(current);
@@ -708,10 +717,45 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           if (!next || !next.every((n) => crystalOk(n.setup.player.equipment))) continue;
           // eslint-disable-next-line no-await-in-loop
           const rated = await Promise.all(group.units.map((u, i) => rate([next[i].setup], u.monster).then(([d]) => ({ ...next[i], dps: d }))));
-          if (-gainOf(group, rated) > CHEAPEN_LOSS) continue;
+          if (-gainOf(group, rated) > allowedLoss(o.saving)) continue;
           best = { group, rated, saving: o.saving };
           break;
         }
+      }
+      // a cheaper weapon of the same style group, searched for every phase of the group, in the group's armour
+      const weaponId = getCanonicalItemId(weapon.id);
+      if (required.has(weaponId) || groups.some((g) => g !== group && g.items.includes(weaponId))) continue;
+      const styleGroup = (st: BestStyle) => (st === 'ranged' || st === 'magic' ? st : 'melee');
+      const others = new Map<number, Candidate[]>();
+      group.units.forEach((u, i) => input.candidates.filter((x) => x.phaseKey === u.pick.key
+        && styleGroup(x.style) === styleGroup(u.candidate.style)
+        && getCanonicalItemId(x.setup.player.equipment.weapon!.id) !== weaponId
+        && !excluded.has(getCanonicalItemId(x.setup.player.equipment.weapon!.id)))
+        .forEach((x) => {
+          const id = getCanonicalItemId(x.setup.player.equipment.weapon!.id);
+          const list = others.get(id) ?? [];
+          // the phase's fastest setup of the weapon, one per unit
+          if (!list[i] || list[i].dps < x.dps) list[i] = x;
+          others.set(id, list);
+        }));
+      const weaponTries = [...others.entries()].filter(([, list]) => group.units.every((_, i) => list[i]))
+        .map(([id, list]) => {
+          const next = group.units.map((u, i) => inGearOf(u, list[i]));
+          const items = next.every((n) => n) ? [...new Set(next.flatMap((n) => n!.itemIds))] : null;
+          return {
+            id, next, items, saving: items ? cost - costOf(loadout({ group, items })) : 0,
+          };
+        })
+        .filter((o) => o.items && o.saving > 0 && loadout({ group, items: o.items }).size <= Math.max(maxItems, current.size))
+        .sort((a, b) => b.saving - a.saving)
+        .slice(0, CHEAPER_TRIES);
+      for (const o of weaponTries) {
+        if (best && o.saving <= best.saving) break;
+        // eslint-disable-next-line no-await-in-loop
+        const rated = await Promise.all(group.units.map((u, i) => rate([o.next[i]!.setup], u.monster).then(([d]) => ({ ...o.next[i]!, dps: d }))));
+        if (-gainOf(group, rated) > allowedLoss(o.saving)) continue;
+        best = { group, rated, saving: o.saving };
+        break;
       }
     }
     if (!best) return false;

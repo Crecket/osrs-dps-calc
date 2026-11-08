@@ -197,6 +197,30 @@ describe('upgradeLoadout', () => {
     expect(result.cost).toBeLessThanOrEqual(100e6);
   });
 
+  test('swaps a weapon for a much cheaper one doing about the same: the Dragon crossbow for the Armadyl crossbow', async () => {
+    const [ACB, DCB, RUBY] = [11785, 21902, 21944];
+    const setup = (key: string, weaponId: number): Candidate => {
+      const combatStyle = getCombatStylesForCategory(item(weaponId).category).find((st) => st.stance === 'Rapid')!;
+      const player = buildPlayer(playerFor(), {
+        style: 'ranged', weaponId, combatStyle, ammoId: RUBY, spellName: null, dartId: null,
+      }, { head: MASK });
+      return {
+        phaseKey: key, style: 'ranged', dps: weaponId === ACB ? 10.01 : 10, setup: { id: `${key}-${weaponId}`, name: 'x', player }, itemIds: [weaponId, RUBY, MASK],
+      };
+    };
+    const picks = [setup('a', ACB), setup('b', ACB)];
+    const prices = new Map([[ACB, 40e6], [DCB, 0.5e6]]);
+    const result = await upgradeLoadout(input({
+      plan: plan(picks),
+      candidates: [...picks, setup('a', DCB), setup('b', DCB)],
+      pool: [ACB, DCB, RUBY, MASK].map(item),
+      priceOf: (id) => prices.get(id) ?? 0,
+      budget: 50e6,
+    }), async (setups) => setups.map((st) => (st.player.equipment.weapon?.id === ACB ? 10.01 : 10)));
+    expect(result.picks.map((p) => p.candidate!.setup.player.equipment.weapon?.id)).toEqual([DCB, DCB]);
+    expect(result.itemIds).not.toContain(ACB);
+  });
+
   test('two variants of one item merge into the one that has both: Avernic treads (pe) and (pr) become (max)', async () => {
     const [PE, PR, MAX] = [31092, 31091, 31097];
     const withFeet = (c: Candidate, feet: number): Candidate => {
