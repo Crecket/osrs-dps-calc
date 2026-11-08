@@ -53,7 +53,7 @@ const fracturedArchive: RaidDef = {
               defaults: specs(2, 0),
               parts: [{ styles: ['ranged'], share: 0.5 }, { styles: MELEE, share: 0.5 }],
               hpShare: 0.25,
-              state: { flatArmour: 10 },
+              state: { enginePhase: 'Smork HP 75% - 50%', flatArmour: 10 },
             },
             {
               key: 'bork:2',
@@ -64,7 +64,7 @@ const fracturedArchive: RaidDef = {
               defaults: specs(0, 0),
               defenceFrom: 'bork:0',
               hpShare: 0.75,
-              state: { flatArmour: 0, alwaysHit: true },
+              state: { enginePhase: 'Stunned', flatArmour: 0, alwaysHit: true },
             },
             {
               key: 'bork:1', label: 'The Smorks', monsterId: 16641, version: '', defaults: specs(2, 4),

@@ -61,6 +61,7 @@ export const routePhases = (
   const monster = prepareMonster(inState(findMonster(phase.monsterId, phase.version), phase), {
     defenceReductions: { elderMaul: merged.elderMaul, dwh: merged.dwh, tonalztic: merged.tonalztic },
     ...(phase.state?.minAttackSpeed ? { minAttackSpeed: phase.state.minAttackSpeed } : {}),
+    ...(phase.state?.enginePhase ? { phase: phase.state.enginePhase } : {}),
   });
   return {
     boss, phase, counts: merged, monster: { id: phase.key, monster },

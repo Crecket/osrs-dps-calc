@@ -32,6 +32,8 @@ export interface RaidPhase {
   defenceFrom?: string;
   /** The monster in this state, where the data has one version for all of them */
   state?: {
+    /** The engine's own phase of the monster: it decides some stats, e.g. Bork's flat armour whatever `flatArmour` says */
+    enginePhase?: string;
     flatArmour?: number;
     /** Every hit lands (a stunned boss): no Defence level or defence bonuses */
     alwaysHit?: boolean;

@@ -49,6 +49,9 @@ describe('raid definitions', () => {
     expect(stunned.monster.monster.defensive.crush).toBe(-64);
     expect(stunned.phase.allowedStyles).toBeUndefined();
     expect(stunned.phase.parts).toBeUndefined();
+    // what the engine fights, after its own Bork phases: they set the flat armour, whatever the monster says
+    expect(scaleMonster(walking.monster.monster).defensive.flat_armour).toBe(10);
+    expect(scaleMonster(stunned.monster.monster).defensive.flat_armour).toBe(0);
   });
 
   test('style rules from the strategy', () => {
