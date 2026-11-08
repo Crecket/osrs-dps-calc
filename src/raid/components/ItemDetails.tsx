@@ -9,8 +9,8 @@ import {
   BossImage, ItemImage, itemById, priceLabel,
 } from '@/raid/components/items';
 
-const REPLACEMENTS_SHOWN = 15;
-const WEAPONS_SHOWN = 8;
+const REPLACEMENTS_SHOWN = 10;
+const WEAPONS_SHOWN = 10;
 const WHOLE_RAID = 'raid';
 
 /** "+3.2s" slower, "−1.0s" faster */
