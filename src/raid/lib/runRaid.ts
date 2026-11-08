@@ -271,9 +271,9 @@ export const drainWeapons = (
     return true;
   };
   const out: number[] = [];
-  if (configured('elderMaul') && !excluded.has(maul)) {
-    // an excluded maul's specs are a teammate's; one too dear for the budget becomes the player's warhammer
-    if (brings(maul)) out.push(maul);
+  if (configured('elderMaul')) {
+    // a maul excluded or too dear for the budget becomes the player's warhammer: a team wants a drain from everyone
+    if (!excluded.has(maul) && brings(maul)) out.push(maul);
     else if (brings(dwh)) out.push(dwh);
   } else if (configured('dwh') && brings(dwh)) out.push(dwh);
   if (configured('tonalztic') && brings(ralos)) out.push(ralos);
@@ -392,8 +392,9 @@ export const runRaid = async (
   const kitPool = withoutOutclassed(items.filter((e) => !excluded.has(getCanonicalItemId(e.id))));
   /**
    * In order of what matters most, never over the budget: (1) a viable setup for every room, kits and weapons from at
-   * most CORE_SHARE of the budget; (2) the best spec weapon the rest pays for; (3) the player's part of the team's Defence
-   * specs, a drain weapon the rest after that pays for, the Dragon warhammer before nothing; (4) upgrades with whatever
+   * most CORE_SHARE of the budget; (2) the player's part of the team's Defence specs, a drain weapon the rest pays for, the
+   * Dragon warhammer before nothing (it saves the most, and a team wants one from everyone); (3) the best spec weapon the
+   * rest after that pays for; (4) upgrades with whatever
    * is left. A bad setup with a great spec or drain weapon is no plan. The bosses' Defence is the configured specs'
    * throughout: the team does them, whatever this player carries.
    */
@@ -416,11 +417,12 @@ export const runRaid = async (
     }, rate);
     let left = settings.budget - core.cost;
     // each from the money left, and at most its share of the budget: a 361m Zaryte crossbow or 89m Elder maul has no
-    // place in a small loadout however cheap its setup
+    // place in a small loadout however cheap its setup. The Defence drain first: it saves the team the most, and a
+    // team wants one from everyone rather than a damage spec alone
+    const drain = drainWeapons(settings, priceOf, Math.max(0, Math.min(left, settings.budget * DEFENCE_BUDGET_SHARE)));
+    left -= costOf(drain.filter((id) => !core.itemIds.includes(id)));
     const spec = routeSpec(specs, (r) => specPrice(r, priceOf) <= Math.min(left, settings.budget * SPEC_BUDGET_SHARE));
     const specIds = spec ? [spec.weaponId, ...(spec.ammoId !== null ? [spec.ammoId] : [])].map(getCanonicalItemId) : [];
-    left -= costOf(specIds.filter((id) => !core.itemIds.includes(id)));
-    const drain = drainWeapons(settings, priceOf, Math.max(0, Math.min(left, settings.budget * DEFENCE_BUDGET_SHARE)));
     const requiredIds = [...new Set([...baseRequired, ...specIds, ...drain])];
     const itemIds = orderedItems(core.picks, requiredIds);
     return upgradeLoadout({

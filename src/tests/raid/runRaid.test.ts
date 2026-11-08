@@ -104,11 +104,19 @@ const fa = raidById('fractured-archive');
 
 describe('requiredItems', () => {
   test('an excluded defence weapon stays out of the bag, though a teammate still lowers Defence with it', () => {
-    const settings = { ...defaultSettings(), excludedIds: [21003, 28922] };
+    const settings = { ...defaultSettings(), excludedIds: [21003, 28922, 13576] };
     const ids = requiredItems(settings);
     expect(ids).not.toContain(21003);
     expect(ids).not.toContain(28922);
     expect(ids).not.toContain(13576);
+    const bork = routePhases(fa, settings.route, settings.counts).find((p) => p.phase.key === 'bork:0')!;
+    expect(bork.counts.elderMaul).toBe(2);
+  });
+
+  test('an excluded maul gives way to the Dragon warhammer: a team wants a drain from everyone', () => {
+    const ids = requiredItems({ ...defaultSettings(), excludedIds: [21003] });
+    expect(ids).not.toContain(21003);
+    expect(ids).toContain(13576);
     const bork = routePhases(fa, settings.route, settings.counts).find((p) => p.phase.key === 'bork:0')!;
     expect(bork.counts.elderMaul).toBe(2);
   });
