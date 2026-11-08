@@ -1,9 +1,9 @@
 import { availableEquipment } from '@/lib/Equipment';
 import {
-  beforeEach, describe, expect, test,
+  beforeEach, describe, expect, jest, test,
 } from '@jest/globals';
 import {
-  fetchPrices, itemPrice, parsePrices, PRICE_CACHE_KEY,
+  fetchPrices, itemPrice, OLD_PRICE_CACHE_KEY, parsePrices, PRICE_CACHE_KEY,
 } from '@/raid/lib/prices';
 
 const mapping = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }];
@@ -22,6 +22,22 @@ const okFetch = (async (url: string) => ({
 const failingFetch = (async () => {
   throw new Error('offline');
 }) as unknown as typeof fetch;
+
+const memoryStorage = () => {
+  const data = new Map<string, unknown>();
+  return {
+    data,
+    getItem: async <T>(key: string) => (data.get(key) as T) ?? null,
+    setItem: async <T>(key: string, value: T) => {
+      data.set(key, value);
+      return value;
+    },
+  };
+};
+const brokenStorage = () => ({
+  getItem: async <T>(): Promise<T | null> => { throw new Error('IndexedDB unavailable'); },
+  setItem: async <T>(): Promise<T> => { throw new Error('IndexedDB unavailable'); },
+});
 
 beforeEach(() => localStorage.clear());
 
@@ -108,40 +124,89 @@ describe('itemPrice', () => {
 
 describe('fetchPrices', () => {
   test('fetches and caches for an hour', async () => {
-    const first = await fetchPrices(okFetch, 1000);
+    const storage = memoryStorage();
+    const first = await fetchPrices(okFetch, 1000, undefined, storage);
     expect(first?.byId.get(1)).toBe(10);
     // within the hour the cache is used, so a failing fetch doesn't matter
-    const cached = await fetchPrices(failingFetch, 1000 + 59 * 60 * 1000);
+    const cached = await fetchPrices(failingFetch, 1000 + 59 * 60 * 1000, undefined, storage);
     expect(cached?.byId.get(1)).toBe(10);
   });
 
   test('a snapshot is kept however old when asked to', async () => {
-    localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify({ at: 0, mapping, latest }));
+    const storage = memoryStorage();
+    await storage.setItem(PRICE_CACHE_KEY, { at: 0, mapping, latest });
     const otherFetch = (async (url: string) => ({
       ok: true,
       json: async () => (String(url).endsWith('/mapping') ? mapping : { data: { 1: { high: 99, low: 1 } } }),
     })) as unknown as typeof fetch;
-    const kept = await fetchPrices(otherFetch, 10 * 60 * 60 * 1000, Infinity);
+    const kept = await fetchPrices(otherFetch, 10 * 60 * 60 * 1000, Infinity, storage);
     expect(kept?.byId.get(1)).toBe(10);
     expect(kept?.at).toBe(0);
-    const fresh = await fetchPrices(otherFetch, 10 * 60 * 60 * 1000, 0);
+    const fresh = await fetchPrices(otherFetch, 10 * 60 * 60 * 1000, 0, storage);
     expect(fresh?.byId.get(1)).toBe(99);
   });
 
   test('fetch failure gives null and keeps cached prices', async () => {
-    expect(await fetchPrices(failingFetch, 1000)).toBeNull();
-    localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify({ at: 0, mapping, latest }));
-    const stale = await fetchPrices(failingFetch, 10 * 60 * 60 * 1000);
+    const storage = memoryStorage();
+    expect(await fetchPrices(failingFetch, 1000, undefined, storage)).toBeNull();
+    await storage.setItem(PRICE_CACHE_KEY, { at: 0, mapping, latest });
+    const stale = await fetchPrices(failingFetch, 10 * 60 * 60 * 1000, undefined, storage);
     expect(stale?.byId.get(1)).toBe(10);
     expect(stale?.at).toBe(0);
     expect(stale?.fetchFailed).toBe(true);
   });
 
   test('only a failed fetch is marked as failed', async () => {
-    expect((await fetchPrices(okFetch, 1000))?.fetchFailed).toBeUndefined();
+    const storage = memoryStorage();
+    expect((await fetchPrices(okFetch, 1000, undefined, storage))?.fetchFailed).toBeUndefined();
     // from the cache, without fetching
-    expect((await fetchPrices(failingFetch, 2000))?.fetchFailed).toBeUndefined();
-    expect((await fetchPrices(okFetch, 3000, 0))?.fetchFailed).toBeUndefined();
-    expect((await fetchPrices(failingFetch, 4000, 0))?.fetchFailed).toBe(true);
+    expect((await fetchPrices(failingFetch, 2000, undefined, storage))?.fetchFailed).toBeUndefined();
+    expect((await fetchPrices(okFetch, 3000, 0, storage))?.fetchFailed).toBeUndefined();
+    expect((await fetchPrices(failingFetch, 4000, 0, storage))?.fetchFailed).toBe(true);
+  });
+
+  test('the snapshot in localStorage moves to storage, keeping its age, however old it is', async () => {
+    const storage = memoryStorage();
+    localStorage.setItem(OLD_PRICE_CACHE_KEY, JSON.stringify({ at: 5, mapping, latest }));
+    const moved = await fetchPrices(failingFetch, 10 * 60 * 60 * 1000, Infinity, storage);
+    expect(moved?.at).toBe(5);
+    expect(moved?.byId.get(1)).toBe(10);
+    expect(moved?.fetchFailed).toBeUndefined();
+    expect(localStorage.getItem(OLD_PRICE_CACHE_KEY)).toBeNull();
+    expect(storage.data.get(PRICE_CACHE_KEY)).toEqual({ at: 5, mapping, latest });
+
+    const again = await fetchPrices(failingFetch, 10 * 60 * 60 * 1000, Infinity, storage);
+    expect(again?.at).toBe(5);
+  });
+
+  test('storage that fails is not fatal, and the snapshot in localStorage stays for later', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    localStorage.setItem(OLD_PRICE_CACHE_KEY, JSON.stringify({ at: 5, mapping, latest }));
+    expect((await fetchPrices(failingFetch, 1000, Infinity, brokenStorage()))?.at).toBe(5);
+    expect(localStorage.getItem(OLD_PRICE_CACHE_KEY)).not.toBeNull();
+
+    // no snapshot: fetched prices still work for this page load, and the old snapshot doesn't go until they're saved
+    expect((await fetchPrices(okFetch, 1000, 0, brokenStorage()))?.byId.get(1)).toBe(10);
+    expect(localStorage.getItem(OLD_PRICE_CACHE_KEY)).not.toBeNull();
+    localStorage.clear();
+    expect((await fetchPrices(okFetch, 1000, undefined, brokenStorage()))?.byId.get(1)).toBe(10);
+    expect(await fetchPrices(failingFetch, 1000, undefined, brokenStorage())).toBeNull();
+    warn.mockRestore();
+  });
+
+  test('an unreadable snapshot in localStorage is removed', async () => {
+    const storage = memoryStorage();
+    localStorage.setItem(OLD_PRICE_CACHE_KEY, '{nope');
+    expect(await fetchPrices(failingFetch, 1000, undefined, storage)).toBeNull();
+    expect(localStorage.getItem(OLD_PRICE_CACHE_KEY)).toBeNull();
+  });
+
+  test('a newer save removes a snapshot that could not be moved earlier', async () => {
+    const storage = memoryStorage();
+    await storage.setItem(PRICE_CACHE_KEY, { at: 9, mapping, latest });
+    localStorage.setItem(OLD_PRICE_CACHE_KEY, JSON.stringify({ at: 5, mapping, latest }));
+    expect((await fetchPrices(failingFetch, 1000, Infinity, storage))?.at).toBe(9);
+    await fetchPrices(okFetch, 1000, 0, storage);
+    expect(localStorage.getItem(OLD_PRICE_CACHE_KEY)).toBeNull();
   });
 });

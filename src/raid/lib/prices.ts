@@ -1,8 +1,12 @@
+import localforage from 'localforage';
 import { availableEquipment, getCanonicalItemId } from '@/lib/Equipment';
 import { EquipmentPiece } from '@/types/Player';
+import type { PresetStorage } from '@/bulk/state/BulkStore';
 
 const API = 'https://prices.runescape.wiki/api/v1/osrs';
-export const PRICE_CACHE_KEY = 'raid-prices-v1';
+export const PRICE_CACHE_KEY = 'raid-prices-v2';
+// where the prices used to be, in localStorage: over a megabyte to parse on the page's main thread
+export const OLD_PRICE_CACHE_KEY = 'raid-prices-v1';
 const MAX_AGE = 60 * 60 * 1000;
 
 export type PriceTable = Map<number, number>;
@@ -35,13 +39,48 @@ export const parsePrices = (mapping: Mapping, latest: Latest): Prices => {
   return { byId, byName };
 };
 
-const readCache = (): { at: number; mapping: Mapping; latest: Latest } | null => {
+interface CachedPrices {
+  at: number;
+  mapping: Mapping;
+  latest: Latest;
+}
+
+const removeOldCache = () => {
   try {
-    const raw = localStorage.getItem(PRICE_CACHE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    localStorage.removeItem(OLD_PRICE_CACHE_KEY);
   } catch {
+    // storage blocked: nothing to remove then
+  }
+};
+
+/** The snapshot from localStorage, moved over: it decides which searches stay cached, so it isn't just dropped. */
+const moveOldCache = async (storage: PresetStorage): Promise<CachedPrices | null> => {
+  try {
+    const raw = localStorage.getItem(OLD_PRICE_CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as CachedPrices;
+    try {
+      await storage.setItem(PRICE_CACHE_KEY, cached);
+      removeOldCache();
+    } catch {
+      // kept where it is for the next page load
+    }
+    return cached;
+  } catch {
+    // unreadable: never going to be of use
+    removeOldCache();
     return null;
   }
+};
+
+const readCache = async (storage: PresetStorage): Promise<CachedPrices | null> => {
+  try {
+    const cached = await storage.getItem<CachedPrices>(PRICE_CACHE_KEY);
+    if (cached) return cached;
+  } catch (e) {
+    console.warn('[raid] Could not read cached prices', e);
+  }
+  return moveOldCache(storage);
 };
 
 const withAt = (p: Prices, at: number): Prices => ({ ...p, at });
@@ -51,8 +90,13 @@ const withAt = (p: Prices, at: number): Prices => ({ ...p, at });
  * `fetchFailed`, else null.
  * The page keeps its snapshot (maxAge Infinity) so searches keyed on price tiers stay cached until prices are refreshed.
  */
-export const fetchPrices = async (fetchFn: typeof fetch = fetch, now = Date.now(), maxAge = MAX_AGE): Promise<Prices | null> => {
-  const cached = readCache();
+export const fetchPrices = async (
+  fetchFn: typeof fetch = fetch,
+  now = Date.now(),
+  maxAge = MAX_AGE,
+  storage: PresetStorage = localforage,
+): Promise<Prices | null> => {
+  const cached = await readCache(storage);
   if (cached && now - cached.at < maxAge) return withAt(parsePrices(cached.mapping, cached.latest), cached.at);
   try {
     const get = async (path: string) => {
@@ -62,9 +106,11 @@ export const fetchPrices = async (fetchFn: typeof fetch = fetch, now = Date.now(
     };
     const [mapping, latest] = await Promise.all([get('mapping'), get('latest')]);
     try {
-      localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify({ at: now, mapping, latest }));
-    } catch {
+      await storage.setItem<CachedPrices>(PRICE_CACHE_KEY, { at: now, mapping, latest });
+      removeOldCache();
+    } catch (e) {
       // storage full or blocked: the prices still work for this page load
+      console.warn('[raid] Could not save prices', e);
     }
     return withAt(parsePrices(mapping, latest), now);
   } catch (e) {
