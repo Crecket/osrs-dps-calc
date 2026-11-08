@@ -4,11 +4,10 @@
  */
 import PlayerVsNPCCalc from '@/lib/PlayerVsNPCCalc';
 import { availableEquipment } from '@/lib/Equipment';
-import { scaleMonster } from '@/lib/MonsterScaling';
 import { Monster } from '@/types/Monster';
 import { EquipmentPiece, Player, PlayerEquipment } from '@/types/Player';
 import { spells } from '@/types/Spell';
-import { preparePlayer } from '@/bulk/lib/compute';
+import { preparePlayer, scaledMonster } from '@/bulk/lib/compute';
 import {
   GearSlot, isCrystalArmour, isCrystalWeapon, paretoFront, ScoreKind, scoreKind, slotCandidates, styleScore, WeaponJob,
 } from '@/best/lib/candidates';
@@ -85,24 +84,11 @@ export const buildPlayer = (base: Player, job: WeaponJob, gear: Gear): Player =>
   };
 };
 
-// scaling depends on the monster only, so it is done once per monster instead of once per evaluation. The cache is keyed
-// by object identity: callers must pass a new monster object when its inputs change, never mutate one in place.
-const scaledMonsters = new WeakMap<Monster, Monster>();
-const scaled = (monster: Monster): Monster => {
-  let result = scaledMonsters.get(monster);
-  if (!result) {
-    // computeRow skips scaling for custom monsters (id -1)
-    result = monster.id === -1 ? monster : scaleMonster(monster);
-    scaledMonsters.set(monster, result);
-  }
-  return result;
-};
-
 /** DPS of the dressed player, as computeRow calculates it; 0 when the engine throws. */
 export const evalDps = (base: Player, monster: Monster, job: WeaponJob, gear: Gear): number => {
   try {
     const player = preparePlayer(buildPlayer(base, job, gear), monster);
-    const dps = new PlayerVsNPCCalc(player, scaled(monster), { disableMonsterScaling: true }).getDps();
+    const dps = new PlayerVsNPCCalc(player, scaledMonster(monster), { disableMonsterScaling: true }).getDps();
     return Number.isFinite(dps) ? dps : 0;
   } catch {
     return 0;

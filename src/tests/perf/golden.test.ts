@@ -18,7 +18,7 @@ import {
 import {
   BestInputs, BestStyle, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS,
 } from '@/best/types';
-import { computeRow } from '@/bulk/lib/compute';
+import { computeRow, RowPart } from '@/bulk/lib/compute';
 import { prepareMonster } from '@/bulk/lib/prepareMonster';
 import { BulkMonster, GEAR_SLOT_ORDER } from '@/bulk/types';
 import { getTestMonster } from '@/tests/utils/TestUtils';
@@ -94,7 +94,7 @@ const gears = (job: WeaponJob, i: number): Gear[] => {
 
 type Row = [string, number, number, number, number | null, number | null, number | null];
 
-const rows = (): Row[] => {
+const rows = (only?: RowPart): Row[] => {
   const pool = bestPool();
   const out: Row[] = [];
   monsters().forEach((m) => {
@@ -103,7 +103,7 @@ const rows = (): Row[] => {
       spread(weaponJobs(pool, style, m.monster), JOBS_PER_STYLE).forEach((job, i) => {
         gears(job, i).forEach((gear, g) => {
           const id = `${m.id}|${style}|${job.weaponId}|${job.combatStyle.name}|${job.ammoId}|${job.spellName}|${job.dartId}|${g}`;
-          const row = computeRow({ id, name: id, player: buildPlayer(base, job, gear) }, m);
+          const row = computeRow({ id, name: id, player: buildPlayer(base, job, gear) }, m, only);
           out.push([id, row.dps, row.maxHit, row.accuracy, row.ttk, row.spec?.expected ?? null, row.spec?.maxHit ?? null]);
         });
       });
@@ -152,6 +152,12 @@ describe('golden outputs', () => {
       .map((r) => ({ now: r, was: golden.rows.find((x) => x[0] === r[0]) }));
     expect(wrong.slice(0, 10)).toEqual([]);
     expect(now.length).toBeGreaterThan(5000);
+  }, 1_200_000);
+
+  test('a DPS-only row has the DPS of the full row', () => {
+    const now = rows('dps');
+    const wrong = now.filter((r, i) => !close(r[1], golden.rows[i][1])).map((r) => ({ now: r, was: golden.rows.find((x) => x[0] === r[0]) }));
+    expect(wrong.slice(0, 10)).toEqual([]);
   }, 1_200_000);
 
   test('every search finds the same setup', () => {

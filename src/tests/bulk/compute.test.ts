@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
-import { computeRow } from '@/bulk/lib/compute';
+import { computeRow, preparePlayer, scaledMonster } from '@/bulk/lib/compute';
 import { prepareMonster } from '@/bulk/lib/prepareMonster';
 import { BulkMonster, BulkSetup } from '@/bulk/types';
 import { Monster } from '@/types/Monster';
@@ -143,6 +143,43 @@ describe('prepareMonster', () => {
     expect(m.inputs.phase).toBe('Unshielded');
     expect(m.inputs.defenceReductions.dwh).toBe(2);
     expect(m.inputs.defenceReductions.bgs).toBe(0);
+  });
+
+  test('a DPS-only row scales a monster once, leaves it unchanged, and matches the full row on its own inputs', () => {
+    const monster = getTestMonster('Akkha', '', { inputs: { partySize: 8, toaInvocationLevel: 300, defenceReductions: { dwh: 2 } } });
+    const before = JSON.stringify(monster);
+    const player = getTestPlayer(monster, { equipment: { weapon: findEquipment('Abyssal whip') } });
+    const { dps } = computeRow(setup(player), entry(monster));
+
+    expect(dps).toBeGreaterThan(0);
+    expect(computeRow(setup(player), entry(monster), 'dps').dps).toBe(dps);
+    expect(computeRow(setup(player), entry(monster), 'dps').dps).toBe(dps);
+    expect(JSON.stringify(monster)).toBe(before);
+    // a new monster object with other inputs doesn't get the old scaling
+    const reduced = { ...monster, inputs: { ...monster.inputs, defenceReductions: { ...monster.inputs.defenceReductions, dwh: 0 } } };
+    expect(computeRow(setup(player), entry(reduced), 'dps').dps).toBe(computeRow(setup(player), entry(reduced)).dps);
+    expect(computeRow(setup(player), entry(reduced), 'dps').dps).not.toBe(dps);
+  });
+
+  test('a DPS-only row of a custom monster (id -1) isn\'t scaled, like the full row', () => {
+    const monster = { ...getTestMonster('Vorkath', 'Post-quest'), id: -1 };
+    const player = getTestPlayer(monster, { equipment: { weapon: findEquipment('Abyssal whip') } });
+    expect(computeRow(setup(player), entry(monster), 'dps').dps).toBe(computeRow(setup(player), entry(monster)).dps);
+  });
+
+  test('specs start from the unscaled monster: the Tonalztics spec scales it again for its second hit', () => {
+    const monster = prepareMonster(getTestMonster('Great Olm', 'Head (Normal)'), { partySize: 8 });
+    const player = getTestPlayer(monster, {
+      equipment: { weapon: findEquipment('Tonalztics of Ralos', 'Charged') },
+      style: { name: 'Rapid', type: 'ranged', stance: 'Rapid' },
+    });
+    const prepared = preparePlayer(player, monster);
+    const expected = new PlayerVsNPCCalc(prepared, monster, { loadoutName: 's1' }).getSpecCalc()!.getExpectedDamage();
+    const doubled = new PlayerVsNPCCalc(prepared, scaledMonster(monster), { loadoutName: 's1', disableMonsterScaling: true }).getSpecCalc()!.getExpectedDamage();
+
+    expect(doubled).not.toBe(expected);
+    expect(computeRow(setup(player), entry(monster)).spec?.expected).toBe(expected);
+    expect(computeRow(setup(player), entry(monster), 'spec').spec?.expected).toBe(expected);
   });
 
   test('a partial row has the same numbers as the full row, and nothing else', () => {

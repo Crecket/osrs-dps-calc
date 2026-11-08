@@ -4,6 +4,7 @@
  */
 import PlayerVsNPCCalc from '@/lib/PlayerVsNPCCalc';
 import { calculateAttackSpeed, calculateEquipmentBonusesFromGear } from '@/lib/Equipment';
+import { scaleMonster } from '@/lib/MonsterScaling';
 import { FeatureStatus } from '@/utils';
 import { Monster } from '@/types/Monster';
 import { Player } from '@/types/Player';
@@ -16,6 +17,19 @@ export const preparePlayer = (player: Player, monster: Monster): Player => {
   const prepared: Player = { ...player, ...calculateEquipmentBonusesFromGear(player, monster) };
   prepared.attackSpeed = calculateAttackSpeed(prepared, monster);
   return prepared;
+};
+
+// scaling depends on the monster only, so it is done once per monster instead of once per evaluation. The cache is keyed
+// by object identity: callers must pass a new monster object when its inputs change, never mutate one in place.
+const scaledMonsters = new WeakMap<Monster, Monster>();
+/** The monster as the engine scales it; custom monsters (id -1) aren't scaled. For an engine with scaling disabled. */
+export const scaledMonster = (monster: Monster): Monster => {
+  let result = scaledMonsters.get(monster);
+  if (!result) {
+    result = monster.id === -1 ? monster : scaleMonster(monster);
+    scaledMonsters.set(monster, result);
+  }
+  return result;
 };
 
 /**
@@ -40,10 +54,11 @@ export const computeRow = (setup: BulkSetup, entry: BulkMonster, only?: RowPart)
   try {
     const { monster } = entry;
     const player = preparePlayer(setup.player, monster);
-    const calc = new PlayerVsNPCCalc(player, monster, {
-      loadoutName: setup.id,
-      disableMonsterScaling: monster.id === -1,
-    });
+    // only the DPS can use the cached scaling: a spec may scale the monster it was given again (the Tonalztics' second hit),
+    // which goes wrong on an already scaled one. Kill times take so long that scaling them once more doesn't matter
+    const calc = only === 'dps'
+      ? new PlayerVsNPCCalc(player, scaledMonster(monster), { loadoutName: setup.id, disableMonsterScaling: true })
+      : new PlayerVsNPCCalc(player, monster, { loadoutName: setup.id, disableMonsterScaling: monster.id === -1 });
 
     if (only === undefined) {
       const ttk = calc.getTtk();
