@@ -67,13 +67,32 @@ describe('weaponTiers', () => {
         weaponId: 20997, style: 'ranged', dps: 12.5, seconds: 96, cost: 1e9, held: false, attack: 'ranged · Hack (Aggressive)',
       },
       {
-        weaponId: 26374, style: 'ranged', dps: 11.5, seconds: 1200 / 11.5, cost: 0, held: true, attack: 'ranged · Hack (Aggressive)',
+        weaponId: 26374, style: 'ranged', dps: 11.5, seconds: 1200 / 11.5, cost: 0, held: true, attack: 'ranged · Hack (Aggressive)', loadoutDps: 11.5,
       },
       {
         weaponId: 22325, style: 'slash', dps: 9.5, seconds: 1200 / 9.5, cost: 0, held: false, attack: 'slash · Hack (Aggressive)',
       },
     ]);
     expect(tiers.b.map((t) => t.weaponId)).toEqual([4151]);
+  });
+});
+
+describe('weaponTiers in the loadout', () => {
+  const c = (weaponId: number, dps: number, itemIds: number[]) => ({
+    phaseKey: 'a', style: 'ranged', dps, itemIds, setup: { player: { equipment: { weapon: { id: weaponId } }, style: { name: 'Rapid', type: 'ranged', stance: 'Rapid' }, spell: null } },
+  }) as unknown as Candidate;
+
+  test('a held weapon is rated in its best gear like the others, and also says what it does in the loadout\'s gear', () => {
+    const ASCENSION = 34681;
+    const PIPE = 12926;
+    const VOID = 11664;
+    const tiers = weaponTiers([
+      c(ASCENSION, 13.64, [ASCENSION]), c(ASCENSION, 14.39, [ASCENSION, VOID]), c(PIPE, 13.76, [PIPE, VOID]),
+    ], new Map([['a', 2100]]), 0.625, () => 0, [ASCENSION]);
+    expect(tiers.a.map((t) => t.weaponId)).toEqual([ASCENSION, PIPE]);
+    expect(tiers.a[0].dps).toBeCloseTo(15.015);
+    expect(tiers.a[0].loadoutDps).toBeCloseTo(14.265);
+    expect(tiers.a[1].loadoutDps).toBeUndefined();
   });
 });
 

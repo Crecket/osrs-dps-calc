@@ -48,7 +48,7 @@ const TierList: React.FC<{ tiers: WeaponTier[]; weaponId: number; title: string 
             <li
               key={t.weaponId}
               data-testid="tier-row"
-              className={`grid grid-cols-[1.5rem_1.75rem_minmax(0,1fr)_4rem_3.5rem_4.5rem_5rem] items-center gap-2 px-1 py-1 rounded text-xs tabular-nums ${t.weaponId === weaponId ? 'bg-orange-100 dark:bg-orange-900/40' : ''}`}
+              className={`grid grid-cols-[1.5rem_1.75rem_minmax(0,1fr)_4rem_3.5rem_4.5rem_7rem] items-center gap-2 px-1 py-1 rounded text-xs tabular-nums ${t.weaponId === weaponId ? 'bg-orange-100 dark:bg-orange-900/40' : ''}`}
             >
               <span className={`w-5 h-5 rounded flex items-center justify-center font-bold ${color}`}>{letter}</span>
               <span className="flex items-center justify-center"><ItemImage id={t.weaponId} size={24} /></span>
@@ -59,7 +59,13 @@ const TierList: React.FC<{ tiers: WeaponTier[]; weaponId: number; title: string 
               <span className="text-right">{t.dps.toFixed(2)}</span>
               <span className="text-right">{formatTime(t.seconds)}</span>
               <span className="text-right text-gray-500 dark:text-gray-300">{t.cost > 0 ? formatGp(t.cost) : 'free'}</span>
-              <span className="text-green-700 dark:text-green-300">{t.held ? 'in loadout' : ''}</span>
+              <span
+                className="text-green-700 dark:text-green-300"
+                data-tooltip-id="tooltip"
+                data-tooltip-content={t.loadoutDps !== undefined ? 'The first DPS is in this weapon\'s best gear, as for every weapon here; this one is in your loadout\'s gear' : undefined}
+              >
+                {t.held ? `in loadout${t.loadoutDps !== undefined ? ` · ${t.loadoutDps.toFixed(2)}` : ''}` : ''}
+              </span>
             </li>
           );
         })}
@@ -208,7 +214,7 @@ const BossResults: React.FC<{ result: RaidResult }> = observer(({ result }) => {
                         <TierList
                           tiers={(tiers ?? []).filter((t) => !styles || styles.includes(t.style))}
                           weaponId={open.weaponId}
-                          title={tiers ? `Weapons on ${p.label} (${which}), fastest first` : 'Run again to see the other options'}
+                          title={tiers ? `Weapons on ${p.label} (${which}), each in its best gear, fastest first` : 'Run again to see the other options'}
                         />
                       );
                     })()}

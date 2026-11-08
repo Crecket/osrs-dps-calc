@@ -166,10 +166,15 @@ export interface WeaponTier {
   cost: number;
   /** The loadout holds the weapon */
   held: boolean;
+  /** Its DPS in the loadout's own gear, for a held weapon; `dps` is in its best gear, like every other weapon's */
+  loadoutDps?: number;
   attack?: string;
 }
 
-/** Per phase, every searched weapon at its best setup, fastest first: the tier list behind a phase's weapons */
+/**
+ * Per phase, every searched weapon at its best setup, fastest first: the tier list behind a phase's weapons. All in their
+ * best gear, so they compare fairly: a held weapon in the loadout's gear lost to a worse one in its best.
+ */
 export const weaponTiers = (
   candidates: Candidate[],
   hpByKey: Map<string, number>,
@@ -179,19 +184,32 @@ export const weaponTiers = (
 ): Record<string, WeaponTier[]> => {
   const held = new Set(itemIds.map(getCanonicalItemId));
   const best = new Map<string, Map<number, Candidate>>();
+  // the same, of setups made only of items the loadout holds
+  const inLoadout = new Map<string, number>();
   candidates.forEach((c) => {
     const weaponId = c.setup.player.equipment.weapon?.id;
     if (weaponId === undefined || !hpByKey.has(c.phaseKey)) return;
-    // a held weapon shows as the loadout uses it: only setups of items it holds, not the weapon's best searched gear
-    if (held.has(getCanonicalItemId(weaponId)) && !c.itemIds.every((id) => held.has(id))) return;
     const byWeapon = best.get(c.phaseKey) ?? new Map<number, Candidate>();
     if (!byWeapon.has(weaponId) || byWeapon.get(weaponId)!.dps < c.dps) byWeapon.set(weaponId, c);
     best.set(c.phaseKey, byWeapon);
+    if (c.itemIds.every((id) => held.has(id))) {
+      const key = `${c.phaseKey}:${weaponId}`;
+      inLoadout.set(key, Math.max(inLoadout.get(key) ?? 0, c.dps));
+    }
   });
   return Object.fromEntries([...best.entries()].map(([key, byWeapon]) => [key, [...byWeapon.entries()].map(([weaponId, c]) => {
     const dps = c.dps + extraDps;
+    const isHeld = held.has(getCanonicalItemId(weaponId));
+    const worn = inLoadout.get(`${key}:${weaponId}`);
     return {
-      weaponId, style: c.style, dps, seconds: hpByKey.get(key)! / dps, cost: priceOf(weaponId), held: held.has(getCanonicalItemId(weaponId)), attack: attackLabel(c.setup.player),
+      weaponId,
+      style: c.style,
+      dps,
+      seconds: hpByKey.get(key)! / dps,
+      cost: priceOf(weaponId),
+      held: isHeld,
+      attack: attackLabel(c.setup.player),
+      ...(isHeld && worn !== undefined ? { loadoutDps: worn + extraDps } : {}),
     };
   }).sort((a, b) => b.dps - a.dps)]));
 };
