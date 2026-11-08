@@ -47,7 +47,51 @@ interface Run<P, R> {
   reject: (e: Error) => void;
 }
 
-export const defaultPoolSize = () => Math.max(1, ((typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2) - 1);
+// every worker lives in the tab's one renderer process with its own copy of the item data and its own heap: Chrome killed
+// the tab for running out of memory with 69 workers on a 32-thread machine. 24 searched faster than 62 in a benchmark, and
+// used less than half the heap
+const MAX_WORKERS = 24;
+
+export const defaultPoolSize = () => Math.min(MAX_WORKERS, Math.max(1, ((typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2) - 1));
+
+interface LimitedPool {
+  retireIdleWorker(): boolean;
+  fill(): void;
+}
+
+/**
+ * How many workers the pools sharing it may have alive together. A pool that needs a worker when none are left retires
+ * another pool's idle one; with none idle it waits, and fills up when a worker frees.
+ */
+export class WorkerLimit {
+  private used = 0;
+
+  private pools = new Set<LimitedPool>();
+
+  constructor(private total: number = defaultPoolSize()) {}
+
+  join(pool: LimitedPool) {
+    this.pools.add(pool);
+  }
+
+  take(asker: LimitedPool): boolean {
+    if (this.used >= this.total) [...this.pools].some((pool) => pool !== asker && pool.retireIdleWorker());
+    if (this.used >= this.total) return false;
+    this.used += 1;
+    return true;
+  }
+
+  release() {
+    this.used -= 1;
+  }
+
+  /** A worker was released or went idle: the other pools may be waiting for it */
+  wake(from: LimitedPool) {
+    this.pools.forEach((pool) => {
+      if (pool !== from) pool.fill();
+    });
+  }
+}
 
 /**
  * A pool of workers that computes every payload of its runs, one payload per message. It never debounces or drops
@@ -63,6 +107,8 @@ export class TaskPool<P, R> {
 
   private terminateOnCancel: boolean;
 
+  private limit?: WorkerLimit;
+
   private workers: PoolWorker[] = [];
 
   // in start order: dispatch serves the oldest run first
@@ -74,12 +120,15 @@ export class TaskPool<P, R> {
    * @param opts.progressInterval minimum ms between progress reports (the finished run is always reported)
    * @param opts.terminateOnCancel terminate workers busy with a cancelled run's chunk instead of letting them finish it;
    * worth it for long chunks, while short ones finish sooner than a new worker starts
+   * @param opts.limit shared with the other pools of a page, so that together they stay within it
    */
-  constructor(opts: { createWorker: () => WorkerLike; size?: number; progressInterval?: number; terminateOnCancel?: boolean }) {
+  constructor(opts: { createWorker: () => WorkerLike; size?: number; progressInterval?: number; terminateOnCancel?: boolean; limit?: WorkerLimit }) {
     this.createWorker = opts.createWorker;
     this.terminateOnCancel = opts.terminateOnCancel ?? false;
     this.size = opts.size ?? defaultPoolSize();
     this.progressInterval = opts.progressInterval ?? 100;
+    this.limit = opts.limit;
+    this.limit?.join(this);
   }
 
   /**
@@ -118,10 +167,30 @@ export class TaskPool<P, R> {
     this.runs.clear();
     if (this.terminateOnCancel) {
       // a busy worker would finish its stale chunk before taking new work; ensureWorkers spawns replacements on the next run
-      this.workers.filter((w) => w.runId !== null).forEach((w) => w.worker.terminate());
-      this.workers = this.workers.filter((w) => w.runId === null);
+      this.workers.filter((w) => w.runId !== null).forEach((w) => this.endWorker(w));
+      this.limit?.wake(this);
     }
     cancelled.forEach((run) => run.reject(new Error('cancelled')));
+  }
+
+  private endWorker(pw: PoolWorker) {
+    pw.worker.terminate();
+    this.workers = this.workers.filter((w) => w !== pw);
+    this.limit?.release();
+  }
+
+  /** Ends an idle worker, for another pool sharing the limit; false when none is idle */
+  retireIdleWorker(): boolean {
+    const idle = this.workers.find((w) => w.runId === null);
+    if (!idle) return false;
+    this.endWorker(idle);
+    return true;
+  }
+
+  /** Starts the workers that fit now and gives them work, for a pool that was waiting for the limit */
+  fill() {
+    this.ensureWorkers(this.pending());
+    this.dispatch();
   }
 
   // payloads waiting or being computed, which is how many workers could be busy
@@ -133,12 +202,13 @@ export class TaskPool<P, R> {
 
   shutdown() {
     this.cancel();
-    for (const w of this.workers) w.worker.terminate();
-    this.workers = [];
+    [...this.workers].forEach((w) => this.endWorker(w));
+    this.limit?.wake(this);
   }
 
   private ensureWorkers(chunks: number) {
     while (this.workers.length < Math.min(this.size, chunks)) {
+      if (this.limit && !this.limit.take(this)) return;
       const pw: PoolWorker = { worker: this.createWorker(), runId: null };
       pw.worker.onmessage = (e) => this.onResponse(pw, e.data);
       pw.worker.onerror = (e) => this.onWorkerError(pw, e?.message);
@@ -183,19 +253,19 @@ export class TaskPool<P, R> {
     }
 
     this.dispatch();
+    if (pw.runId === null) this.limit?.wake(this);
   }
 
   private onWorkerError(pw: PoolWorker, message?: string) {
     // a crashed worker can't be trusted to respond; drop it, and fail the run only if the crash was on one of its chunks
-    pw.worker.terminate();
-    this.workers = this.workers.filter((w) => w !== pw);
+    this.endWorker(pw);
     const run = pw.runId === null ? undefined : this.runs.get(pw.runId);
     if (run) {
       this.runs.delete(run.runId);
       run.reject(new Error(message || 'A calculation worker crashed'));
     }
 
-    this.ensureWorkers(this.pending());
-    this.dispatch();
+    this.fill();
+    this.limit?.wake(this);
   }
 }

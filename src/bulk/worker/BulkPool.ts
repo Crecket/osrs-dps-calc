@@ -1,5 +1,5 @@
 import { BulkPayload } from '@/bulk/worker/protocol';
-import { TaskPool, WorkerLike } from '@/bulk/worker/TaskPool';
+import { TaskPool, WorkerLike, WorkerLimit } from '@/bulk/worker/TaskPool';
 import { BulkMonster, BulkRow, BulkSetup } from '@/bulk/types';
 
 export type { WorkerLike } from '@/bulk/worker/TaskPool';
@@ -33,8 +33,9 @@ export class BulkPool {
 
   /**
    * @param opts.progressInterval minimum ms between progress reports (the finished run is always reported)
+   * @param opts.limit shared with the other pools of a page, so that together they stay within it
    */
-  constructor(opts: { createWorker: () => WorkerLike; size?: number; chunkSize?: number; progressInterval?: number }) {
+  constructor(opts: { createWorker: () => WorkerLike; size?: number; chunkSize?: number; progressInterval?: number; limit?: WorkerLimit }) {
     this.chunkSize = opts.chunkSize ?? 25;
     this.pool = new TaskPool(opts);
   }

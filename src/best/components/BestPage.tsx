@@ -6,7 +6,7 @@ import { IconAlertTriangle } from '@tabler/icons-react';
 import { BestStore, BestStoreContext } from '@/best/state/BestStore';
 import { BestPayload, BestResult } from '@/best/worker/protocol';
 import createBestWorker from '@/best/worker/createBestWorker';
-import { TaskPool } from '@/bulk/worker/TaskPool';
+import { TaskPool, WorkerLimit } from '@/bulk/worker/TaskPool';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import createBulkWorker from '@/bulk/worker/createBulkWorker';
 import TargetMonster from '@/bulk/components/TargetMonster';
@@ -15,11 +15,15 @@ import BestResults, { Pools } from '@/best/components/BestResults';
 
 const BestPage: React.FC = observer(() => {
   const [store] = useState(() => new BestStore());
-  const [pools] = useState<Pools>(() => ({
-    // a search chunk can take seconds, so Stop and a new run don't wait for it
-    search: new TaskPool<BestPayload, BestResult>({ createWorker: createBestWorker, terminateOnCancel: true }),
-    rows: new BulkPool({ createWorker: createBulkWorker }),
-  }));
+  const [pools] = useState<Pools>(() => {
+    // one limit for both: a pool's idle workers make way for the other's
+    const limit = new WorkerLimit();
+    return {
+      // a search chunk can take seconds, so Stop and a new run don't wait for it
+      search: new TaskPool<BestPayload, BestResult>({ createWorker: createBestWorker, terminateOnCancel: true, limit }),
+      rows: new BulkPool({ createWorker: createBulkWorker, limit }),
+    };
+  });
 
   useEffect(() => {
     store.load().catch(console.error);

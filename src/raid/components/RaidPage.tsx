@@ -11,7 +11,7 @@ import {
 import { BestPayload, BestResult } from '@/best/worker/protocol';
 import createBestWorker from '@/best/worker/createBestWorker';
 import { BestPhase } from '@/best/lib/run';
-import { TaskPool } from '@/bulk/worker/TaskPool';
+import { TaskPool, WorkerLimit } from '@/bulk/worker/TaskPool';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import createBulkWorker from '@/bulk/worker/createBulkWorker';
 import Panel, { buttonClass } from '@/bulk/components/Panel';
@@ -50,10 +50,14 @@ export const SETTLE_MS = 300;
 
 const RaidPage: React.FC = observer(() => {
   const [store] = useState(() => new RaidStore());
-  const [pools] = useState(() => ({
-    search: new TaskPool<BestPayload, BestResult>({ createWorker: createBestWorker, terminateOnCancel: true }),
-    rows: new BulkPool({ createWorker: createBulkWorker }),
-  }));
+  const [pools] = useState(() => {
+    // one limit for both: a pool's idle workers make way for the other's
+    const limit = new WorkerLimit();
+    return {
+      search: new TaskPool<BestPayload, BestResult>({ createWorker: createBestWorker, terminateOnCancel: true, limit }),
+      rows: new BulkPool({ createWorker: createBulkWorker, limit }),
+    };
+  });
   const [cache] = useState(() => new SearchCache());
   const [cacheLoaded, setCacheLoaded] = useState(false);
   const [prices, setPrices] = useState<Prices | null>(null);
