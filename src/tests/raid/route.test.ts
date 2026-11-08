@@ -41,21 +41,22 @@ describe('raid definitions', () => {
     expect(phases.map((p) => p.phase.key).filter((k) => k.startsWith('bork'))).toEqual(['bork:0', 'bork:2', 'bork:1']);
     expect(walking.monster.monster.skills.hp).toBe(375);
     expect(walking.monster.monster.defensive.flat_armour).toBe(10);
-    expect(walking.phase.allowedStyles).toEqual(['ranged']);
+    // a duo: the tank melees, the other ranges
+    expect(walking.phase.parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { styles: ['stab', 'slash', 'crush'], share: 0.5 }]);
     expect(stunned.monster.monster.skills.hp).toBe(1125);
     expect(stunned.monster.monster.defensive.flat_armour).toBe(0);
     expect(stunned.monster.monster.skills.def).toBe(0);
     expect(stunned.monster.monster.defensive.crush).toBe(-64);
     expect(stunned.phase.allowedStyles).toBeUndefined();
-    // a third of it ranged by the players on the cannons, the rest any style (melee, mostly)
-    expect(stunned.phase.parts).toEqual([{ styles: ['ranged'], share: 1 / 3 }, { share: 2 / 3 }]);
+    expect(stunned.phase.parts).toBeUndefined();
   });
 
   test('style rules from the strategy', () => {
     const phase = (key: string) => routePhases(fa, fa.defaultRoute, {}).find((p) => p.phase.key === key)!.phase;
     expect(phase('ocellus:1').allowedStyles).toEqual(['ranged']);
-    expect(phase('ocellus:2').parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { styles: ['stab', 'slash', 'crush'], share: 0.5 }]);
-    ['dreadnoth:0', 'ocellus:0'].forEach((key) => expect(phase(key).parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }]));
+    expect(phase('ocellus:2').parts).toEqual([{ styles: ['ranged'], share: 0.2 }, { share: 0.8 }]);
+    expect(phase('dreadnoth:0').parts).toEqual([{ styles: ['ranged'], share: 0.7 }, { share: 0.3 }]);
+    expect(phase('ocellus:0').parts).toEqual([{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }]);
     expect(phase('xarth:0').parts).toEqual([{ styles: ['ranged'], share: 1 / 3 }, { share: 2 / 3 }]);
   });
 

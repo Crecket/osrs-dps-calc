@@ -6,6 +6,7 @@ const specs = (elderMaul: number, tonalztic: number): DefenceCounts => ({ elderM
 const HALF_RANGED: PhasePart[] = [{ styles: ['ranged'], share: 0.5 }, { share: 0.5 }];
 // a third of the health bar is ranged
 const THIRD_RANGED: PhasePart[] = [{ styles: ['ranged'], share: 1 / 3 }, { share: 2 / 3 }];
+const MELEE: PhasePart['styles'] = ['stab', 'slash', 'crush'];
 
 const fracturedArchive: RaidDef = {
   id: 'fractured-archive',
@@ -41,16 +42,16 @@ const fracturedArchive: RaidDef = {
           id: 'bork',
           name: 'Bork',
           phases: [
-            // Bork walks with 8-14 flat armour (more as the Smorks lose health), ranged while the tank melees him; a heavy
-            // cannonball stuns him after about 30s, with no flat armour and every hit landing: the other 75% of his health
-            // is dealt then, mostly in melee (a third of it ranged, as players on the cannons range him)
+            // Bork walks with 8-14 flat armour (more as the Smorks lose health); in a duo the tank melees him while the
+            // other ranges, so half of it is each. A heavy cannonball stuns him after about 30s, with no flat armour and
+            // every hit landing: the other 75% of his health is dealt then, in any style
             {
               key: 'bork:0',
               label: 'Bork',
               monsterId: 16640,
               version: '',
               defaults: specs(2, 0),
-              allowedStyles: ['ranged'],
+              parts: [{ styles: ['ranged'], share: 0.5 }, { styles: MELEE, share: 0.5 }],
               hpShare: 0.25,
               state: { flatArmour: 10 },
             },
@@ -62,7 +63,6 @@ const fracturedArchive: RaidDef = {
               // the specs are done while he walks, and their drain stays
               defaults: specs(0, 0),
               defenceFrom: 'bork:0',
-              parts: THIRD_RANGED,
               hpShare: 0.75,
               state: { flatArmour: 0, alwaysHit: true },
             },
@@ -97,7 +97,12 @@ const fracturedArchive: RaidDef = {
           id: 'dreadnoth',
           name: 'Dreadnoth',
           phases: [{
-            key: 'dreadnoth:0', label: 'Dreadnoth', monsterId: 16665, version: '', defaults: specs(0, 5), parts: HALF_RANGED,
+            key: 'dreadnoth:0',
+            label: 'Dreadnoth',
+            monsterId: 16665,
+            version: '',
+            defaults: specs(0, 5),
+            parts: [{ styles: ['ranged'], share: 0.7 }, { share: 0.3 }],
           }],
         },
       ],
@@ -157,8 +162,8 @@ const fracturedArchive: RaidDef = {
             monsterId: 16677,
             version: 'Phase 3',
             defaults: specs(2, 0),
-            // half ranged, half melee
-            parts: [{ styles: ['ranged'], share: 0.5 }, { styles: ['stab', 'slash', 'crush'], share: 0.5 }],
+            // a fifth of it ranged, the rest any style
+            parts: [{ styles: ['ranged'], share: 0.2 }, { share: 0.8 }],
           },
         ],
       }],

@@ -114,7 +114,8 @@ describe('requiredItems', () => {
   });
 
   test('an excluded maul gives way to the Dragon warhammer: a team wants a drain from everyone', () => {
-    const ids = requiredItems({ ...defaultSettings(), excludedIds: [21003] });
+    const settings = { ...defaultSettings(), excludedIds: [21003] };
+    const ids = requiredItems(settings);
     expect(ids).not.toContain(21003);
     expect(ids).toContain(13576);
     const bork = routePhases(fa, settings.route, settings.counts).find((p) => p.phase.key === 'bork:0')!;
@@ -177,7 +178,7 @@ describe('runRaid', () => {
     const result = await runRaid(defaultSettings(), null, deps, () => {}, cache, search);
     expect(result.plan.picks.filter((p) => p.key === 'ocellus:2')).toHaveLength(2);
     expect(result.phases.find((p) => p.key === 'ocellus:2')?.parts).toEqual([
-      { styles: ['ranged'], share: 0.5 }, { styles: ['stab', 'slash', 'crush'], share: 0.5 },
+      { styles: ['ranged'], share: 0.2 }, { share: 0.8 },
     ]);
   });
 
