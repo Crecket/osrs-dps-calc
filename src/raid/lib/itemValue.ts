@@ -40,6 +40,8 @@ export interface Replacement {
   id: number | null;
   /** Raid time change against the current item: negative is faster */
   delta: number;
+  /** The same per boss (the phase key's boss id) */
+  byBoss: Record<string, number>;
   price: number;
   held: boolean;
   current: boolean;
@@ -171,9 +173,19 @@ export const itemReplacements = async (
   const ids: (number | null)[] = [id, null, ...options];
   const perPick = await Promise.all(picks.map((i) => swapSeconds(ctx, i, slot, ids)));
   const totals = ids.map((_, k) => perPick.reduce((n, secs) => n + secs[k], 0));
+  const bossOf = (key: string) => key.split(':')[0];
+  const byBoss = (k: number) => {
+    const out: Record<string, number> = {};
+    picks.forEach((i, j) => {
+      const boss = bossOf(ctx.picks[i].key);
+      out[boss] = (out[boss] ?? 0) + perPick[j][k] - perPick[j][0];
+    });
+    return out;
+  };
   return ids.map((x, k): Replacement => ({
     id: x,
     delta: totals[k] - totals[0],
+    byBoss: byBoss(k),
     price: x === null ? 0 : priceOf(x),
     held: x !== null && held.has(getCanonicalItemId(x)),
     current: k === 0,
