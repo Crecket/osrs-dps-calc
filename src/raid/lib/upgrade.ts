@@ -74,9 +74,12 @@ const MAX_CAMPS = 12;
 const MAX_CHEAPEN = 16;
 const CHEAPER_TRIES = 8;
 const CHEAPEN_LOSS = 0.05;
-// and per gp saved, the seconds a swap may lose besides: the money goes to the climb again (an Armadyl crossbow 0.1s
-// faster than the Dragon crossbow for 40m)
-const CHEAPEN_SECONDS_PER_GP = 1 / 100e6;
+// what money is worth in raid time, both ways: a purchase must save at least this per gp it adds, and a swap for
+// something cheaper may lose this per gp it saves. One rate, or a swap undone by the next purchase (an Armadyl crossbow
+// 0.1s faster than the Dragon crossbow for 40m, given back and bought again)
+const SECONDS_PER_GP = 1 / 100e6;
+/** The seconds spending `extra` gp must save */
+const moneyBar = (extra: number) => Math.max(0, extra) * SECONDS_PER_GP;
 const WEAPONS_PER_UNIT = 5;
 const MIN_GAIN = 1e-6;
 // what an armour switch (an item only one setup wears) must save over the raid for its bag cell: most players camp the
@@ -292,7 +295,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           if (nextCost > cap || next.size > Math.max(maxItems, current.size)) continue;
           const gain = gainOf(group, move.next);
           // NaN when a setup does no damage
-          if (!(gain > needed(move, current.size, next.size))) continue;
+          if (!(gain > needed(move, current.size, next.size) + moneyBar(nextCost - cost))) continue;
           const score = gain / (Math.max(0, nextCost - cost) + COST_SMOOTHING);
           if (!best || score > best.score) {
             best = {
@@ -337,7 +340,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           const next = a.group === b.group
             ? loadout({ group: a.group, items: swapped(swapped(a.group.items, a.move), b.move) })
             : loadout({ group: a.group, items: swapped(a.group.items, a.move) }, { group: b.group, items: swapped(b.group.items, b.move) });
-          if (costOf(next) > cap || next.size > Math.max(maxItems, current.size) || gain <= Math.max(needed(a.move, current.size, next.size), needed(b.move, current.size, next.size))) continue;
+          if (costOf(next) > cap || next.size > Math.max(maxItems, current.size) || gain <= Math.max(needed(a.move, current.size, next.size), needed(b.move, current.size, next.size)) + moneyBar(costOf(next) - costOf(current))) continue;
           best = { a, b, gain };
           break;
         }
@@ -353,7 +356,8 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
         const dps = await Promise.all(group.units.map((u, i) => rate([next[i].setup], u.monster).then(([d]) => d)));
         const rated = next.map((n, i) => ({ ...n, dps: dps[i] }));
         const size = loadout({ group, items: swapped(swapped(group.items, a.move), b.move) }).size;
-        if (!(gainOf(group, rated) > (filling || (isFree(a.move.to) && isFree(b.move.to)) ? fillGain(current.size, size) : minGainFor(current.size, size)))) continue;
+        const pairCost = costOf(loadout({ group, items: swapped(swapped(group.items, a.move), b.move) })) - costOf(current);
+        if (!(gainOf(group, rated) > (filling || (isFree(a.move.to) && isFree(b.move.to)) ? fillGain(current.size, size) : minGainFor(current.size, size)) + moneyBar(pairCost))) continue;
         group.units.forEach((u, i) => {
           // eslint-disable-next-line no-param-reassign
           u.candidate = rated[i];
@@ -417,7 +421,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
         const nextCost = costOf(next);
         if (nextCost > cap || next.size > Math.max(maxItems, current.size)) continue;
         const gain = wearing.reduce((n, g, k) => n + gainOf(g, rated[k]), 0);
-        if (!(gain > minGainFor(current.size, next.size))) continue;
+        if (!(gain > minGainFor(current.size, next.size) + moneyBar(nextCost - costOf(current)))) continue;
         const score = gain / (Math.max(0, nextCost - cost) + COST_SMOOTHING);
         if (!best || score > best.score) best = { wearing, rated, score };
       }
@@ -507,7 +511,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
             return new Set([...loadout(...swaps.filter((sw, i) => swaps.findIndex((o) => o.group === sw.group) === i)), ...next.itemIds]);
           };
           const alone = items(null);
-          if (costOf(alone) <= cap && alone.size <= limit && gain > minGainFor(current.size, alone.size)) {
+          if (costOf(alone) <= cap && alone.size <= limit && gain > minGainFor(current.size, alone.size) + moneyBar(costOf(alone) - cost)) {
             if (!best || gain > best.gain) {
               best = {
                 unit, next, partner: null, gain,
@@ -526,7 +530,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
               const total = gain + partnerGain;
               if (best && total <= best.gain) continue;
               const both = items({ group: pg, move });
-              if (costOf(both) > cap || both.size > limit || !(total > minGainFor(current.size, both.size))) continue;
+              if (costOf(both) > cap || both.size > limit || !(total > minGainFor(current.size, both.size) + moneyBar(costOf(both) - cost))) continue;
               best = {
                 unit, next, partner: { group: pg, move }, gain: total,
               };
@@ -689,7 +693,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
    * A piece only one setup wears is swapped for the cheaper pool item, at least as strong for the style by bonuses, that
    * loses no time; the most money first, one at a time.
    */
-  const allowedLoss = (saving: number) => CHEAPEN_LOSS + saving * CHEAPEN_SECONDS_PER_GP;
+  const allowedLoss = (saving: number) => CHEAPEN_LOSS + saving * SECONDS_PER_GP;
   const cheapen = async (): Promise<boolean> => {
     const current = loadout();
     const cost = costOf(current);
@@ -884,7 +888,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
           .reduce<typeof options[number] | null>((a, b) => (!a || b.more / (Math.max(0, b.extra) + COST_SMOOTHING) > a.more / (Math.max(0, a.extra) + COST_SMOOTHING) ? b : a), null);
       if (!pick) break;
       const cells = pick.next.size - current.size;
-      bar += Math.max(0, cells) * (filling || isFree(pick.move.to) ? FILL_SECONDS : switchSeconds(pick.move.slot));
+      bar += Math.max(0, cells) * (filling || isFree(pick.move.to) ? FILL_SECONDS : switchSeconds(pick.move.slot)) + moneyBar(pick.extra);
       group.units.forEach((u, i) => {
         // eslint-disable-next-line no-param-reassign
         u.candidate = pick.move.next[i];
@@ -908,6 +912,12 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   };
   await startStep('Building kits');
   await kits();
+  // the passes since the cheaper swaps (giving back, kits) can leave a setup on its own with an item a much cheaper one
+  // matches, the Armadyl crossbow beside the Dragon crossbow: once more on the final setups, and the money spent again
+  let lateCheapened = 0;
+  // eslint-disable-next-line no-await-in-loop
+  while (lateCheapened < MAX_CHEAPEN && await cheapen()) lateCheapened += 1;
+  if (lateCheapened > 0) await climb();
   // bag cells and money left: switches that save less than a cell is normally worth, the most time per gp first
   if (loadout().size < maxItems && costOf(loadout()) < budget) {
     filling = true;
