@@ -133,6 +133,7 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
               <button
                 key={m}
                 type="button"
+                aria-pressed={mode === m}
                 className={`px-2.5 py-1 ${mode === m ? 'bg-orange-400 dark:bg-orange-700 text-white' : 'bg-btns-400 dark:bg-dark-500 text-gray-200'}`}
                 onClick={() => {
                   setMode(m);

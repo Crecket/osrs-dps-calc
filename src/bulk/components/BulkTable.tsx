@@ -88,8 +88,13 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
     }
   };
 
+  const ariaSort = (key: SortKey) => {
+    if (sort.key !== key) return 'none';
+    return sort.dir === 'asc' ? 'ascending' : 'descending';
+  };
+
   const header = (c: { key: SortKey; label: string }) => (
-    <th key={c.key} className="px-2 py-1.5 text-right whitespace-nowrap">
+    <th key={c.key} className="px-2 py-1.5 text-right whitespace-nowrap" aria-sort={ariaSort(c.key)}>
       <button type="button" className="inline-flex items-center gap-0.5 hover:text-orange-200" onClick={() => clickHeader(c.key)}>
         {c.label}
         {sort.key === c.key && (sort.dir === 'asc' ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />)}

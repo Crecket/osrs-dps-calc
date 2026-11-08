@@ -9,6 +9,7 @@ import createBestWorker from '@/best/worker/createBestWorker';
 import { TaskPool, WorkerLimit } from '@/bulk/worker/TaskPool';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import createBulkWorker from '@/bulk/worker/createBulkWorker';
+import DismissibleNote from '@/bulk/components/DismissibleNote';
 import TargetMonster from '@/bulk/components/TargetMonster';
 import InputsPanel from '@/best/components/InputsPanel';
 import BestResults, { Pools } from '@/best/components/BestResults';
@@ -36,14 +37,11 @@ const BestPage: React.FC = observer(() => {
   return (
     <BestStoreContext.Provider value={store}>
       <div className="max-w-[1420px] mx-auto mt-4 mb-8 px-2 flex flex-col gap-3">
-        <div role="note" className="flex items-start gap-2 px-4 py-2 rounded bg-orange-100 dark:bg-orange-500/60 text-orange-500 dark:text-orange-100 text-sm border border-orange-200 dark:border-orange-400">
-          <IconAlertTriangle size={18} className="shrink-0 mt-px" aria-hidden />
-          <span>
-            <strong>Experimental:</strong>
-            {' '}
-            the best setup finder is still being worked on and can miss setups or get them wrong. Check important results in the calculator.
-          </span>
-        </div>
+        <DismissibleNote storageKey="dps-best-note-dismissed">
+          <strong>Experimental:</strong>
+          {' '}
+          the best setup finder is still being worked on and can miss setups or get them wrong. Check important results in the calculator.
+        </DismissibleNote>
         {store.readFailed && (
           <div role="alert" className="flex items-start gap-2 px-4 py-2 rounded bg-orange-100 dark:bg-orange-500/60 text-orange-500 dark:text-orange-100 text-sm border border-orange-200 dark:border-orange-400">
             <IconAlertTriangle size={18} className="shrink-0 mt-px" aria-hidden />

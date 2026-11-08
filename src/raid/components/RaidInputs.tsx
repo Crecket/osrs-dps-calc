@@ -139,7 +139,7 @@ const RaidInputs: React.FC = observer(() => {
   };
 
   return (
-    <Panel title={raid.name} className="min-w-0">
+    <Panel title={raid.name} className="min-w-0" collapseKey="dps-raid-inputs-collapsed">
       <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-5">
         <Section title="Route">
           <FieldGrid wide>

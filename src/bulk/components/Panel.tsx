@@ -1,4 +1,6 @@
 import React, { PropsWithChildren } from 'react';
+import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
+import useStoredFlag from '@/bulk/lib/useStoredFlag';
 
 interface PanelProps {
   title: React.ReactNode;
@@ -7,14 +9,24 @@ interface PanelProps {
   // keeps the header, and `belowHeader` under it, in view while the panel scrolls past (from the sm breakpoint up)
   stickyHeader?: boolean;
   belowHeader?: React.ReactNode;
+  // makes the panel collapsible, remembering it in this browser under this key
+  collapseKey?: string;
 }
 
 const Panel: React.FC<PropsWithChildren<PanelProps>> = ({
-  title, actions, className, stickyHeader, belowHeader, children,
+  title, actions, className, stickyHeader, belowHeader, collapseKey, children,
 }) => {
+  // a key no panel saves under stands for "not collapsible"
+  const [collapsed, setCollapsed] = useStoredFlag(collapseKey ?? '');
+  const heading = collapseKey ? (
+    <button type="button" className="flex items-center gap-2 rounded" aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)}>
+      {collapsed ? <IconChevronRight size={18} aria-hidden /> : <IconChevronDown size={18} aria-hidden />}
+      {title}
+    </button>
+  ) : title;
   const header = (
     <div className="px-4 py-2.5 border-b-body-400 bg-body-100 dark:bg-dark-400 dark:border-b-dark-200 border-b sm:rounded-t flex flex-wrap gap-2 justify-between items-center">
-      <h2 className="font-serif text-lg tracking-tight font-bold flex items-center gap-2">{title}</h2>
+      <h2 className="font-serif text-lg tracking-tight font-bold flex items-center gap-2">{heading}</h2>
       {actions && <div className="flex flex-wrap gap-2 items-center text-sm">{actions}</div>}
     </div>
   );
@@ -32,7 +44,8 @@ const Panel: React.FC<PropsWithChildren<PanelProps>> = ({
           {belowHeader}
         </>
       )}
-      {children}
+      {/* kept mounted: closing a panel doesn't lose what is being typed in it */}
+      {collapseKey ? <div className={collapsed ? 'hidden' : undefined}>{children}</div> : children}
     </div>
   );
 };
