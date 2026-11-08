@@ -187,6 +187,39 @@ describe('raidCandidates', () => {
     expect(result.map((c) => c.phaseKey)).toEqual(four.flatMap((p) => [p.phase.key, p.phase.key]));
   });
 
+  test('a failed search stops the others taking new searches, and fails the run', async () => {
+    let started = 0;
+    mockRun.mockImplementation(async () => {
+      started += 1;
+      const mine = started;
+      await new Promise((r) => { setTimeout(r, 5); });
+      if (mine === 1) throw new Error('out of memory');
+      return outcome();
+    });
+    const four = routePhases(fa, fa.defaultRoute, {}).filter((p) => !p.phase.allowedStyles).slice(0, 4);
+    await expect(raidCandidates(four, inputs, [[1], [1, 2]], deps, () => {}, new SearchCache(memoryStorage()), search)).rejects.toThrow('out of memory');
+    await new Promise((r) => { setTimeout(r, 30); });
+    expect(started).toBe(RAID_PARALLEL);
+  });
+
+  test('the inner progress follows the search running longest', async () => {
+    const seen: (number | undefined)[] = [];
+    let n = 0;
+    mockRun.mockImplementation(async (...args: unknown[]) => {
+      n += 1;
+      const mine = n;
+      await new Promise((r) => { setTimeout(r, mine); });
+      (args[3] as (d: number, total: number, p: string) => void)(mine, 10, 'descent');
+      await new Promise((r) => { setTimeout(r, 20); });
+      return outcome();
+    });
+    await raidCandidates(phases.slice(0, 2), inputs, [[1]], deps, (p) => seen.push(p.inner?.done), new SearchCache(memoryStorage()), search);
+    // the second search's report (2) doesn't show while the first runs
+    const firstFinished = seen.lastIndexOf(1);
+    expect(firstFinished).toBeGreaterThan(-1);
+    expect(seen.slice(0, firstFinished)).not.toContain(2);
+  });
+
   test('second run with the same exclusions hits the cache', async () => {
     const cache = new SearchCache(memoryStorage());
     await raidCandidates(phases, inputs, [[1]], deps, () => {}, cache, search);
@@ -279,5 +312,27 @@ describe('SearchCache', () => {
     });
     await cache.load();
     expect(cache.get('k')).toBeUndefined();
+  });
+
+  test('keeps saving while writes keep coming, and has nothing to save after that', async () => {
+    jest.useFakeTimers();
+    try {
+      const storage = memoryStorage();
+      const setItem = jest.spyOn(storage, 'setItem');
+      const cache = new SearchCache(storage);
+      // a write every 500ms never leaves the 1s debounce a quiet moment
+      for (let t = 0; t < 12000 && setItem.mock.calls.length === 0; t += 500) {
+        cache.setSpec(`k${t}`, 1);
+        jest.advanceTimersByTime(500);
+      }
+      expect(setItem).toHaveBeenCalledTimes(1);
+      await cache.flush();
+      jest.runOnlyPendingTimers();
+      const calls = setItem.mock.calls.length;
+      await cache.flush();
+      expect(setItem).toHaveBeenCalledTimes(calls);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

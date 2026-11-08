@@ -1,6 +1,6 @@
 import { getMonsters } from '@/lib/Monsters';
 import { Monster } from '@/types/Monster';
-import { prepareMonster } from '@/bulk/lib/compute';
+import { prepareMonster } from '@/bulk/lib/prepareMonster';
 import {
   DefenceCounts, RaidBoss, RaidDef, RaidPhase, Route, RoutePhase,
 } from '@/raid/types';

@@ -13,7 +13,7 @@ import { hashKey } from '@/best/lib/resultCache';
 import { BulkSetup, GEAR_SLOT_ORDER } from '@/bulk/types';
 import { DEFENCE_WEAPON_IDS, RoutePhase } from '@/raid/types';
 import { Candidate } from '@/raid/lib/candidates';
-import { SearchCache } from '@/raid/lib/searchCache';
+import { playerStatsKey, SearchCache } from '@/raid/lib/searchCache';
 
 export interface SpecRank {
   weaponId: number;
@@ -97,7 +97,7 @@ const withWeapon = (c: Candidate, weapon: EquipmentPiece, ammoItem: EquipmentPie
 const specKey = (phase: RoutePhase, setup: BulkSetup) => `spec:${hashKey(JSON.stringify({
   monster: phase.monster.monster,
   gear: GEAR_SLOT_ORDER.map((slot) => setup.player.equipment[slot]?.id ?? null),
-  style: setup.player.style,
+  stats: playerStatsKey(setup.player),
 }))}`;
 
 /**
@@ -129,7 +129,7 @@ export const specRanking = async (
     });
     const missing = setups.filter((s) => cache.getSpec(specKey(phase, s.setup)) === undefined);
     if (missing.length > 0) {
-      const rows = await deps.rows.run(missing.map((s) => s.setup), [phase.monster], () => {}, { concurrent: true });
+      const rows = await deps.rows.run(missing.map((s) => s.setup), [phase.monster], () => {}, { concurrent: true, only: 'spec' });
       const byId = new Map((rows ?? []).map((r) => [r.setupId, r]));
       missing.forEach((s) => cache.setSpec(specKey(phase, s.setup), byId.get(s.setup.id)?.spec?.expected ?? 0));
     }

@@ -209,16 +209,17 @@ export const raidCandidates = async (
 
   let done = 0;
   const active = new Map<number, string>();
-  // the latest progress any running search reported
-  const latest: { inner: RaidProgress['inner'] } = { inner: null };
+  // per running search its progress; the bar follows the one running longest, so it doesn't jump between searches
+  const inner = new Map<number, RaidProgress['inner']>();
   const report = () => onProgress({
-    search: done, searches, phaseLabel: [...new Set(active.values())].join(', '), inner: latest.inner, cached,
+    search: done, searches, phaseLabel: [...new Set(active.values())].join(', '), inner: inner.get([...active.keys()][0]) ?? null, cached,
   });
 
-  // each lane takes the next search until none are left
+  // each lane takes the next search until none are left, or one fails: the run has failed, and takes no more workers
   let next = 0;
-  const lane = async () => {
-    while (next < todo.length) {
+  let failed = false;
+  const takeSearches = async () => {
+    while (next < todo.length && !failed) {
       const i = todo[next];
       next += 1;
       const {
@@ -228,7 +229,7 @@ export const raidCandidates = async (
       report();
       // eslint-disable-next-line no-await-in-loop
       const outcomes = await search(inputs, phase.monster, deps, (d, total, p) => {
-        latest.inner = { done: d, total, phase: p };
+        inner.set(i, { done: d, total, phase: p });
         report();
       }, { topK: RAID_TOP_K, runnersUp: RAID_RUNNERS_UP, concurrent: true });
       stored[i] = outcomes.flatMap((o) => [
@@ -239,10 +240,15 @@ export const raidCandidates = async (
         .map((x) => toStored(x.setup, x.style, x.dps));
       cache.set(key, stored[i]);
       active.delete(i);
+      inner.delete(i);
       done += 1;
       report();
     }
   };
+  const lane = () => takeSearches().catch((e) => {
+    failed = true;
+    throw e;
+  });
   await Promise.all(Array.from({ length: Math.min(RAID_PARALLEL, todo.length) }, lane));
 
   // darts go in a blowpipe: thrown on their own they never belong in a raid loadout

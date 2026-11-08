@@ -7,7 +7,8 @@ import {
 } from '@/best/lib/run';
 import { searchWeapon } from '@/best/lib/search';
 import { BestPayload, BestResult, handleBestChunk } from '@/best/worker/protocol';
-import { computeRow, prepareMonster } from '@/bulk/lib/compute';
+import { computeRow } from '@/bulk/lib/compute';
+import { prepareMonster } from '@/bulk/lib/prepareMonster';
 import { BulkMonster } from '@/bulk/types';
 import {
   BestInputs, BestStyle, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS,

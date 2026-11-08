@@ -13,7 +13,7 @@ import Potion from '@/enums/Potion';
 import { EquipmentCategory } from '@/enums/EquipmentCategory';
 import { EquipmentPiece, Player, PlayerEquipment } from '@/types/Player';
 import { spells } from '@/types/Spell';
-import { prepareMonster } from '@/bulk/lib/compute';
+import { prepareMonster } from '@/bulk/lib/prepareMonster';
 import { migrateImportable } from '@/bulk/lib/presetIO';
 import { BulkSetup } from '@/bulk/types';
 

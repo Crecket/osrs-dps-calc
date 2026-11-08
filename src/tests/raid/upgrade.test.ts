@@ -451,4 +451,65 @@ describe('dpsRater', () => {
     expect(await rateOf([setup], monster('a'))).toEqual([7]);
     expect(runs).toEqual([1]);
   });
+
+  const counting = () => {
+    const runs: { ids: string[]; opts: unknown }[] = [];
+    const deps = {
+      search: { run: async () => [], cancel: () => {} },
+      rows: {
+        run: async (setups: BulkSetup[], _: unknown, __: unknown, opts: unknown) => {
+          runs.push({ ids: setups.map((s) => s.id), opts });
+          return setups.map((st) => ({ setupId: st.id, dps: 7 } as BulkRow));
+        },
+        cancel: () => {},
+      },
+    } as never;
+    const storage = { getItem: async () => null, setItem: async <T>(_: string, v: T) => v };
+    return { runs, rateOf: (signal?: AbortSignal) => dpsRater(deps, new SearchCache(storage), signal) };
+  };
+
+  test.each([
+    ['levels', { skills: { ...playerFor().skills, ranged: 60 } }],
+    ['boosts', { boosts: { ...playerFor().boosts, ranged: 5 } }],
+    ['prayers', { prayers: [] }],
+    ['buffs', { buffs: { ...playerFor().buffs, onSlayerTask: !playerFor().buffs.onSlayerTask } }],
+  ])('a player with other %s is rated anew: an account change must not reuse the old DPS', async (_, change) => {
+    const { runs, rateOf } = counting();
+    const rate2 = rateOf();
+    const { setup } = candidate('a', 10);
+    await rate2([setup], monster('a'));
+    await rate2([{ ...setup, player: { ...setup.player, ...change } }], monster('a'));
+    expect(runs).toHaveLength(2);
+  });
+
+  test('another setup name or id with the same gear and account is the same rating', async () => {
+    const { runs, rateOf } = counting();
+    const rate2 = rateOf();
+    const { setup } = candidate('a', 10);
+    await rate2([setup], monster('a'));
+    const renamed = { ...setup.player, name: 'other', uuid: 'other' };
+    await rate2([{
+      ...setup, id: 'other', name: 'other', player: renamed,
+    }], monster('a'));
+    expect(runs).toHaveLength(1);
+  });
+
+  test('asks for DPS alone, and computes equal setups of one batch once', async () => {
+    const { runs, rateOf } = counting();
+    const { setup } = candidate('a', 10);
+    expect(await rateOf()([setup, { ...setup, id: 'twin' }], monster('a'))).toEqual([7, 7]);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].ids).toHaveLength(1);
+    expect(runs[0].opts).toEqual({ concurrent: true, only: 'dps' });
+  });
+
+  test('stops once aborted, even with every number cached', async () => {
+    const { rateOf } = counting();
+    const controller = new AbortController();
+    const rate2 = rateOf(controller.signal);
+    const { setup } = candidate('a', 10);
+    await rate2([setup], monster('a'));
+    controller.abort();
+    await expect(rate2([setup], monster('a'))).rejects.toThrow('cancelled');
+  });
 });

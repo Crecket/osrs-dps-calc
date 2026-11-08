@@ -6,7 +6,7 @@
  * and the item count. Main thread only (basePlayer imports '@/state').
  */
 import {
-  AmmoApplicability, ammoApplicability, availableEquipment, getCanonicalItemId,
+  AmmoApplicability, ammoApplicability, findEquipment, getCanonicalItemId,
 } from '@/lib/Equipment';
 import { getCombatStylesForCategory } from '@/utils';
 import { EquipmentPiece, Player } from '@/types/Player';
@@ -44,6 +44,8 @@ export interface KitInput {
   playerFor: (style: BestStyle) => Player;
   /** Items the search may use: their best off-hands are tried with every one-handed weapon */
   pool?: EquipmentPiece[];
+  /** Once aborted, planning stops with Error('cancelled') */
+  signal?: AbortSignal;
 }
 
 type Group = 'melee' | 'ranged' | 'magic';
@@ -153,7 +155,7 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
   const foundIn = new Map<number, Set<BestStyle>>();
   weapons.forEach((w) => foundIn.set(w.job.weaponId, (foundIn.get(w.job.weaponId) ?? new Set()).add(w.style)));
   [...weapons.values()].filter((w) => w.group === 'melee').forEach((w) => {
-    const weapon = availableEquipment.find((e) => e.id === w.job.weaponId);
+    const weapon = findEquipment(w.job.weaponId);
     if (!weapon) return;
     const stances = getCombatStylesForCategory(weapon.category);
     const found = foundIn.get(weapon.id)!;
@@ -170,9 +172,9 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
   });
   const groups = [...new Set([...kits.values()].map((k) => k.group))];
   // a weapon brought anyway (the spec weapon, with its ammo) is a mainhand option too, in every kit of its style
-  const requiredAmmo = required.filter((r) => availableEquipment.find((e) => e.id === r)?.slot === 'ammo');
+  const requiredAmmo = required.filter((r) => findEquipment(r)?.slot === 'ammo');
   required.forEach((weaponId) => {
-    const weapon = availableEquipment.find((e) => e.id === weaponId);
+    const weapon = findEquipment(weaponId);
     if (weapon?.slot !== 'weapon') return;
     const stances = getCombatStylesForCategory(weapon.category);
     const ammoFor = requiredAmmo.find((a) => ammoApplicability(weaponId, a) === AmmoApplicability.INCLUDED) ?? null;
@@ -209,7 +211,7 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
   // every one-handed weapon with each off-hand worth trying, or none (a slot for the Book of the Dead)
   const poolShields = (input.pool ?? []).filter((e) => e.slot === 'shield');
   const withShields = (w: Omit<Weapon, 'shieldId'>): Weapon[] => {
-    const weapon = availableEquipment.find((e) => e.id === w.job.weaponId);
+    const weapon = findEquipment(w.job.weaponId);
     if (!weapon || weapon.isTwoHanded) return [{ ...w, shieldId: null }];
     const kind = scoreKind(weapon, w.style);
     const value = (e: EquipmentPiece) => {
@@ -361,6 +363,7 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
     }
     // eslint-disable-next-line no-await-in-loop
     await yieldToBrowser();
+    if (input.signal?.aborted) throw new Error('cancelled');
   }
   const chosen = bestPlan ?? withWeapons([], true);
 

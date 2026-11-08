@@ -18,7 +18,8 @@ import {
 import {
   BestInputs, BestStyle, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS,
 } from '@/best/types';
-import { computeRow, prepareMonster } from '@/bulk/lib/compute';
+import { computeRow } from '@/bulk/lib/compute';
+import { prepareMonster } from '@/bulk/lib/prepareMonster';
 import { BulkMonster, GEAR_SLOT_ORDER } from '@/bulk/types';
 import { getTestMonster } from '@/tests/utils/TestUtils';
 import { defaultSettings } from '@/raid/lib/runRaid';

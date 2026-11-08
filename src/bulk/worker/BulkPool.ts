@@ -1,3 +1,5 @@
+import { RowPart } from '@/bulk/lib/compute';
+import { slimSetup } from '@/bulk/lib/slimSetup';
 import { BulkPayload } from '@/bulk/worker/protocol';
 import { TaskPool, WorkerLike, WorkerLimit } from '@/bulk/worker/TaskPool';
 import { BulkMonster, BulkRow, BulkSetup } from '@/bulk/types';
@@ -11,14 +13,19 @@ export interface BulkProgress {
   total: number;
 }
 
+// a chunk of partial rows is this many times as large: without kill times 25 jobs are about a millisecond of work, less
+// than sending them costs
+const PARTIAL_CHUNK_FACTOR = 4;
+
 // only send the setups and monsters that the chunk's jobs use, re-indexed
-const buildPayload = (jobs: [number, number][], setups: BulkSetup[], monsters: BulkMonster[]): BulkPayload => {
+const buildPayload = (jobs: [number, number][], setups: BulkSetup[], monsters: BulkMonster[], only?: RowPart): BulkPayload => {
   const sIx = [...new Set(jobs.map(([s]) => s))];
   const mIx = [...new Set(jobs.map(([, m]) => m))];
   return {
-    setups: sIx.map((i) => setups[i]),
+    setups: sIx.map((i) => (only ? slimSetup(setups[i]) : setups[i])),
     monsters: mIx.map((i) => monsters[i]),
     jobs: jobs.map(([s, m]) => [sIx.indexOf(s), mIx.indexOf(m)]),
+    ...(only ? { only } : {}),
   };
 };
 
@@ -40,14 +47,18 @@ export class BulkPool {
     this.pool = new TaskPool(opts);
   }
 
-  /** @param opts.concurrent keep earlier runs going and share the workers with them */
-  run(setups: BulkSetup[], monsters: BulkMonster[], onProgress: (p: BulkProgress) => void, opts: { concurrent?: boolean } = {}): Promise<BulkRow[]> {
+  /**
+   * @param opts.concurrent keep earlier runs going and share the workers with them
+   * @param opts.only compute only this part of each row
+   */
+  run(setups: BulkSetup[], monsters: BulkMonster[], onProgress: (p: BulkProgress) => void, opts: { concurrent?: boolean; only?: RowPart } = {}): Promise<BulkRow[]> {
     const jobs: [number, number][] = [];
     setups.forEach((_, s) => monsters.forEach((__, m) => jobs.push([s, m])));
 
     const payloads: BulkPayload[] = [];
-    for (let i = 0; i < jobs.length; i += this.chunkSize) {
-      payloads.push(buildPayload(jobs.slice(i, i + this.chunkSize), setups, monsters));
+    const chunkSize = opts.only ? this.chunkSize * PARTIAL_CHUNK_FACTOR : this.chunkSize;
+    for (let i = 0; i < jobs.length; i += chunkSize) {
+      payloads.push(buildPayload(jobs.slice(i, i + chunkSize), setups, monsters, opts.only));
     }
 
     return this.pool.run(payloads, ({ results, done, total }) => onProgress({ rows: results, done, total }), (p) => p.jobs.length, opts);

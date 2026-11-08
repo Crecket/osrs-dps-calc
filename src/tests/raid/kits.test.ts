@@ -260,4 +260,10 @@ describe('planKits', () => {
     }), rate);
     expect(plan.itemIds.length).toBeLessThanOrEqual(5);
   });
+
+  test('stops once aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(planKits(input({ signal: controller.signal }), rate)).rejects.toThrow('cancelled');
+  });
 });

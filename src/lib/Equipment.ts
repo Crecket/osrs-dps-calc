@@ -220,7 +220,7 @@ export const getCanonicalItemId = (itemId: number): number => {
 
 let equipmentById: Map<number, EquipmentPiece> | null = null;
 /** The item with the id, as availableEquipment.find would give it, without scanning every item */
-const findEquipment = (id: number | undefined): EquipmentPiece | undefined => {
+export const findEquipment = (id: number | undefined): EquipmentPiece | undefined => {
   if (!equipmentById) {
     const map = new Map<number, EquipmentPiece>();
     // the first item with an id wins, as find did

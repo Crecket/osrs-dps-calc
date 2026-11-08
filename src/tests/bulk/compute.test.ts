@@ -1,5 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
-import { computeRow, prepareMonster } from '@/bulk/lib/compute';
+import { computeRow } from '@/bulk/lib/compute';
+import { prepareMonster } from '@/bulk/lib/prepareMonster';
 import { BulkMonster, BulkSetup } from '@/bulk/types';
 import { Monster } from '@/types/Monster';
 import { Player } from '@/types/Player';
@@ -142,5 +143,24 @@ describe('prepareMonster', () => {
     expect(m.inputs.phase).toBe('Unshielded');
     expect(m.inputs.defenceReductions.dwh).toBe(2);
     expect(m.inputs.defenceReductions.bgs).toBe(0);
+  });
+
+  test('a partial row has the same numbers as the full row, and nothing else', () => {
+    const monster = getTestMonster('Vorkath', 'Post-quest');
+    const players = [
+      getTestPlayer(monster, { equipment: { weapon: findEquipment('Abyssal whip') } }),
+      getTestPlayer(monster, { equipment: { weapon: findEquipment('Dragon claws') } }),
+      getTestPlayer(monster, { equipment: { weapon: findEquipment('Toxic blowpipe') } }),
+    ];
+    players.forEach((player) => {
+      const full = computeRow(setup(player), entry(monster));
+      const dps = computeRow(setup(player), entry(monster), 'dps');
+      const spec = computeRow(setup(player), entry(monster), 'spec');
+      expect(dps.dps).toBe(full.dps);
+      expect(dps.ttk).toBeNull();
+      expect(dps.spec).toBeNull();
+      expect(spec.spec).toEqual(full.spec);
+      expect(spec.ttk).toBeNull();
+    });
   });
 });

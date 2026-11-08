@@ -160,4 +160,28 @@ describe('specRanking', () => {
     await specRanking([phase], [candidate], [ZCB], deps, new SearchCache(memoryStorage()));
     expect(calls.flat()).not.toContain('Zaryte crossbow');
   });
+
+  test('another account is ranked anew, asking for the spec alone', async () => {
+    const calls: string[][] = [];
+    const options: unknown[] = [];
+    const pool = rows(calls);
+    const cache = new SearchCache(memoryStorage());
+    const deps = {
+      search: { run: async () => [], cancel: () => {} },
+      rows: {
+        ...pool,
+        run: (setups: BulkSetup[], _: unknown, __: unknown, opts: unknown) => {
+          options.push(opts);
+          return pool.run(setups);
+        },
+      },
+    } as never;
+    await specRanking([phase], [candidate], [], deps, cache);
+    expect(options).toEqual([{ concurrent: true, only: 'spec' }]);
+    calls.length = 0;
+    const { player } = candidate.setup;
+    const weaker = { ...candidate, setup: { ...candidate.setup, player: { ...player, skills: { ...player.skills, ranged: 60 } } } };
+    await specRanking([phase], [weaker], [], deps, cache);
+    expect(calls.flat()).toContain('Zaryte crossbow');
+  });
 });

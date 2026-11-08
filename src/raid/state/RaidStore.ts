@@ -89,6 +89,8 @@ interface SavedResult {
   key: string;
   /** The build that made the result; missing on results saved before builds were recorded */
   build?: string;
+  /** When the prices the result was made with were fetched; missing when it was made without prices */
+  pricesAt?: number | null;
 }
 
 export class RaidStore implements AccountEditor {
@@ -98,6 +100,12 @@ export class RaidStore implements AccountEditor {
   result: RaidResult | null = null;
 
   resultKey: string | null = null;
+
+  /** When the prices the result was made with were fetched; null when it was made without prices */
+  resultPricesAt: number | null = null;
+
+  /** The same for the page's current prices; null without prices, undefined until they're known */
+  pricesAt: number | null | undefined = undefined;
 
   loaded = false;
 
@@ -137,6 +145,7 @@ export class RaidStore implements AccountEditor {
     if (savedResult && isRecord(savedResult.result) && typeof savedResult.key === 'string' && savedResult.build === BUILD_ID) {
       this.result = savedResult.result;
       this.resultKey = savedResult.key;
+      this.resultPricesAt = savedResult.pricesAt ?? null;
     } else if (savedResult) {
       // deleted, not just ignored, so it doesn't sit in storage
       this.storage.removeItem?.(RAID_RESULT_KEY).catch((e) => console.warn('[RaidStore] Could not delete an old result', e));
@@ -174,8 +183,21 @@ export class RaidStore implements AccountEditor {
   }
 
   /** The shown result was run with other settings */
-  get stale(): boolean {
+  get inputsStale(): boolean {
     return this.result !== null && this.resultKey !== this.runKey;
+  }
+
+  /** The shown result was run with other prices */
+  get pricesStale(): boolean {
+    return this.result !== null && this.pricesAt !== undefined && this.pricesAt !== this.resultPricesAt;
+  }
+
+  get stale(): boolean {
+    return this.inputsStale || this.pricesStale;
+  }
+
+  setPricesAt(at: number | null) {
+    this.pricesAt = at;
   }
 
   setRoute(stopId: string, bossId: string) {
@@ -312,16 +334,19 @@ export class RaidStore implements AccountEditor {
     this.save();
   }
 
-  setResult(result: RaidResult, key: string) {
+  setResult(result: RaidResult, key: string, pricesAt: number | null = null) {
     this.result = result;
     this.resultKey = key;
+    this.resultPricesAt = pricesAt;
     this.flushResult().catch(console.error);
   }
 
   async flushResult() {
     if (!this.canSave || !this.result || !this.resultKey) return;
     try {
-      await this.storage.setItem<SavedResult>(RAID_RESULT_KEY, { result: toJS(this.result), key: this.resultKey, build: BUILD_ID });
+      await this.storage.setItem<SavedResult>(RAID_RESULT_KEY, {
+        result: toJS(this.result), key: this.resultKey, build: BUILD_ID, pricesAt: this.resultPricesAt,
+      });
     } catch (e) {
       console.warn('[RaidStore] Could not save the result', e);
     }

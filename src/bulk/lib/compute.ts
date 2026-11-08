@@ -1,14 +1,9 @@
 /**
  * The bulk calculator's only contact point with the upstream calc engine. This file runs inside the bulk web workers,
- * so it must not import '@/state', React, or anything under src/app.
+ * so it must not import '@/state', React, anything under src/app, or '@/lib/Monsters' (a megabyte of monsters per worker).
  */
-import merge from 'lodash.mergewith';
-import { PartialDeep } from 'type-fest';
 import PlayerVsNPCCalc from '@/lib/PlayerVsNPCCalc';
 import { calculateAttackSpeed, calculateEquipmentBonusesFromGear } from '@/lib/Equipment';
-import { INITIAL_MONSTER_INPUTS } from '@/lib/Monsters';
-import { scaleMonster } from '@/lib/MonsterScaling';
-import { MONSTER_PHASES_BY_ID } from '@/lib/constants';
 import { FeatureStatus } from '@/utils';
 import { Monster } from '@/types/Monster';
 import { Player } from '@/types/Player';
@@ -24,25 +19,13 @@ export const preparePlayer = (player: Player, monster: Monster): Player => {
 };
 
 /**
- * Build a monster with inputs, applying the same defaults that the calculator's monster panel applies on selection.
+ * Part of a row, for callers that need nothing else: the kill time alone takes 30 to 700 times as long as the DPS (its
+ * hits-to-kill table grows with the monster's HP and the max hit), so a rater shouldn't wait for one it won't read.
  */
-export const prepareMonster = (base: Omit<Monster, 'inputs'>, inputs: PartialDeep<Monster['inputs']> = {}): Monster => {
-  const monster: Monster = {
-    ...base,
-    inputs: merge({}, INITIAL_MONSTER_INPUTS, inputs),
-  };
+export type RowPart = 'dps' | 'spec';
 
-  if (monster.inputs.phase === undefined) {
-    monster.inputs.phase = MONSTER_PHASES_BY_ID[base.id]?.[0];
-  }
-  if (inputs.monsterCurrentHp === undefined) {
-    monster.inputs.monsterCurrentHp = scaleMonster(monster).skills.hp;
-  }
-
-  return monster;
-};
-
-export const computeRow = (setup: BulkSetup, entry: BulkMonster): BulkRow => {
+/** @param only compute just this part; the row's other numbers stay 0 or null */
+export const computeRow = (setup: BulkSetup, entry: BulkMonster, only?: RowPart): BulkRow => {
   const row: BulkRow = {
     setupId: setup.id,
     monsterId: entry.id,
@@ -62,14 +45,16 @@ export const computeRow = (setup: BulkSetup, entry: BulkMonster): BulkRow => {
       disableMonsterScaling: monster.id === -1,
     });
 
-    const ttk = calc.getTtk();
-    row.maxHit = calc.getDistribution().getMax();
-    row.accuracy = calc.getDisplayHitChance();
-    row.dps = calc.getDps();
-    // upstream reports 0 when the setup can't deal damage; treat that as "never", like the calculator's results table
-    row.ttk = Number.isFinite(ttk) && ttk > 0 ? ttk : null;
+    if (only === undefined) {
+      const ttk = calc.getTtk();
+      row.maxHit = calc.getDistribution().getMax();
+      row.accuracy = calc.getDisplayHitChance();
+      // upstream reports 0 when the setup can't deal damage; treat that as "never", like the calculator's results table
+      row.ttk = Number.isFinite(ttk) && ttk > 0 ? ttk : null;
+    }
+    if (only !== 'spec') row.dps = calc.getDps();
 
-    const specCalc = calc.getSpecCalc();
+    const specCalc = only === 'dps' ? null : calc.getSpecCalc();
     if (specCalc) {
       row.spec = {
         maxHit: specCalc.getMax(),

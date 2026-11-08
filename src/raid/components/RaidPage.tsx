@@ -14,6 +14,7 @@ import { BestPhase } from '@/best/lib/run';
 import { TaskPool, WorkerLimit } from '@/bulk/worker/TaskPool';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import createBulkWorker from '@/bulk/worker/createBulkWorker';
+import DismissibleNote from '@/bulk/components/DismissibleNote';
 import Panel, { buttonClass } from '@/bulk/components/Panel';
 import { focusRing } from '@/best/components/fields';
 import { RaidStore, RaidStoreContext } from '@/raid/state/RaidStore';
@@ -45,6 +46,18 @@ const Bar: React.FC<{ label: string; value: number }> = ({ label, value }) => (
   </div>
 );
 
+/** Time since it appeared; left out of screen readers' status updates, which would read every second */
+const Elapsed: React.FC = () => {
+  const [start] = useState(() => Date.now());
+  const [now, setNow] = useState(start);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const seconds = Math.floor((now - start) / 1000);
+  return <span aria-hidden>{`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}</span>;
+};
+
 /** How long the inputs stay unchanged before the page checks the cache and re-plans */
 export const SETTLE_MS = 300;
 
@@ -67,6 +80,7 @@ const RaidPage: React.FC = observer(() => {
   const [error, setError] = useState<string | null>(null);
   const [stopped, setStopped] = useState(false);
   const runToken = useRef(0);
+  const planner = useRef<AbortController | null>(null);
 
   useEffect(() => {
     store.load().catch(console.error);
@@ -76,11 +90,21 @@ const RaidPage: React.FC = observer(() => {
       setPrices(p);
       setPricesState(p ? 'ok' : 'missing');
     }).catch(() => setPricesState('missing'));
+    // what the running planner found since the last save; a closing page may not finish the write
+    const saveCache = () => { cache.flush().catch(console.error); };
+    window.addEventListener('pagehide', saveCache);
     return () => {
+      window.removeEventListener('pagehide', saveCache);
+      planner.current?.abort();
+      saveCache();
       pools.search.shutdown();
       pools.rows.shutdown();
     };
   }, [store, pools, cache]);
+
+  useEffect(() => {
+    if (pricesState !== 'loading') store.setPricesAt(prices?.at ?? null);
+  }, [store, prices, pricesState]);
 
   const { runKey, blockReason } = store;
   const ready = store.loaded && cacheLoaded && pricesState !== 'loading';
@@ -103,6 +127,9 @@ const RaidPage: React.FC = observer(() => {
     runToken.current += 1;
     const token = runToken.current;
     const key = store.runKey;
+    planner.current?.abort();
+    const controller = new AbortController();
+    planner.current = controller;
     setRunning(true);
     setError(null);
     setStopped(false);
@@ -110,10 +137,15 @@ const RaidPage: React.FC = observer(() => {
     try {
       const result = await runRaid(toJS(store.settings), prices, pools, (p) => {
         if (token === runToken.current) setProgress(p);
-      }, cache);
-      if (token === runToken.current) store.setResult(result, key);
+      }, cache, undefined, controller.signal);
+      if (token === runToken.current) store.setResult(result, key, prices?.at ?? null);
     } catch (e) {
-      if (!isCancelled(e) && token === runToken.current) setError(e instanceof Error ? e.message : String(e));
+      if (!isCancelled(e) && token === runToken.current) {
+        setError(e instanceof Error ? e.message : String(e));
+        // the run has failed: what the rest of it still has running would only keep the workers busy
+        pools.search.cancel();
+        pools.rows.cancel();
+      }
     } finally {
       if (token === runToken.current) setRunning(false);
     }
@@ -129,14 +161,17 @@ const RaidPage: React.FC = observer(() => {
 
   const refreshPrices = () => {
     setPricesState('loading');
-    fetchPrices(undefined, Date.now(), 0).then((p) => {
-      setPrices(p);
-      setPricesState(p ? 'ok' : 'missing');
-    }).catch(() => setPricesState('missing'));
+    // a failed refresh keeps the prices the page has
+    const fallback = prices;
+    fetchPrices(undefined, Date.now(), 0).catch(() => null).then((p) => {
+      setPrices(p ?? fallback);
+      setPricesState(p ?? fallback ? 'ok' : 'missing');
+    });
   };
 
   const stop = () => {
     runToken.current += 1;
+    planner.current?.abort();
     pools.search.cancel();
     pools.rows.cancel();
     setRunning(false);
@@ -154,14 +189,11 @@ const RaidPage: React.FC = observer(() => {
   return (
     <RaidStoreContext.Provider value={store}>
       <div className="max-w-[1920px] mx-auto mt-4 mb-8 px-2 flex flex-col gap-3">
-        <div role="note" className="flex items-start gap-2 px-4 py-2 rounded bg-orange-100 dark:bg-orange-500/60 text-orange-500 dark:text-orange-100 text-sm border border-orange-200 dark:border-orange-400">
-          <IconAlertTriangle size={18} className="shrink-0 mt-px" aria-hidden />
-          <span>
-            <strong>Experimental:</strong>
-            {' '}
-            a rough raid loadout from solo kill times of each boss&apos;s main health bar. Check important picks in the calculator.
-          </span>
-        </div>
+        <DismissibleNote storageKey="dps-raid-note-dismissed">
+          <strong>Experimental:</strong>
+          {' '}
+          a rough raid loadout from solo kill times of each boss&apos;s main health bar. Check important picks in the calculator.
+        </DismissibleNote>
         {pricesState === 'missing' && (
           <div role="alert" className="px-4 py-2 rounded text-sm bg-orange-100 dark:bg-orange-500/40 text-orange-500 dark:text-orange-100">
             Prices unavailable — every item counts as free.
@@ -176,7 +208,7 @@ const RaidPage: React.FC = observer(() => {
           <>
             <RaidInputs />
             <AccountEditorContext.Provider value={store}>
-              <Panel title="Your account" className="min-w-0">
+              <Panel title="Your account" className="min-w-0" collapseKey="dps-raid-account-collapsed">
                 <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
                   <AccountFields />
                 </div>
@@ -195,7 +227,7 @@ const RaidPage: React.FC = observer(() => {
               ) : (
                 <>
                   <StyleToggles />
-                  {prices?.at !== undefined && (
+                  {(prices?.at !== undefined || pricesState === 'missing') && (
                     <button
                       type="button"
                       className={`text-xs underline text-gray-500 dark:text-gray-300 hover:text-orange-400 rounded ${focusRing}`}
@@ -203,7 +235,7 @@ const RaidPage: React.FC = observer(() => {
                       data-tooltip-content="New prices can change which searches the next run needs"
                       onClick={refreshPrices}
                     >
-                      {`Prices from ${new Date(prices.at).toLocaleString()} · refresh`}
+                      {prices?.at !== undefined ? `Prices from ${new Date(prices.at).toLocaleString()} · refresh` : 'Prices unavailable · try again'}
                     </button>
                   )}
                   {store.result && (
@@ -254,6 +286,8 @@ const RaidPage: React.FC = observer(() => {
                         {progress && progress.searches > 0
                           ? `${progress.search} of ${progress.searches} searches done${progress.cached > 0 ? ` (${progress.cached} cached)` : ''}${!planning && progress.phaseLabel ? ` · running ${progress.phaseLabel}` : ''}`
                           : 'Planning the loadout from the cached searches…'}
+                        {' · '}
+                        <Elapsed />
                       </span>
                       <Bar label="Searches" value={overall} />
                       <span className="text-xs text-gray-500 dark:text-gray-300">{innerLabel}</span>
@@ -270,7 +304,13 @@ const RaidPage: React.FC = observer(() => {
                   {!running && !blockReason && !error && stale && (
                     <span className="flex items-center gap-1 text-orange-500 dark:text-orange-200">
                       <IconInfoCircle size={14} aria-hidden />
-                      Inputs changed — run again.
+                      {store.inputsStale ? 'Inputs changed — run again.' : 'Prices changed — run again.'}
+                    </span>
+                  )}
+                  {!running && result && store.resultPricesAt === null && (
+                    <span className="flex items-center gap-1 text-orange-500 dark:text-orange-200">
+                      <IconAlertTriangle size={14} aria-hidden />
+                      This plan was made without prices: every item in it counted as free.
                     </span>
                   )}
                   {!running && stopped && !stale && <span>Search stopped.</span>}

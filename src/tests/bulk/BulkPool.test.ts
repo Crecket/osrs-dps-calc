@@ -3,6 +3,7 @@ import { BulkPool, WorkerLike } from '@/bulk/worker/BulkPool';
 import { handleChunk } from '@/bulk/worker/protocol';
 import { monsterFromSearch } from '@/bulk/lib/presetIO';
 import { BulkSetup } from '@/bulk/types';
+import { availableEquipment } from '@/lib/Equipment';
 import { getMonsters } from '@/lib/Monsters';
 import { createEmptyPlayer } from '@/state/PlayerStore';
 import { WORKER_JSON_REPLACER, WORKER_JSON_REVIVER } from '@/utils';
@@ -165,5 +166,46 @@ describe('BulkPool', () => {
 
     await expect(a).rejects.toThrow('cancelled');
     await expect(b).resolves.toHaveLength(2);
+  });
+
+  test('a partial run sends item ids and gets the same numbers as a full one', async () => {
+    const messages: string[] = [];
+    const pool = new BulkPool({
+      size: 1,
+      createWorker: () => {
+        const w = new FakeWorker();
+        const post = w.postMessage.bind(w);
+        w.postMessage = (m: string) => {
+          messages.push(m);
+          post(m);
+        };
+        return w;
+      },
+    });
+    const [monster] = monsters(1);
+    const dressed = (id: string, weapon: string, itemVars?: Record<string, unknown>): BulkSetup => {
+      const piece = availableEquipment.find((e) => e.name === weapon)!;
+      const player = createEmptyPlayer(id);
+      return { id, name: id, player: { ...player, equipment: { ...player.equipment, weapon: { ...piece, ...(itemVars ? { itemVars } : {}) } } } };
+    };
+    const list = [
+      dressed('whip', 'Abyssal whip'),
+      dressed('pipe', 'Toxic blowpipe', { blowpipeDartId: 11230, blowpipeDartName: 'Dragon dart' }),
+    ];
+    const full = await pool.run(list, [monster], () => {});
+    const size = messages[0].length;
+    messages.length = 0;
+    const partial = await pool.run(list, [monster], () => {}, { only: 'dps' });
+    expect(partial.map((r) => r.dps)).toEqual(full.map((r) => r.dps));
+    expect(partial.every((r) => !r.error)).toBe(true);
+    expect(messages[0].length).toBeLessThan(size);
+    expect(messages[0]).toContain('blowpipeDartId');
+  });
+
+  test('a partial run sends larger chunks', async () => {
+    const worker = new FakeWorker();
+    const pool = new BulkPool({ size: 1, chunkSize: 2, createWorker: () => worker });
+    await pool.run(setups(8), monsters(1), () => {}, { only: 'dps' });
+    expect(worker.received).toBe(1);
   });
 });

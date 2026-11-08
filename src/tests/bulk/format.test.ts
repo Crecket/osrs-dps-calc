@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import {
   addResultMessage, monsterLabel, rowsToCsv, sortSetups, spellIcon, styleLabel, summarizeInputs, weaponTooltip,
 } from '@/bulk/lib/format';
-import { prepareMonster } from '@/bulk/lib/compute';
+import { prepareMonster } from '@/bulk/lib/prepareMonster';
 import { getMonsters } from '@/lib/Monsters';
 import { createEmptyPlayer } from '@/state/PlayerStore';
 import { BulkRow, BulkSetup } from '@/bulk/types';

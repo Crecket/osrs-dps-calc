@@ -3,7 +3,7 @@ import { bestPool, WeaponJob, weaponJobs } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
 import { referenceJob, searchWeapon, styleEffects } from '@/best/lib/search';
 import { handleBestChunk } from '@/best/worker/protocol';
-import { prepareMonster } from '@/bulk/lib/compute';
+import { prepareMonster } from '@/bulk/lib/prepareMonster';
 import {
   BEST_STYLES, BestInputs, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS,
 } from '@/best/types';

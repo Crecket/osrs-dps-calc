@@ -9,7 +9,7 @@ import { getMonsters, INITIAL_MONSTER_INPUTS } from '@/lib/Monsters';
 import { fetchShortlinkData, WORKER_JSON_REPLACER, WORKER_JSON_REVIVER } from '@/utils';
 import { Monster } from '@/types/Monster';
 import { PlayerEquipment } from '@/types/Player';
-import { prepareMonster } from '@/bulk/lib/compute';
+import { prepareMonster } from '@/bulk/lib/prepareMonster';
 import { readFilters } from '@/bulk/lib/filters';
 import {
   BulkMonster, BulkPreset, BulkSetup, LegacyBulkPreset,

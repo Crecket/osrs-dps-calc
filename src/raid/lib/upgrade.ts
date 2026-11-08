@@ -7,6 +7,7 @@
 import {
   AmmoApplicability, ammoApplicability, getCanonicalItemId,
 } from '@/lib/Equipment';
+import { Monster } from '@/types/Monster';
 import { EquipmentPiece, Player } from '@/types/Player';
 import { PlayerCombatStyle } from '@/types/PlayerCombatStyle';
 import { getCombatStylesForCategory } from '@/utils';
@@ -21,7 +22,7 @@ import {
   BulkMonster, BulkSetup, GEAR_SLOT_ORDER,
 } from '@/bulk/types';
 import { Candidate, fromStored, toStored } from '@/raid/lib/candidates';
-import { SearchCache, StoredCandidate } from '@/raid/lib/searchCache';
+import { playerStatsKey, SearchCache, StoredCandidate } from '@/raid/lib/searchCache';
 import {
   mainSetup, minGainFor, orderedItems, PhasePick, RaidPlan, wearsLightbearer, yieldToBrowser,
 } from '@/raid/lib/assemble';
@@ -1011,22 +1012,40 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   };
 };
 
-const rowKey = (monster: BulkMonster, setup: BulkSetup) => `dps:${hashKey(JSON.stringify({
-  monster: monster.monster,
-  gear: GEAR_SLOT_ORDER.map((slot) => setup.player.equipment[slot]?.id ?? null),
-  dart: setup.player.equipment.weapon?.itemVars?.blowpipeDartId ?? null,
-  style: setup.player.style,
-  spell: setup.player.spell?.name ?? null,
-}))}`;
+// the same few monster objects, rated thousands of times
+const monsterJson = new WeakMap<Monster, string>();
+const monsterKey = (monster: Monster) => {
+  let json = monsterJson.get(monster);
+  if (json === undefined) {
+    json = JSON.stringify(monster);
+    monsterJson.set(monster, json);
+  }
+  return json;
+};
 
-/** DPS from the rows pool (concurrently with other runs), cached so a re-plan computes nothing again */
-export const dpsRater = (deps: BestRunDeps, cache: SearchCache): RateFn => async (setups, monster) => {
+const rowKey = (monster: BulkMonster, { player }: BulkSetup) => `dps:${hashKey([
+  monsterKey(monster.monster),
+  GEAR_SLOT_ORDER.map((slot) => player.equipment[slot]?.id ?? '').join(),
+  player.equipment.weapon?.itemVars?.blowpipeDartId ?? '',
+  playerStatsKey(player),
+].join('|'))}`;
+
+/**
+ * DPS from the rows pool (concurrently with other runs), cached so a re-plan computes nothing again.
+ * @param signal once aborted the rater throws Error('cancelled'), which also ends a planner that finds everything cached
+ */
+export const dpsRater = (deps: BestRunDeps, cache: SearchCache, signal?: AbortSignal): RateFn => async (setups, monster) => {
+  if (signal?.aborted) throw new Error('cancelled');
   const keys = setups.map((s) => rowKey(monster, s));
-  const missing = setups.filter((_, i) => cache.getSpec(keys[i]) === undefined);
-  if (missing.length > 0) {
-    const rows = await deps.rows.run(missing, [monster], () => {}, { concurrent: true });
+  // by key: equal setups of different units are computed once
+  const missing = new Map<string, BulkSetup>();
+  setups.forEach((s, i) => {
+    if (cache.getSpec(keys[i]) === undefined) missing.set(keys[i], s);
+  });
+  if (missing.size > 0) {
+    const rows = await deps.rows.run([...missing.values()], [monster], () => {}, { concurrent: true, only: 'dps' });
     const byId = new Map((rows ?? []).map((r) => [r.setupId, r.dps]));
-    missing.forEach((s) => cache.setSpec(rowKey(monster, s), byId.get(s.id) ?? 0));
+    missing.forEach((s, key) => cache.setSpec(key, byId.get(s.id) ?? 0));
   }
   return keys.map((k) => cache.getSpec(k) ?? 0);
 };

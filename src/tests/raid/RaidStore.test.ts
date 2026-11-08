@@ -152,6 +152,24 @@ describe('RaidStore', () => {
     expect(again.stale).toBe(true);
   });
 
+  test('other prices than the result\'s make it stale, also after a reload', async () => {
+    const storage = memoryStorage();
+    const store = await loaded(storage);
+    store.setResult({ plan: { totalSeconds: 1 } } as never, store.runKey, 100);
+    // not known yet: no reason to call it stale
+    expect(store.stale).toBe(false);
+    store.setPricesAt(100);
+    expect(store.stale).toBe(false);
+    store.setPricesAt(200);
+    expect(store.stale).toBe(true);
+    expect(store.inputsStale).toBe(false);
+    await store.flushResult();
+    const again = await loaded(storage);
+    expect(again.resultPricesAt).toBe(100);
+    again.setPricesAt(100);
+    expect(again.stale).toBe(false);
+  });
+
   test('a result from another build is not shown, and is deleted from storage', async () => {
     const storage = memoryStorage();
     const store = await loaded(storage);

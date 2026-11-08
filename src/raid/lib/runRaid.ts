@@ -348,7 +348,10 @@ export const searchesNeeded = (settings: RaidSettings, prices: Prices | null, ca
   return missingSearches(phases, base, tiers, cache);
 };
 
-/** Finds the raid loadout: runs the searches that aren't cached, then assembles and lays out the loadout */
+/**
+ * Finds the raid loadout: runs the searches that aren't cached, then assembles and lays out the loadout.
+ * @param signal once aborted the run rejects with Error('cancelled'), also while it plans from cached numbers alone
+ */
 export const runRaid = async (
   settings: RaidSettings,
   prices: Prices | null,
@@ -356,6 +359,7 @@ export const runRaid = async (
   onProgress: (p: RaidProgress) => void,
   cache: SearchCache,
   search: typeof runBestSetup = runBestSetup,
+  signal?: AbortSignal,
 ): Promise<RaidResult> => {
   const {
     phases, priceOf, tiers, base, pool: items,
@@ -378,7 +382,7 @@ export const runRaid = async (
     if (!players.has(style)) players.set(style, basePlayer(base, style));
     return players.get(style)!;
   };
-  const rate = dpsRater(deps, cache);
+  const rate = dpsRater(deps, cache, signal);
   // what has to be dealt: each phase, or each part of one, by the styles that can
   const units = raidUnits(phases);
   // the bosses as the team leaves them: the configured specs, whatever this player carries
@@ -410,6 +414,7 @@ export const runRaid = async (
       extraDps,
       playerFor,
       pool: kitPool,
+      signal,
     }, rate);
     let left = settings.budget - core.cost;
     // each from the money left, and at most its share of the budget: a 361m Zaryte crossbow or 89m Elder maul has no

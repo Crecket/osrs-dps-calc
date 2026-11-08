@@ -1,7 +1,8 @@
 import { describe, expect, test } from '@jest/globals';
 import { EquipmentPiece } from '@/types/Player';
 import { Monster } from '@/types/Monster';
-import { computeRow, prepareMonster } from '@/bulk/lib/compute';
+import { computeRow } from '@/bulk/lib/compute';
+import { prepareMonster } from '@/bulk/lib/prepareMonster';
 import {
   bestPool, GearSlot, styleScore, WeaponJob, weaponJobs,
 } from '@/best/lib/candidates';
