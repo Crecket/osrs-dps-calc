@@ -4,7 +4,7 @@ import { getCanonicalItemId } from '@/lib/Equipment';
 import { RaidResult } from '@/raid/lib/runRaid';
 import { Replacement } from '@/raid/lib/itemValue';
 import { Prices } from '@/raid/lib/prices';
-import { formatGp, formatTime } from '@/raid/lib/format';
+import { formatTime } from '@/raid/lib/format';
 import {
   BossImage, ItemImage, itemById, priceLabel,
 } from '@/raid/components/items';
@@ -144,7 +144,7 @@ const ItemDetails: React.FC<{
                           <span className="flex items-center justify-center"><ItemImage id={t.weaponId} size={22} /></span>
                           <span className="truncate">{itemById(t.weaponId)?.name ?? t.weaponId}</span>
                           <span className="text-right">{formatTime(t.seconds)}</span>
-                          <span className="text-right text-gray-500 dark:text-gray-300">{t.held ? 'held' : `${formatGp(t.cost)} gp`}</span>
+                          <span className="text-right text-gray-500 dark:text-gray-300">{priceText(t.weaponId)}</span>
                         </li>
                       ))}
                     </ol>
