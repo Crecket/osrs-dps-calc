@@ -339,25 +339,17 @@ export const searchWeapon = (
   const fixed: Gear = Object.fromEntries(GEAR_SLOTS.filter((slot) => !slots.includes(slot))
     .map((slot) => [slot, slot === 'ammo' ? job.ammoId : null]));
   const top = new TopResults(opts.topN);
-  const memo = new Map<string, number>();
-  const evaluate = (gear: Gear, approximate: boolean): number => {
-    const key = slots.map((slot) => gear[slot] ?? '').join(',');
-    let dps = memo.get(key);
-    if (dps === undefined) {
-      dps = evalDps(base, monster, job, gear);
-      memo.set(key, dps);
-      top.add({
-        job, gear: { ...fixed, ...gear }, dps, approximate,
-      });
-    }
-    return dps;
-  };
+  const record = (gear: Gear, dps: number, approximate: boolean) => top.add({
+    job, gear: { ...fixed, ...gear }, dps, approximate,
+  });
 
   const combinations = slots.reduce((n, slot) => n * options[slot]!.length, 1);
   if (opts.mode === 'exhaustive' && combinations <= opts.cap) {
     const counters = slots.map(() => 0);
+    // each slot's options are distinct, so no combination comes up twice
     for (let n = 0; n < combinations; n++) {
-      evaluate(Object.fromEntries(slots.map((slot, i) => [slot, options[slot]![counters[i]]])), false);
+      const gear: Gear = Object.fromEntries(slots.map((slot, i) => [slot, options[slot]![counters[i]]]));
+      record(gear, evalDps(base, monster, job, gear), false);
       // odometer step
       for (let i = 0; i < counters.length; i++) {
         counters[i] += 1;
@@ -368,9 +360,22 @@ export const searchWeapon = (
     return top.results;
   }
 
+  // descent tries the same combinations again and again
+  const memo = new Map<string, number>();
+  const evaluate = (gear: Gear): number => {
+    const key = slots.map((slot) => gear[slot] ?? '').join(',');
+    let dps = memo.get(key);
+    if (dps === undefined) {
+      dps = evalDps(base, monster, job, gear);
+      memo.set(key, dps);
+      record(gear, dps, true);
+    }
+    return dps;
+  };
+
   // coordinate descent from the strongest plain setup: per slot (and per active set) take the best move, until a full pass improves nothing
   let current = baselineFrom(job, plain);
-  let currentDps = evaluate(current, true);
+  let currentDps = evaluate(current);
   const moves: Gear[][] = [
     ...slots.map((slot) => options[slot]!.map((id) => ({ [slot]: id }))),
     ...sets.map((set) => [Object.fromEntries(Object.entries(set.pieces).map(([slot, p]) => [slot, p.id]))]),
@@ -382,7 +387,7 @@ export const searchWeapon = (
       const from = current;
       for (const move of group) {
         const gear = { ...from, ...move };
-        const dps = evaluate(gear, true);
+        const dps = evaluate(gear);
         if (dps > currentDps + EPSILON) {
           current = gear;
           currentDps = dps;
