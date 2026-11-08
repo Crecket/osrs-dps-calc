@@ -222,14 +222,20 @@ export class TaskPool<P, R> {
   private dispatch() {
     for (const pw of this.workers) {
       if (pw.chunk !== null) continue;
-      // the oldest run with payloads left
-      const run = [...this.runs.values()].find((r) => r.queue.length > 0);
+      const run = this.oldestRunWithPayloads();
       if (!run) return;
       const chunk = run.queue.shift()!;
       pw.chunk = chunk;
       run.outstanding += 1;
       pw.worker.postMessage(JSON.stringify(chunk, WORKER_JSON_REPLACER));
     }
+  }
+
+  private oldestRunWithPayloads() {
+    for (const run of this.runs.values()) {
+      if (run.queue.length > 0) return run;
+    }
+    return undefined;
   }
 
   private onResponse(pw: PoolWorker<P>, data: string) {

@@ -249,6 +249,29 @@ describe('TaskPool', () => {
     expect(await b).toEqual([9]);
   });
 
+  test('oldest run first: chunks of a later concurrent run wait until the first run has none left', async () => {
+    const order: number[] = [];
+    const pool = new TaskPool<number[], number>({
+      size: 1,
+      createWorker: () => {
+        const w = new FakeWorker();
+        const post = w.postMessage.bind(w);
+        w.postMessage = (m: string) => {
+          order.push((JSON.parse(m, WORKER_JSON_REVIVER) as TaskChunk<number[]>).runId);
+          post(m);
+        };
+        return w;
+      },
+    });
+
+    await Promise.all([
+      pool.run([[1], [2]], () => {}, undefined, { concurrent: true }),
+      pool.run([[3], [4]], () => {}, undefined, { concurrent: true }),
+    ]);
+
+    expect(order).toEqual([1, 1, 2, 2]);
+  });
+
   test('no payloads resolves immediately with [] and spawns no workers', async () => {
     let spawned = 0;
     const pool = new TaskPool<number[], number>({
