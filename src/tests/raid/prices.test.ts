@@ -54,8 +54,17 @@ describe('itemPrice', () => {
       expect(itemPrice(weapon.id, parts, new Set([weapon.id]))).toBe(0);
     });
     expect(itemPrice(availableEquipment.find((e) => e.name === 'Ferocious gloves')!.id, parts, new Set())).toBe(3e6);
-    // the Avernic defender stays free
-    expect(itemPrice(22322, parts, new Set())).toBe(0);
+  });
+
+  test('the Avernic defender costs its hilt, Ghommal\'s too, and Avernic treads (max) the treads, three boots and demon tears', () => {
+    const parts = {
+      byId: new Map([[22477, 60e6], [31088, 140e6], [13239, 16e6], [13237, 33e6], [13235, 3e6], [31111, 100]]),
+      byName: new Map([['avernic treads', 140e6]]),
+    };
+    expect(itemPrice(22322, parts, new Set())).toBe(60e6);
+    expect(itemPrice(27550, parts, new Set())).toBe(60e6);
+    expect(itemPrice(31097, parts, new Set())).toBe(140e6 + 16e6 + 33e6 + 3e6 + 12_000 * 100);
+    expect(itemPrice(31088, parts, new Set())).toBe(140e6);
   });
 
   test('an untradeable upgrade costs the item plus its upgrade: the Saradomin\'s blessed sword, Neitiznot faceguard', () => {

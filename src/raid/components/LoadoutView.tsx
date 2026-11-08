@@ -14,7 +14,7 @@ import {
   ItemImage, ItemMenu, itemById, priceLabel, useItemMenu,
 } from '@/raid/components/items';
 import { Replacement } from '@/raid/lib/itemValue';
-import ItemDetails, { worthLabel } from '@/raid/components/ItemDetails';
+import ItemDetails from '@/raid/components/ItemDetails';
 
 // the in-game equipment tab: 3 columns, 5 rows; null is a gap
 const EQUIPMENT_GRID: (WornSlot | null)[] = [
@@ -60,7 +60,7 @@ const LoadoutView: React.FC<{
       className={`${cellClass} ${replacements ? 'cursor-pointer hover:border-orange-400' : ''} ${selected === id ? 'border-orange-400' : ''}`}
       data-testid="item-cell"
       data-tooltip-id="tooltip"
-      data-tooltip-content={[`${itemById(id)?.name ?? id} — ${priceLabel(id, prices, owned)}`, worthLabel(result, id)].filter(Boolean).join(' · ')}
+      data-tooltip-content={`${itemById(id)?.name ?? id} — ${priceLabel(id, prices, owned)}`}
       onContextMenu={menu.open(id)}
       onClick={select(id)}
       aria-label={itemById(id)?.name ?? String(id)}

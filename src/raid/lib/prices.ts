@@ -126,7 +126,6 @@ const baseName = (id: number) => {
 /**
  * Untradeable items made from tradeable parts, which cost what the parts do (the osrs-price-index composites, and more).
  * Untradeable never means free when the item is made from something that isn't.
- * The Avernic defender and Avernic treads (max) are left free on purpose.
  */
 const RECIPES: Record<string, { itemId: number; qty: number }[]> = {
   'Ferocious gloves': [{ itemId: 22983, qty: 1 }], // Hydra leather
@@ -142,7 +141,15 @@ const RECIPES: Record<string, { itemId: number; qty: number }[]> = {
   "Saradomin's blessed sword": [{ itemId: 11838, qty: 1 }, { itemId: 12804, qty: 1 }], // Saradomin sword, Saradomin's tear
   'Neitiznot faceguard': [{ itemId: 10828, qty: 1 }, { itemId: 24268, qty: 1 }], // Helm of neitiznot, Basilisk jaw
   'Abyssal tentacle': [{ itemId: 4151, qty: 1 }, { itemId: 12004, qty: 1 }], // Abyssal whip, Kraken tentacle
+  // the hilt on a Dragon defender, which only costs Warriors' Guild tokens; Ghommal's are the same defender
+  'Avernic defender': [{ itemId: 22477, qty: 1 }], // Avernic defender hilt
+  "Ghommal's avernic defender 5": [{ itemId: 22477, qty: 1 }],
+  "Ghommal's avernic defender 6": [{ itemId: 22477, qty: 1 }],
   'Bonecrusher necklace': [{ itemId: 22111, qty: 1 }, { itemId: 22988, qty: 1 }], // Dragonbone necklace, Hydra tail
+  // the treads with the three boots and the 12,000 demon tears the upgrades consume (the osrs-price-index's MAX_AVERNICS)
+  'Avernic treads (max)': [
+    { itemId: 31088, qty: 1 }, { itemId: 13239, qty: 1 }, { itemId: 13237, qty: 1 }, { itemId: 13235, qty: 1 }, { itemId: 31111, qty: 12_000 },
+  ],
   // crystal gear is sung from seeds (the shards it also takes are untradeable)
   'Crystal halberd': [{ itemId: 4207, qty: 1 }], // Crystal weapon seed
   'Crystal bow': [{ itemId: 4207, qty: 1 }],
@@ -166,6 +173,9 @@ export const itemPrice = (id: number, prices: Prices | null, owned: Set<number>)
   if (byId !== undefined) return byId;
   const name = itemById(id)?.name;
   if (!name) return 0;
+  // an upgrade made from its base item and more, priced before the base item's own name would price it
+  const recipeCost = (recipe: { itemId: number; qty: number }[]) => recipe.reduce((n, part) => n + (prices.byId.get(part.itemId) ?? 0) * part.qty, 0);
+  if (RECIPES[name]) return recipeCost(RECIPES[name]);
   const base = baseName(id);
   for (const n of [...shorterNames(name), ...(base ? shorterNames(base) : [])]) {
     for (const other of versionIds(n)) {
@@ -176,5 +186,5 @@ export const itemPrice = (id: number, prices: Prices | null, owned: Set<number>)
     if (price !== undefined) return price;
   }
   const recipe = shorterNames(name).map((n) => RECIPES[n]).find(Boolean);
-  return recipe ? recipe.reduce((n, part) => n + (prices.byId.get(part.itemId) ?? 0) * part.qty, 0) : 0;
+  return recipe ? recipeCost(recipe) : 0;
 };

@@ -16,16 +16,6 @@ const WHOLE_RAID = 'raid';
 /** "+3.2s" slower, "−1.0s" faster */
 export const deltaLabel = (seconds: number) => `${seconds > 0 ? '+' : '−'}${Math.abs(seconds).toFixed(1)}s`;
 
-/** What the item saves over the raid, for its tooltip; empty when the result doesn't say */
-export const worthLabel = (result: RaidResult, id: number): string => {
-  if (!result.worths) return '';
-  const worth = result.worths[id];
-  if (!worth) return 'spec, drain or required item';
-  if (!Number.isFinite(worth.seconds)) return 'nothing else in the loadout can deal its phases';
-  const instead = worth.instead === null ? 'an empty slot' : itemById(worth.instead)?.name ?? worth.instead;
-  return `saves ${worth.seconds.toFixed(1)}s over the raid (next best: ${instead})`;
-};
-
 const rowClass = 'grid grid-cols-[1.75rem_minmax(0,1fr)_4rem_4.5rem] items-center gap-2 px-1 py-1 rounded text-xs tabular-nums';
 const bossOf = (key: string) => key.split(':')[0];
 
@@ -131,7 +121,7 @@ const ItemDetails: React.FC<{
         <ItemImage id={id} size={28} />
         <div className="grow min-w-0">
           <h3 className="text-sm font-bold truncate">{item?.name ?? id}</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-300">{[priceLabel(id, prices, owned), worthLabel(result, id)].filter(Boolean).join(' · ')}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-300">{priceLabel(id, prices, owned)}</p>
         </div>
         <button type="button" aria-label="Close" className="p-1 rounded hover:bg-body-200 dark:hover:bg-dark-400" onClick={onClose}>
           <IconX size={16} aria-hidden />

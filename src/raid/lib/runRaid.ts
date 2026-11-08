@@ -30,9 +30,7 @@ import {
 import { orderedItems, RaidPlan, THRALL_DPS } from '@/raid/lib/assemble';
 import { KitUnit, planKits } from '@/raid/lib/kits';
 import { dpsRater, upgradeLoadout } from '@/raid/lib/upgrade';
-import {
-  ItemWorth, itemReplacements, itemWorths, Replacement, WorthContext,
-} from '@/raid/lib/itemValue';
+import { itemReplacements, Replacement, WorthContext } from '@/raid/lib/itemValue';
 import {
   freeSwitchSlots, Layout, slotEfficientLayout, Supplies,
 } from '@/raid/lib/layout';
@@ -155,8 +153,6 @@ export interface RaidResult {
   tiers?: Record<string, WeaponTier[]>;
   /** The settings the run planned with; missing on results saved before it existed */
   settings?: RaidSettings;
-  /** Per item a setup wears, what the raid loses without it; missing on results saved before it existed */
-  worths?: Record<number, ItemWorth>;
 }
 
 /** A weapon the searches found for a phase, at its best setup there */
@@ -484,15 +480,10 @@ export const runRaid = async (
     return list.map((c, i) => ({ ...c, phaseKey: p.phase.key, dps: dps[i] }));
   }))).flat();
   const all = [...candidates, ...heldSetups, ...everywhere];
-  planning('Working out what each item saves');
-  const worths = await itemWorths({
-    picks: plan.picks, styles: units.map((u) => u.styles), monsters, extraDps, rate, playerFor,
-  }, plan.itemIds, heldSetups);
   const hpByKey = new Map(phases.map((p) => [p.phase.key, p.monster.monster.skills.hp]));
   return {
     build: BUILD_ID,
     settings,
-    worths,
     plan,
     layout,
     phases: phases.map((p) => ({

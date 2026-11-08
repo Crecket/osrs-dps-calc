@@ -30,6 +30,7 @@ const EXCLUDED_VERSIONS = new Set(['Uncharged', 'Inactive', 'Deadman Mode', 'Cos
 const EXCLUDED_NAME = /\(unobtainable item\)|\(beta\)|\(historical\)|\(deadman( mode)?\)/i;
 const EXCLUDED_ITEM_IDS = new Set([
   21433, // Wilderness champion amulet: +100 to every attack from a past event, not obtainable in normal play
+  30380, // Gloves of the Damned: not obtainable in the main game
   616, // Beads of the Dead: +1 to everything, never worth a slot over any real amulet
   // minigame-only ammo: Barbarian Assault's Bullet, Field, Blunt and Barbed arrow (upstream lets bows fire them)
   22227, 22228, 22229, 22230,
@@ -77,6 +78,9 @@ export const isPvpOnly = (item: EquipmentPiece): boolean => /\(bh\)/.test(item.n
  * The items the search may use: canonical items, without uncharged, inactive, broken, Deadman, cosmetic, unobtainable,
  * minigame-only, PvP-only, Leagues-only, not real, Corrupted or excluded ones.
  */
+// Avernic treads with one or two of the three boots in them: the base treads and (max) are enough, the rest is clutter
+const PARTLY_UPGRADED = /^Avernic treads \((?!max\))/;
+
 export const bestPool = (items: EquipmentPiece[] = availableEquipment): EquipmentPiece[] => items.filter((e) => getCanonicalItemId(e.id) === e.id
   && !EXCLUDED_VERSIONS.has(e.version)
   && !EXCLUDED_NAME.test(e.name)
@@ -86,6 +90,7 @@ export const bestPool = (items: EquipmentPiece[] = availableEquipment): Equipmen
   && !LEAGUES_ONLY.test(e.name)
   && !CORRUPTED.test(e.name)
   && !COSMETIC_COPIES.test(e.name)
+  && !PARTLY_UPGRADED.test(e.name)
   && !isPvpOnly(e)
   // data artefacts held in the weapon slot: greegrees, Gnomeball (-1), crates and Christmas dinner (0)
   && !(e.slot === 'weapon' && e.speed <= 1));
