@@ -4,6 +4,7 @@ import { BUILD_ID } from '@/lib/build';
 import { makeAutoObservable, toJS } from 'mobx';
 import { availableEquipment, getCanonicalItemId } from '@/lib/Equipment';
 import type { PresetStorage } from '@/bulk/state/BulkStore';
+import DebouncedWrite from '@/bulk/state/DebouncedWrite';
 import Potion from '@/enums/Potion';
 import { Prayer } from '@/enums/Prayer';
 import { PlayerSkills } from '@/types/Player';
@@ -114,9 +115,11 @@ export class RaidStore implements AccountEditor {
 
   private storage: PresetStorage;
 
+  private saver = new DebouncedWrite(() => this.write());
+
   constructor(storage: PresetStorage = localforage) {
     this.storage = storage;
-    makeAutoObservable<RaidStore, 'storage'>(this, { storage: false }, { autoBind: true });
+    makeAutoObservable<RaidStore, 'storage' | 'saver'>(this, { storage: false, saver: false }, { autoBind: true });
   }
 
   async load() {
@@ -341,7 +344,14 @@ export class RaidStore implements AccountEditor {
     this.flushResult().catch(console.error);
   }
 
+  /** Writes any unsaved settings now, for a closing page */
+  flush() {
+    this.saver.flush();
+  }
+
   async flushResult() {
+    // the result is kept with the settings it was run with: they must be saved too for it not to come back stale
+    this.flush();
     if (!this.canSave || !this.result || !this.resultKey) return;
     try {
       await this.storage.setItem<SavedResult>(RAID_RESULT_KEY, {
@@ -353,7 +363,10 @@ export class RaidStore implements AccountEditor {
   }
 
   private save() {
-    if (!this.canSave) return;
+    if (this.canSave) this.saver.schedule();
+  }
+
+  private write() {
     this.storage.setItem(RAID_STORAGE_KEY, { settings: toJS(this.settings) }).catch((e) => {
       console.error('[RaidStore] Could not save settings', e);
     });

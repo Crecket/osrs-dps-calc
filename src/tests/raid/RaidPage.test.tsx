@@ -254,6 +254,7 @@ describe('RaidPage', () => {
     const label = [...container.querySelectorAll('label')].find((l) => l.textContent?.trim() === 'Ranged')!;
     const ranged = container.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`)!;
     await change(ranged, '80');
+    window.dispatchEvent(new Event('pagehide'));
     await wait(20);
     expect((mockData.get('dps-raid-state') as { settings: RaidSettings }).settings.account.skills.ranged).toBe(80);
     expect(container.textContent).toContain('Inputs changed');
@@ -268,10 +269,10 @@ describe('RaidPage', () => {
     await change(field, '1.5b');
     expect(field.value).toBe('1.5b');
     await act(async () => field.dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
-    await wait(20);
-    expect((mockData.get('dps-raid-state') as { settings: RaidSettings }).settings.budget).toBe(1_500_000_000);
     expect(field.value).toBe('1.5b');
     await unmount();
+    await wait(20);
+    expect((mockData.get('dps-raid-state') as { settings: RaidSettings }).settings.budget).toBe(1_500_000_000);
   });
 
   test('a change never starts a run by itself, even one that needs no new search: only the button runs', async () => {

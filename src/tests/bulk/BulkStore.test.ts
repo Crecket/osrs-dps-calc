@@ -55,7 +55,7 @@ describe('BulkStore', () => {
     store.addSetups([{ id: 's1', name: 'Whip', player: createEmptyPlayer('Whip') }]);
     store.setMonster(abyssal());
     store.renameSetup('s1', 'Whip 2');
-    await new Promise((r) => { setTimeout(r, 0); });
+    await store.whenSaved();
 
     expect([...storage.data.keys()]).toEqual([STORAGE_KEY]);
     expect(saved(storage).presets[0].setups[0].name).toBe('Whip 2');
@@ -109,6 +109,47 @@ describe('BulkStore', () => {
     expect(store.warnings.join(' ')).toContain('could not be read');
   });
 
+  test('a burst of changes writes once, with the last of them, after they settle', async () => {
+    const storage = new MemoryStorage();
+    const store = new BulkStore(storage);
+    await store.load();
+    await store.whenSaved();
+    const setItem = jest.spyOn(storage, 'setItem');
+
+    store.renamePreset(store.active!.id, 'A');
+    store.renamePreset(store.active!.id, 'B');
+    expect(setItem).not.toHaveBeenCalled();
+    await new Promise((r) => { setTimeout(r, 350); });
+
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(saved(storage).presets[0].name).toBe('B');
+  });
+
+  test('flush writes a waiting change once, and the timer then has nothing left to write', async () => {
+    const storage = new MemoryStorage();
+    const store = new BulkStore(storage);
+    await store.load();
+    await store.whenSaved();
+    const setItem = jest.spyOn(storage, 'setItem');
+
+    store.renamePreset(store.active!.id, 'Flushed');
+    store.flush();
+    store.flush();
+    expect(saved(storage).presets[0].name).toBe('Flushed');
+    await new Promise((r) => { setTimeout(r, 350); });
+    expect(setItem).toHaveBeenCalledTimes(1);
+  });
+
+  test('a reload keeps a change still waiting to be written', async () => {
+    const storage = new MemoryStorage();
+    const store = new BulkStore(storage);
+    await store.load();
+    store.renamePreset(store.active!.id, 'Waiting');
+    await store.load();
+    expect(store.active?.name).toBe('Waiting');
+    expect(saved(storage).presets[0].name).toBe('Waiting');
+  });
+
   test('whenSaved tells whether the latest change was written', async () => {
     const storage = new MemoryStorage();
     const store = new BulkStore(storage);
@@ -142,7 +183,7 @@ describe('BulkStore', () => {
     const good = new BulkStore(storage);
     await good.load();
     good.renamePreset(good.activeId!, 'Good');
-    await new Promise((r) => { setTimeout(r, 0); });
+    await good.whenSaved();
     const data = saved(storage);
     data.presets.push({ id: 'bad', name: 'Broken' } as unknown as BulkPreset);
     storage.data.set(STORAGE_KEY, data);
@@ -289,6 +330,7 @@ describe('BulkStore', () => {
     expect(store.filters).toMatchObject({
       overrides: { ring: 25975 }, minDps: 5, hiddenStyles: ['magic'], showFiltered: false,
     });
+    await store.whenSaved();
     expect(saved(storage).presets[0].filters?.overrides).toEqual({ ring: 25975 });
 
     const reloaded = new BulkStore(storage);

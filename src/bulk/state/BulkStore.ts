@@ -8,6 +8,7 @@ import { loadPreset, newId } from '@/bulk/lib/presetIO';
 import { uniqueNewSetups } from '@/bulk/lib/dedupe';
 import { defaultSetups } from '@/bulk/lib/defaultSetups';
 import { hasGear } from '@/bulk/lib/calculatorLoadouts';
+import DebouncedWrite from '@/bulk/state/DebouncedWrite';
 import type { TargetHolder } from '@/bulk/state/TargetSync';
 import { DEFAULT_FILTERS } from '@/bulk/lib/filters';
 import {
@@ -45,11 +46,15 @@ export class BulkStore implements TargetHolder {
   // the latest save: true once it is written, false if it failed or saving is off
   private lastSave: Promise<boolean> = Promise.resolve(true);
 
+  private saver = new DebouncedWrite(() => this.write());
+
   constructor(storage: PresetStorage = localforage) {
     this.storage = storage;
-    makeAutoObservable<BulkStore, 'storage' | 'readFailed' | 'lastSave'>(
+    makeAutoObservable<BulkStore, 'storage' | 'readFailed' | 'lastSave' | 'saver'>(
       this,
-      { storage: false, readFailed: false, lastSave: false },
+      {
+        storage: false, readFailed: false, lastSave: false, saver: false,
+      },
       { autoBind: true },
     );
   }
@@ -76,8 +81,14 @@ export class BulkStore implements TargetHolder {
     return !this.readFailed;
   }
 
-  /** Resolves when the latest change has been written: true, or false if it couldn't be. */
+  /** Writes any unsaved change now, for a closing page */
+  flush() {
+    this.saver.flush();
+  }
+
+  /** Writes any unsaved change now, and resolves when it has been written: true, or false if it couldn't be. */
   whenSaved(): Promise<boolean> {
+    this.flush();
     return this.lastSave;
   }
 
@@ -92,6 +103,8 @@ export class BulkStore implements TargetHolder {
   }
 
   async load() {
+    // a reload (another page changed the presets) must not read over a change still waiting to be written
+    this.flush();
     let saved: SavedPresets | null = null;
     const warnings: string[] = [];
     try {
@@ -292,6 +305,10 @@ export class BulkStore implements TargetHolder {
       this.lastSave = Promise.resolve(false);
       return;
     }
+    this.saver.schedule();
+  }
+
+  private write() {
     // toJS only converts observables, so convert the observable fields rather than a plain wrapper object
     const data: SavedPresets = { presets: toJS(this.presets), activeId: this.activeId };
     this.lastSave = this.storage.setItem(STORAGE_KEY, data).then(() => true, (e) => {

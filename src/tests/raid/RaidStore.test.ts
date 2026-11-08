@@ -1,4 +1,6 @@
-import { describe, expect, test } from '@jest/globals';
+import {
+  describe, expect, jest, test,
+} from '@jest/globals';
 import { RaidStore, RAID_RESULT_KEY, RAID_STORAGE_KEY } from '@/raid/state/RaidStore';
 import tfa from '@/tests/raid/fixtures/tfaSetup.json';
 
@@ -24,6 +26,39 @@ const loaded = async (storage = memoryStorage()) => {
 };
 
 describe('RaidStore', () => {
+  test('a burst of changes writes once, with the last of them, after they settle', async () => {
+    const storage = memoryStorage();
+    const setItem = jest.spyOn(storage, 'setItem');
+    const store = await loaded(storage);
+    store.setBudget(1);
+    store.setBudget(2);
+    store.setBudget(3);
+    expect(setItem).not.toHaveBeenCalled();
+    await new Promise((r) => { setTimeout(r, 350); });
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect((await loaded(storage)).settings.budget).toBe(3);
+  });
+
+  test('flushResult also saves settings waiting to be written, so the result comes back with them', async () => {
+    const storage = memoryStorage();
+    const store = await loaded(storage);
+    store.setBudget(7);
+    await store.flushResult();
+    expect((await loaded(storage)).settings.budget).toBe(7);
+  });
+
+  test('a failed read saves nothing, also not when flushed', async () => {
+    const storage = memoryStorage();
+    storage.getItem = async () => { throw new Error('IndexedDB unavailable'); };
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const store = new RaidStore(storage);
+    await store.load();
+    warn.mockRestore();
+    store.setBudget(7);
+    store.flush();
+    expect(storage.data.size).toBe(0);
+  });
+
   test('defaults and save round trip', async () => {
     const storage = memoryStorage();
     const store = await loaded(storage);
@@ -33,6 +68,8 @@ describe('RaidStore', () => {
     expect(store.settings.magic).toBe('thralls');
     store.setBudget(4_000_000_000);
     store.setCount('bork:0', 'elderMaul', 1);
+    expect(storage.data.has(RAID_STORAGE_KEY)).toBe(false);
+    store.flush();
     expect(storage.data.has(RAID_STORAGE_KEY)).toBe(true);
     const again = await loaded(storage);
     expect(again.settings.budget).toBe(4_000_000_000);
@@ -96,6 +133,7 @@ describe('RaidStore', () => {
     store.setSkills({ ranged: 85 });
     store.setPrayerOverride('ranged', []);
     store.setConditions({ soulreaperStacks: 3 });
+    store.flush();
     const again = await loaded(storage);
     expect(again.inputs.skills.ranged).toBe(85);
     expect(again.inputs.prayerOverrides).toEqual({ ranged: [] });

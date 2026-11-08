@@ -204,8 +204,11 @@ const BulkPage: React.FC = observer(() => {
     store.load().catch(console.error);
     // another page (the best setup page) added setups: read them, so the next save here doesn't drop them
     const stopListening = onPresetsChanged(() => store.load().catch(console.error));
+    window.addEventListener('pagehide', store.flush);
     return () => {
       stopListening();
+      window.removeEventListener('pagehide', store.flush);
+      store.flush();
       pool.shutdown();
     };
   }, [store, pool]);

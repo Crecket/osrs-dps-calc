@@ -90,13 +90,16 @@ const RaidPage: React.FC = observer(() => {
       setPrices(p);
       setPricesState(p ? 'ok' : 'missing');
     }).catch(() => setPricesState('missing'));
-    // what the running planner found since the last save; a closing page may not finish the write
-    const saveCache = () => { cache.flush().catch(console.error); };
-    window.addEventListener('pagehide', saveCache);
+    // unsaved settings and what the running planner found since the last save; a closing page may not finish the write
+    const saveAll = () => {
+      store.flush();
+      cache.flush().catch(console.error);
+    };
+    window.addEventListener('pagehide', saveAll);
     return () => {
-      window.removeEventListener('pagehide', saveCache);
+      window.removeEventListener('pagehide', saveAll);
       planner.current?.abort();
-      saveCache();
+      saveAll();
       pools.search.shutdown();
       pools.rows.shutdown();
     };
