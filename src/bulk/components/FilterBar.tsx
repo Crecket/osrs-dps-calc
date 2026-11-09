@@ -3,7 +3,7 @@ import React, {
 } from 'react';
 import { observer } from 'mobx-react-lite';
 import {
-  IconEye, IconEyeOff, IconPlus, IconX,
+  IconEye, IconEyeOff, IconMinus, IconPlus, IconX,
 } from '@tabler/icons-react';
 import EquipmentSearch from '@/bulk/components/EquipmentSearch';
 import { availableEquipment } from '@/lib/Equipment';
@@ -12,7 +12,7 @@ import Potion from '@/enums/Potion';
 import BuffItem from '@/app/components/player/buffs/BuffItem';
 import { EquipmentPiece, PlayerEquipment } from '@/types/Player';
 import { useBulkStore } from '@/bulk/state/BulkStore';
-import { STYLE_GROUPS, styleLabel } from '@/bulk/lib/filters';
+import { STYLE_GROUPS, styleLabel, toggleLeftOut } from '@/bulk/lib/filters';
 import { BulkFilters, GEAR_SLOT_ORDER } from '@/bulk/types';
 import { inputClass } from '@/bulk/components/Panel';
 import head from '@/public/img/slots/head.png';
@@ -79,13 +79,17 @@ const GRID_ROWS: { slots: (keyof PlayerEquipment)[]; gap: string }[] = [
 ];
 
 /**
- * The calculator's equipment grid, for choosing a slot: overridden slots show their item, the weapon can't be picked.
+ * The calculator's equipment grid, for choosing slots: overridden slots show their item, the weapon can't be picked.
  */
 const SlotGrid: React.FC<{
   overrides: BulkFilters['overrides'];
-  selected: keyof PlayerEquipment | null;
+  isSelected: (slot: keyof PlayerEquipment) => boolean;
+  // what picking a slot without an override does
+  action: string;
   onSelect: (slot: keyof PlayerEquipment) => void;
-}> = ({ overrides, selected, onSelect }) => (
+}> = ({
+  overrides, isSelected, action, onSelect,
+}) => (
   <div className="flex flex-col gap-1">
     {GRID_ROWS.map(({ slots, gap }) => (
       <div key={slots.join()} className={`flex justify-center ${gap}`}>
@@ -93,7 +97,8 @@ const SlotGrid: React.FC<{
           const overridden = slot in overrides;
           const id = overrides[slot];
           const item = id == null ? null : availableEquipment.find((e) => e.id === id);
-          let tooltip = `Override ${slot}`;
+          const selected = isSelected(slot);
+          let tooltip = `${action} ${slot}`;
           if (slot === 'weapon') tooltip = 'The weapon can\'t be overridden';
           else if (overridden) tooltip = item ? item.name : `No ${slot}`;
           return (
@@ -102,11 +107,11 @@ const SlotGrid: React.FC<{
               type="button"
               disabled={slot === 'weapon'}
               aria-label={`${slot} slot`}
-              aria-pressed={selected === slot}
+              aria-pressed={selected}
               data-tooltip-id="tooltip"
               data-tooltip-content={tooltip}
               className={`flex justify-center items-center h-[40px] w-[40px] rounded transition-colors bg-body-100 dark:bg-dark-400 disabled:opacity-30 disabled:cursor-not-allowed ${
-                selected === slot || overridden ? 'border-2 border-orange-400' : 'border border-body-300 dark:border-dark-400 hover:border-orange-400'
+                selected || overridden ? 'border-2 border-orange-400' : 'border border-body-300 dark:border-dark-400 hover:border-orange-400'
               }`}
               onClick={() => onSelect(slot)}
             >
@@ -139,7 +144,7 @@ const OverridePicker: React.FC<{
   return (
     <div ref={ref} className="absolute z-20 top-full left-0 mt-1 p-3 w-80 rounded shadow-xl bg-tile dark:bg-dark-300 border border-body-300 dark:border-dark-200 text-black dark:text-white">
       <p className="text-xs mb-2 text-gray-500 dark:text-gray-300">Pick a slot to override in every setup:</p>
-      <SlotGrid overrides={overrides} selected={slot} onSelect={setSlot} />
+      <SlotGrid overrides={overrides} isSelected={(s) => s === slot} action="Override" onSelect={setSlot} />
       {slot && (
         <div className="mt-2 flex flex-col gap-1.5">
           {/* keyed by slot, so switching slots starts a fresh search */}
@@ -147,6 +152,45 @@ const OverridePicker: React.FC<{
           <button type="button" className="self-start text-xs underline text-gray-500 dark:text-gray-300 hover:text-orange-300" onClick={() => onPick(slot, null)}>
             {`Or leave the ${slot} slot empty`}
           </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Leaves slots out of every setup, e.g. the ring slot to compare setups without their rings: several at a time, so this
+ * stays open until a click elsewhere.
+ */
+const LeaveOutSlots: React.FC<{
+  overrides: BulkFilters['overrides'];
+  onChange: (overrides: BulkFilters['overrides']) => void;
+}> = ({ overrides, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useCloseOnOutsideClick(ref, close);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        className="flex items-center gap-0.5 h-8 px-2 rounded border border-dashed border-body-400 dark:border-dark-200 hover:border-orange-400 text-xs"
+        onClick={() => setOpen(!open)}
+      >
+        <IconMinus size={14} />
+        Leave out slots
+      </button>
+      {open && (
+        <div className="absolute z-20 top-full left-0 mt-1 p-3 w-60 rounded shadow-xl bg-tile dark:bg-dark-300 border border-body-300 dark:border-dark-200 text-black dark:text-white">
+          <p className="text-xs mb-2 text-gray-500 dark:text-gray-300">Pick the slots to compare every setup without:</p>
+          <SlotGrid
+            overrides={overrides}
+            isSelected={(slot) => overrides[slot] === null}
+            action="Leave out"
+            onSelect={(slot) => onChange(toggleLeftOut(overrides, slot))}
+          />
         </div>
       )}
     </div>
@@ -250,7 +294,8 @@ const PotionOverride: React.FC = observer(() => {
 });
 
 /**
- * Quick filters for the results: slot overrides (recalculated for every setup), attack styles and a minimum DPS.
+ * Quick filters for the results: slot overrides and left out slots (recalculated for every setup), attack styles and a
+ * minimum DPS.
  */
 // filteredCount: how many results the filters (and override duplicates) take out, shown on the eye
 const FilterBar: React.FC<{ filteredCount: number }> = observer(({ filteredCount }) => {
@@ -352,6 +397,8 @@ const FilterBar: React.FC<{ filteredCount: number }> = observer(({ filteredCount
           />
         )}
       </div>
+
+      <LeaveOutSlots overrides={filters.overrides} onChange={(next) => store.setFilters({ overrides: next })} />
 
       <PotionOverride />
     </div>

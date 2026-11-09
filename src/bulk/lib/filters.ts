@@ -65,6 +65,17 @@ export const overriddenSlots = (player: Player, overrides: BulkFilters['override
 );
 
 /**
+ * Leaves a slot out of every setup (an override to an empty slot), or puts it back. A slot overridden with an item is left
+ * out instead.
+ */
+export const toggleLeftOut = (overrides: BulkFilters['overrides'], slot: keyof PlayerEquipment): BulkFilters['overrides'] => {
+  const next = { ...overrides };
+  if (next[slot] === null) delete next[slot];
+  else next[slot] = null;
+  return next;
+};
+
+/**
  * Boosts for a set of potions, the way the calculator computes them: each skill gets the highest boost of any potion.
  */
 export const potionBoosts = (potions: Potion[], skills: PlayerSkills): Player['boosts'] => {
