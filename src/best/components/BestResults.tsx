@@ -11,6 +11,7 @@ import { BestStore } from '@/best/state/BestStore';
 import { BestPhase, runBestSetup, StyleOutcome } from '@/best/lib/run';
 import { BestPayload, BestResult } from '@/best/worker/protocol';
 import { ResultCache } from '@/best/lib/resultCache';
+import { Elapsed, Remaining } from '@/bulk/components/RunTimer';
 import { TaskPool } from '@/bulk/worker/TaskPool';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import { defaultSort, SortState } from '@/bulk/lib/table';
@@ -75,7 +76,7 @@ const StatusLine: React.FC<React.PropsWithChildren<{ tone: 'info' | 'warn' | 'er
   return (
     <div className={`px-4 py-1.5 flex items-center gap-2 text-sm border-b border-body-300 dark:border-dark-200 ${colours}`} role="status">
       <span className="shrink-0" aria-hidden>{icon}</span>
-      <span className="min-w-0">{children}</span>
+      <span className="min-w-0 grow">{children}</span>
     </div>
   );
 };
@@ -88,9 +89,12 @@ const Intro: React.FC<{ hasMonster: boolean }> = ({ hasMonster }) => (
 );
 
 const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ store, pools }) => {
-  const [outcomes, setOutcomes] = useState<StyleOutcome[]>([]);
+  // the page renders this once the store has loaded, so the last visit's result is there; it never starts a search
+  const [outcomes, setOutcomes] = useState<StyleOutcome[]>(() => toJS(store.lastResult?.outcomes) ?? []);
   // the runKey the shown results were searched with; results go stale when the inputs or the monster change
-  const [resultKey, setResultKey] = useState<string | null>(null);
+  const [resultKey, setResultKey] = useState<string | null>(() => store.lastResult?.key ?? null);
+  // the shown results are the descent's, not yet improved by the exhaustive search
+  const [provisional, setProvisional] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number; phase: BestPhase | null } | null>(null);
   const [running, setRunning] = useState(false);
   const [stopped, setStopped] = useState(false);
@@ -98,13 +102,18 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
   const [sort, setSort] = useState<SortState>(defaultSort('normal'));
   const runToken = useRef(0);
   // finished searches of this visit, so going back to inputs searched before shows their results without a new search
-  const [cache] = useState(() => new ResultCache<StyleOutcome[]>());
+  const [cache] = useState(() => {
+    const finished = new ResultCache<StyleOutcome[]>();
+    if (store.lastResult) finished.set(store.lastResult.key, toJS(store.lastResult.outcomes));
+    return finished;
+  });
 
   const showCached = useCallback((runKey: string) => {
     const cached = cache.get(runKey);
     if (!cached) return false;
     setOutcomes(cached);
     setResultKey(runKey);
+    setProvisional(false);
     setError(null);
     setStopped(false);
     return true;
@@ -119,17 +128,27 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
     const token = runToken.current;
     setStopped(false);
     setError(null);
+    setProvisional(false);
     setRunning(true);
     setProgress({ done: 0, total: 0, phase: null });
     try {
       // a newer call cancels this one itself
       const result = await runBestSetup(toJS(store.inputs), toJS(monster), pools, (done, total, phase) => {
         if (token === runToken.current) setProgress({ done, total, phase });
+      }, {
+        onDescent: (early) => {
+          if (token !== runToken.current) return;
+          setOutcomes(early);
+          setResultKey(runKey);
+          setProvisional(true);
+        },
       });
       cache.set(runKey, result);
+      store.setResult(result, runKey).catch(console.error);
       if (token === runToken.current) {
         setOutcomes(result);
         setResultKey(runKey);
+        setProvisional(false);
       }
     } catch (e) {
       if (!isCancelled(e) && token === runToken.current) setError(e instanceof Error ? e.message : String(e));
@@ -175,8 +194,18 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
   if (running) {
     status = (
       <StatusLine tone="info" icon={<IconSearch size={16} className="animate-pulse" />}>
-        <span>{progress?.phase ? PHASE_LABELS[progress.phase] : 'Starting the search'}</span>
-        <span className="ml-2 tabular-nums font-semibold">{`${Math.round(pct)}%`}</span>
+        <span className="flex justify-between gap-4">
+          <span>
+            <span>{progress?.phase ? PHASE_LABELS[progress.phase] : 'Starting the search'}</span>
+            <span className="ml-2 tabular-nums font-semibold">{`${Math.round(pct)}%`}</span>
+            {provisional && <span className="ml-2">The results below can still improve.</span>}
+          </span>
+          <span className="flex gap-3 shrink-0">
+            {/* the last phase is what takes long, and its jobs are alike; the earlier ones don't predict it */}
+            {progress?.phase === 'exhaustive' && <Remaining key="exhaustive" done={progress.done} total={progress.total} />}
+            <Elapsed />
+          </span>
+        </span>
       </StatusLine>
     );
   } else if (error) {
@@ -194,7 +223,8 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
   } else if (stopped) {
     status = (
       <StatusLine tone="info" icon={<IconPlayerStop size={16} />}>
-        {outcomes.length > 0 ? 'Search stopped. These are the results of the last finished search.' : 'Search stopped. Click Find best setup to search again.'}
+        {outcomes.length === 0 && 'Search stopped. Click Find best setup to search again.'}
+        {outcomes.length > 0 && (provisional ? 'Search stopped early: these results could have improved.' : 'Search stopped. These are the results of the last finished search.')}
       </StatusLine>
     );
   }
@@ -243,7 +273,7 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
         <p className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-300">Searching... the results appear here when it finishes.</p>
       )}
       {outcomes.length > 0 && (
-        <div className={`transition-opacity ${stale || running ? 'opacity-60' : ''}`}>
+        <div className={`transition-opacity ${stale || (running && !provisional) ? 'opacity-60' : ''}`}>
           {outcomes.length > 1 && <StyleSummary outcomes={outcomes} />}
           <p className="px-4 pt-2 pb-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-300">
             <IconClick size={14} aria-hidden />

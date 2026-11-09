@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 import v8 from 'node:v8';
-import { BEST_STORAGE_KEY, BestStore } from '@/best/state/BestStore';
+import { BEST_RESULT_KEY, BEST_STORAGE_KEY, BestStore } from '@/best/state/BestStore';
 import type { PresetStorage } from '@/bulk/state/BulkStore';
 import { monsterFromSearch } from '@/bulk/lib/presetIO';
 import { getMonsters } from '@/lib/Monsters';
@@ -23,6 +23,10 @@ class MemoryStorage implements PresetStorage {
   async setItem<T>(key: string, value: T): Promise<T> {
     this.data.set(key, v8.deserialize(v8.serialize(value)));
     return value;
+  }
+
+  async removeItem(key: string) {
+    this.data.delete(key);
   }
 }
 
@@ -332,5 +336,22 @@ describe('BestStore', () => {
       expect(store.inputs.topN).toBe(8);
       expect(store.monster?.monster.id).toBe(415);
     });
+  });
+
+  test('the last result survives a reload, unless it is from another build', async () => {
+    const storage = new MemoryStorage();
+    const store = new BestStore(storage);
+    await store.load();
+    await store.setResult([{ style: 'slash' }] as never, 'key');
+    const again = new BestStore(storage);
+    await again.load();
+    expect(again.lastResult?.key).toBe('key');
+    expect(again.lastResult?.outcomes).toHaveLength(1);
+
+    await storage.setItem(BEST_RESULT_KEY, { outcomes: [], key: 'key', build: 'older' });
+    const later = new BestStore(storage);
+    await later.load();
+    expect(later.lastResult).toBeNull();
+    expect(await storage.getItem(BEST_RESULT_KEY)).toBeNull();
   });
 });

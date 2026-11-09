@@ -180,6 +180,8 @@ export const runBestSetup = async (
   onProgress: (done: number, total: number, phase: BestPhase) => void,
   opts: {
     topK?: number; cap?: number; concurrent?: boolean; runnersUp?: number;
+    /** Called once the descent has found each top weapon's setups, before the exhaustive search improves them */
+    onDescent?: (outcomes: StyleOutcome[]) => void;
   } = {},
 ): Promise<StyleOutcome[]> => {
   // a concurrent run leaves other runs alone and shares the pools' workers with them; it ends only by the pools'
@@ -252,6 +254,8 @@ export const runBestSetup = async (
     const variants: Record<number, number[]>[] = [];
     // per style, the next weapons' best descent results
     const runners: SearchResult[][] = [];
+    // per style, what the descent found of the top weapons
+    const descentTop: SearchResult[][] = [];
     const topJobs = plans.map((plan, i) => {
       const results = descentResults.slice(at, at + descentChunks[i].length)
         .flatMap((r) => (r.kind === 'search' ? r.results : []));
@@ -272,22 +276,12 @@ export const runBestSetup = async (
         if (!kept || r.dps > kept.dps) bestOfWeapon.set(r.job.weaponId, r);
       });
       runners[i] = [...bestOfWeapon.values()].sort((a, b) => b.dps - a.dps).slice(0, opts.runnersUp ?? 0);
+      const topKeys = new Set(top.map(jobKey));
+      descentTop[i] = results.filter((r) => topKeys.has(jobKey(r.job)));
       return top;
     });
-    // jobs with no damage skip phase 2
-    total = done + topJobs.reduce((n, jobs) => n + jobs.length, 0);
 
-    // phase 2: exhaustive over the top weapons' top jobs, each with its own full activity test: the shared effects come from another weapon and can miss what matters for this one (an effect that needs the weapon to hurt the monster)
-    const exhaustiveResults = await searchRun(plans.flatMap((plan, i) => topJobs[i].map((job): BestPayload => ({
-      kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap, excluded,
-    }))), 'exhaustive');
-    // phase 2 may have been empty
-    onProgress(done, total, 'exhaustive');
-    at = 0;
-    const picked: SearchResult[][] = plans.map((_, i) => {
-      const results = exhaustiveResults.slice(at, at + topJobs[i].length)
-        .flatMap((r) => (r.kind === 'search' ? r.results : []));
-      at += topJobs[i].length;
+    const pickResults = (results: SearchResult[]) => {
       const seen = new Set<string>();
       // up to topN per weapon, so the page can show each weapon's best with its runners-up
       const perWeapon = new Map<number, number>();
@@ -301,42 +295,64 @@ export const runBestSetup = async (
           perWeapon.set(r.job.weaponId, count + 1);
           return true;
         });
-    });
+    };
 
-    const setups = plans.map((plan, i) => picked[i].map((r, n): BulkSetup => ({
-      id: `best-${plan.style}-${n}`,
-      name: setupName(r.job, variants[i][r.job.weaponId]),
-      player: buildPlayer(plan.base, r.job, r.gear),
-    })));
-    const rows = await deps.rows.run(setups.flat(), [monster], () => {}, poolOpts);
-    check();
-    const rowById = new Map(rows.map((r) => [r.setupId, r]));
+    /** The picked results as setups with their numbers from computeRow */
+    const outcomesOf = async (picked: SearchResult[][]): Promise<StyleOutcome[]> => {
+      const setups = plans.map((plan, i) => picked[i].map((r, n): BulkSetup => ({
+        id: `best-${plan.style}-${n}`,
+        name: setupName(r.job, variants[i][r.job.weaponId]),
+        player: buildPlayer(plan.base, r.job, r.gear),
+      })));
+      const rows = await deps.rows.run(setups.flat(), [monster], () => {}, poolOpts);
+      check();
+      const rowById = new Map(rows.map((r) => [r.setupId, r]));
 
-    return plans.map((plan, i): StyleOutcome => {
-      // the search's DPS should match computeRow; sort by the shown numbers anyway, and number the setups in that order
-      const pairs = setups[i].map((setup) => ({ setup, row: rowById.get(setup.id)! }))
-        .sort((a, b) => b.row.dps - a.row.dps)
-        .map(({ setup, row }, n) => {
-          const id = `best-${plan.style}-${n}`;
-          return { setup: { ...setup, id }, row: { ...row, setupId: id } };
-        });
-      return {
-        style: plan.style,
-        setups: pairs.map((p) => p.setup),
-        rows: pairs.map((p) => p.row),
-        approximate: picked[i].some((r) => r.approximate),
-        message: pairs.length === 0 ? `No usable ${plan.style} setup found` : null,
-        variants: variants[i],
-        runnersUp: runners[i].map((r, n) => ({
-          setup: {
-            id: `best-${plan.style}-next-${n}`,
-            name: setupName(r.job, variants[i][r.job.weaponId]),
-            player: buildPlayer(plan.base, r.job, r.gear),
-          },
-          dps: r.dps,
-        })),
-      };
+      return plans.map((plan, i): StyleOutcome => {
+        // the search's DPS should match computeRow; sort by the shown numbers anyway, and number the setups in that order
+        const pairs = setups[i].map((setup) => ({ setup, row: rowById.get(setup.id)! }))
+          .sort((a, b) => b.row.dps - a.row.dps)
+          .map(({ setup, row }, n) => {
+            const id = `best-${plan.style}-${n}`;
+            return { setup: { ...setup, id }, row: { ...row, setupId: id } };
+          });
+        return {
+          style: plan.style,
+          setups: pairs.map((p) => p.setup),
+          rows: pairs.map((p) => p.row),
+          approximate: picked[i].some((r) => r.approximate),
+          message: pairs.length === 0 ? `No usable ${plan.style} setup found` : null,
+          variants: variants[i],
+          runnersUp: runners[i].map((r, n) => ({
+            setup: {
+              id: `best-${plan.style}-next-${n}`,
+              name: setupName(r.job, variants[i][r.job.weaponId]),
+              player: buildPlayer(plan.base, r.job, r.gear),
+            },
+            dps: r.dps,
+          })),
+        };
+      });
+    };
+
+    if (opts.onDescent) opts.onDescent(await outcomesOf(descentTop.map(pickResults)));
+    // jobs with no damage skip phase 2
+    total = done + topJobs.reduce((n, jobs) => n + jobs.length, 0);
+
+    // phase 2: exhaustive over the top weapons' top jobs, each with its own full activity test: the shared effects come from another weapon and can miss what matters for this one (an effect that needs the weapon to hurt the monster)
+    const exhaustiveResults = await searchRun(plans.flatMap((plan, i) => topJobs[i].map((job): BestPayload => ({
+      kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap, excluded,
+    }))), 'exhaustive');
+    // phase 2 may have been empty
+    onProgress(done, total, 'exhaustive');
+    at = 0;
+    const picked = plans.map((_, i) => {
+      const results = exhaustiveResults.slice(at, at + topJobs[i].length)
+        .flatMap((r) => (r.kind === 'search' ? r.results : []));
+      at += topJobs[i].length;
+      return pickResults(results);
     });
+    return await outcomesOf(picked);
   } finally {
     if (!concurrent && token === currentRun) runningDeps = null;
   }

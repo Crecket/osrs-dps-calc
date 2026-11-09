@@ -14,6 +14,7 @@ import { BestPhase } from '@/best/lib/run';
 import { TaskPool, WorkerLimit } from '@/bulk/worker/TaskPool';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import createBulkWorker from '@/bulk/worker/createBulkWorker';
+import { Elapsed, Remaining } from '@/bulk/components/RunTimer';
 import DismissibleNote from '@/bulk/components/DismissibleNote';
 import Panel, { buttonClass } from '@/bulk/components/Panel';
 import { focusRing } from '@/best/components/fields';
@@ -45,18 +46,6 @@ const Bar: React.FC<{ label: string; value: number }> = ({ label, value }) => (
     <div className="h-full bg-orange-400 dark:bg-orange-600 transition-all" style={{ width: `${value}%` }} />
   </div>
 );
-
-/** Time since it appeared, in even-width digits so it holds still; left out of screen readers' status updates, which would read every second */
-const Elapsed: React.FC = () => {
-  const [start] = useState(() => Date.now());
-  const [now, setNow] = useState(start);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  const seconds = Math.floor((now - start) / 1000);
-  return <span aria-hidden className="shrink-0 tabular-nums">{`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}</span>;
-};
 
 /** How long the inputs stay unchanged before the page checks the cache and re-plans */
 export const SETTLE_MS = 300;
@@ -294,7 +283,10 @@ const RaidPage: React.FC = observer(() => {
                             ? `${progress.search} of ${progress.searches} searches done${progress.cached > 0 ? ` (${progress.cached} cached)` : ''}${!planning && progress.phaseLabel ? ` · running ${progress.phaseLabel}` : ''}`
                             : 'Planning the loadout from the cached searches…'}
                         </span>
-                        <Elapsed />
+                        <span className="flex gap-3 shrink-0">
+                          {progress && progress.searches > 0 && !planning && <Remaining key="searches" done={progress.search} total={progress.searches} label="of searches left" />}
+                          <Elapsed />
+                        </span>
                       </div>
                       <Bar label="Searches" value={overall} />
                       <span className="text-xs text-gray-500 dark:text-gray-300">{innerLabel}</span>

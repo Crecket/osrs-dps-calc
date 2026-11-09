@@ -29,9 +29,10 @@ jest.mock('localforage', () => ({
 }));
 
 type Progress = (done: number, total: number, phase: string) => void;
-const mockRun = jest.fn<(inputs: BestInputs, onProgress: Progress) => Promise<StyleOutcome[]>>();
+type RunOpts = { onDescent?: (outcomes: StyleOutcome[]) => void };
+const mockRun = jest.fn<(inputs: BestInputs, onProgress: Progress, opts?: RunOpts) => Promise<StyleOutcome[]>>();
 jest.mock('@/best/lib/run', () => ({
-  runBestSetup: (inputs: BestInputs, _monster: unknown, _deps: unknown, onProgress: Progress) => mockRun(inputs, onProgress),
+  runBestSetup: (inputs: BestInputs, _monster: unknown, _deps: unknown, onProgress: Progress, opts?: RunOpts) => mockRun(inputs, onProgress, opts),
 }));
 
 const mockToast = { success: jest.fn(), info: jest.fn(), error: jest.fn() };
@@ -193,6 +194,41 @@ describe('BestPage', () => {
     await act(async () => find(container).click());
     await wait(10);
     expect(mockRun).toHaveBeenCalledTimes(2);
+    await unmount();
+  });
+
+  test('the last result comes back after a reload without a search, and the button doesn\'t search it again', async () => {
+    mockRun.mockResolvedValue([outcome('First', 7.5)]);
+    const first = await mount();
+    await act(async () => find(first.container).click());
+    await wait(10);
+    await first.unmount();
+    mockRun.mockClear();
+
+    const { container, unmount } = await mount();
+    await wait(10);
+    expect(container.textContent).toContain('7.500');
+    expect(container.textContent).not.toContain('Inputs changed since this search');
+    await act(async () => find(container).click());
+    await wait(10);
+    expect(mockRun).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  test('shows the descent\'s results while the search goes on, and says so when stopped there', async () => {
+    let early: RunOpts['onDescent'];
+    mockRun.mockImplementation((_i, _p, opts) => {
+      early = opts?.onDescent;
+      return new Promise(() => {});
+    });
+    const { container, unmount } = await mount();
+    await act(async () => find(container).click());
+    await wait(10);
+    await act(async () => early!([outcome('Early', 6.5)]));
+    expect(container.textContent).toContain('6.500');
+    expect(container.textContent).toContain('can still improve');
+    await act(async () => button(container, 'Stop')!.click());
+    expect(container.textContent).toContain('Search stopped early');
     await unmount();
   });
 

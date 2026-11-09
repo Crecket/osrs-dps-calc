@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import localforage from 'localforage';
 import { makeAutoObservable, toJS } from 'mobx';
+import { BUILD_ID } from '@/lib/build';
 import Potion from '@/enums/Potion';
 import { Prayer } from '@/enums/Prayer';
 import { PlayerSkills } from '@/types/Player';
@@ -13,8 +14,17 @@ import { defaultAccount, readAccount } from '@/best/lib/account';
 import { BulkMonster } from '@/bulk/types';
 import type { PresetStorage } from '@/bulk/state/BulkStore';
 import type { TargetHolder } from '@/bulk/state/TargetSync';
+import type { StyleOutcome } from '@/best/lib/run';
 
 export const BEST_STORAGE_KEY = 'dps-best-state';
+export const BEST_RESULT_KEY = 'dps-best-result';
+
+export interface BestSavedResult {
+  outcomes: StyleOutcome[];
+  /** The runKey it was searched with */
+  key: string;
+  build?: string;
+}
 
 interface SavedBest {
   inputs: BestInputs;
@@ -74,6 +84,9 @@ export class BestStore implements TargetHolder {
 
   loaded = false;
 
+  /** The last finished search, from the last visit too, while it's from this build */
+  lastResult: BestSavedResult | null = null;
+
   private storage: PresetStorage;
 
   // set when saved state couldn't be read, so we never overwrite it with defaults; the page warns about it
@@ -93,16 +106,38 @@ export class BestStore implements TargetHolder {
       console.warn('[BestStore] Could not read saved state', e);
       failed = true;
     }
-    this.apply(saved, failed);
+    let savedResult: BestSavedResult | null = null;
+    try {
+      savedResult = await this.storage.getItem<BestSavedResult>(BEST_RESULT_KEY);
+    } catch (e) {
+      console.warn('[BestStore] Could not read the last result', e);
+    }
+    this.apply(saved, failed, savedResult);
   }
 
   // an action, so the page's banner sees readFailed change together with loaded
-  private apply(saved: unknown, readFailed: boolean) {
+  private apply(saved: unknown, readFailed: boolean, savedResult: BestSavedResult | null = null) {
     this.readFailed = readFailed;
     const { inputs, monster } = readSaved(saved);
     this.inputs = inputs;
     this.monster = monster;
+    // from another build the search or the engine may have changed; deleted, not just ignored, so it doesn't sit in storage
+    if (savedResult && Array.isArray(savedResult.outcomes) && typeof savedResult.key === 'string' && savedResult.build === BUILD_ID) {
+      this.lastResult = savedResult;
+    } else if (savedResult) {
+      this.storage.removeItem?.(BEST_RESULT_KEY).catch((e) => console.warn('[BestStore] Could not delete an old result', e));
+    }
     this.loaded = true;
+  }
+
+  async setResult(outcomes: StyleOutcome[], key: string) {
+    this.lastResult = { outcomes, key, build: BUILD_ID };
+    if (!this.canSave) return;
+    try {
+      await this.storage.setItem<BestSavedResult>(BEST_RESULT_KEY, toJS(this.lastResult));
+    } catch (e) {
+      console.warn('[BestStore] Could not save the result', e);
+    }
   }
 
   // TargetHolder: there is a single target; it can be set once saved state has been read and is safe to overwrite

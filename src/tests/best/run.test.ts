@@ -3,7 +3,7 @@ import { availableEquipment } from '@/lib/Equipment';
 import { bestPool, WeaponJob, weaponJobs } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
 import {
-  BestRunDeps, JOBS_PER_WEAPON, referenceGroups, runBestSetup, unionEffects, weaponVariants,
+  BestRunDeps, JOBS_PER_WEAPON, referenceGroups, runBestSetup, StyleOutcome, unionEffects, weaponVariants,
 } from '@/best/lib/run';
 import { searchWeapon } from '@/best/lib/search';
 import { BestPayload, BestResult, handleBestChunk } from '@/best/worker/protocol';
@@ -413,5 +413,23 @@ describe('concurrent runs', () => {
     expect(b[0].style).toBe('slash');
     expect(calls.length).toBeGreaterThan(0);
     expect(runOpts.every((o) => (o as { concurrent?: boolean } | undefined)?.concurrent === true)).toBe(true);
+  });
+
+  test('reports the descent\'s setups of the top weapons before the exhaustive search, which can only match or beat them', async () => {
+    const { deps } = fakeDeps();
+    const phases: string[] = [];
+    let early: StyleOutcome[] = [];
+    let phaseAtEarly = '';
+    const outcomes = await runBestSetup(inputs(['slash']), vorkath, deps, (_d, _t, phase) => phases.push(phase), {
+      ...opts,
+      onDescent: (o) => {
+        early = o;
+        phaseAtEarly = phases[phases.length - 1];
+      },
+    });
+    expect(phaseAtEarly).toBe('descent');
+    expect(early[0].setups.length).toBeGreaterThan(0);
+    expect(early[0].rows[0].dps).toBeGreaterThan(0);
+    expect(outcomes[0].rows[0].dps).toBeGreaterThanOrEqual(early[0].rows[0].dps);
   });
 });
