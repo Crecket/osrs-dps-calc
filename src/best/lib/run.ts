@@ -180,7 +180,7 @@ export const runBestSetup = async (
   onProgress: (done: number, total: number, phase: BestPhase) => void,
   opts: {
     topK?: number; cap?: number; concurrent?: boolean; runnersUp?: number;
-    /** What an item costs, so that of setups with equal DPS the cheaper one is shown */
+    /** What an item costs, so that of setups with equal DPS the cheaper one is shown, and for `inputs.totalBudget` */
     itemCost?: (id: number) => number;
     /** Called once the descent has found each top weapon's setups, before the exhaustive search improves them */
     onDescent?: (outcomes: StyleOutcome[]) => void;
@@ -210,12 +210,18 @@ export const runBestSetup = async (
   try {
     // the workers leave the same items out of their pools
     const excluded = (inputs.excludedItemIds ?? []).map(getCanonicalItemId);
+    const { itemCost } = opts;
+    // the total budget needs prices; without them it does nothing, as the page says
+    const budget = itemCost && typeof inputs.totalBudget === 'number' ? inputs.totalBudget : undefined;
+    const jobCost = (job: WeaponJob) => (itemCost
+      ? itemCost(job.weaponId) + (job.ammoId === null ? 0 : itemCost(job.ammoId)) + (job.dartId === null ? 0 : itemCost(job.dartId))
+      : 0);
     const plans: StylePlan[] = inputs.styles.map((style) => ({
       style,
       base: basePlayer(inputs, style),
-      jobs: weaponJobs(getPool(excluded), style, target).filter((job) => allowedSpell(job, inputs.spellbooks)),
+      jobs: weaponJobs(getPool(excluded), style, target)
+        .filter((job) => allowedSpell(job, inputs.spellbooks) && (budget === undefined || jobCost(job) <= budget)),
     }));
-    const { itemCost } = opts;
     const costs = itemCost
       ? getPool(excluded).flatMap((e): [number, number][] => {
         const cost = itemCost(e.id);
@@ -256,7 +262,7 @@ export const runBestSetup = async (
     // phase 1: descent over every job
     const descentChunks = plans.map((plan) => chunk(plan.jobs, DESCENT_JOBS_PER_PAYLOAD));
     const descentResults = await searchRun(plans.flatMap((plan, i) => descentChunks[i].map((jobs): BestPayload => ({
-      kind: 'search', base: plan.base, monster: target, jobs, mode: 'descent', topN, cap, effects: styleEffectIds[i], excluded, costs,
+      kind: 'search', base: plan.base, monster: target, jobs, mode: 'descent', topN, cap, effects: styleEffectIds[i], excluded, costs, budget,
     }))), 'descent');
     at = 0;
     // per style, each weapon with the cosmetic variants that calculate like it; only the weapon itself goes on
@@ -350,7 +356,7 @@ export const runBestSetup = async (
 
     // phase 2: exhaustive over the top weapons' top jobs, each with its own full activity test: the shared effects come from another weapon and can miss what matters for this one (an effect that needs the weapon to hurt the monster)
     const exhaustiveResults = await searchRun(plans.flatMap((plan, i) => topJobs[i].map((job): BestPayload => ({
-      kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap, excluded, costs,
+      kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap, excluded, costs, budget,
     }))), 'exhaustive');
     // phase 2 may have been empty
     onProgress(done, total, 'exhaustive');

@@ -379,6 +379,26 @@ describe('runBestSetup', () => {
     });
   }, 60000);
 
+  test('a total budget leaves out weapons that cost more, and goes to every search', async () => {
+    const { deps, calls } = fakeDeps();
+    const scythe = pool.find((e) => e.name === 'Scythe of Vitur')!.id;
+    const [o] = await runBestSetup({ ...inputs(['slash']), totalBudget: 100 }, vorkath, deps, () => {}, {
+      ...opts, itemCost: (id) => (id === scythe ? 1000 : 0),
+    });
+    const searches = calls.flat().filter((p) => p.kind === 'search');
+    searches.forEach((p) => {
+      expect(p.kind === 'search' && p.budget).toBe(100);
+      expect(p.kind === 'search' && p.jobs.some((j) => j.weaponId === scythe)).toBe(false);
+    });
+    expect(o.setups.length).toBeGreaterThan(0);
+  }, 60000);
+
+  test('without prices a total budget does nothing', async () => {
+    const { deps, calls } = fakeDeps();
+    await runBestSetup({ ...inputs(['slash']), totalBudget: 100 }, vorkath, deps, () => {}, opts);
+    calls.flat().forEach((p) => expect(p.kind === 'search' ? p.budget : undefined).toBeUndefined());
+  }, 60000);
+
   test('a new run cancels the previous one', async () => {
     const { deps, searchCancels } = fakeDeps(synthetic);
     const first = runBestSetup(inputs(['slash'], 1), vorkath, deps, () => {}, opts);

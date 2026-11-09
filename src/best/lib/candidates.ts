@@ -144,7 +144,7 @@ export const styleScore = (item: EquipmentPiece, style: ScoreKind): [attack: num
  * Keeps the items no other item matches-or-beats on every number; of items with equal numbers only the lowest id stays.
  * Output is sorted by id.
  */
-const paretoBy = (items: EquipmentPiece[], score: (item: EquipmentPiece) => number[]): EquipmentPiece[] => {
+export const paretoBy = (items: EquipmentPiece[], score: (item: EquipmentPiece) => number[]): EquipmentPiece[] => {
   const sorted = [...items].sort((a, b) => a.id - b.id);
   const scores = sorted.map(score);
   return sorted.filter((_, i) => !scores.some((other, j) => {

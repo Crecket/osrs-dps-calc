@@ -60,6 +60,7 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - **Still needs a browser:** moving an existing localStorage price snapshot to IndexedDB, whether a `pagehide` save finishes when a tab really closes, how the failed refresh message looks, and a real out-of-memory worker crash and retry.
 
 - **Equal-DPS ties go to the cheaper gear on the Best page only:** search payloads carry the priced items and `TopResults` keeps the cheaper of two setups with the same DPS (the Salve (e) and (ei) tie for melee is the test). Raid searches don't pass prices, so their cached searches and the golden tests are unchanged. A saved Best result isn't redone after a price refresh, the same as the max item price.
+- **Best page total budget:** a "Most a setup may cost" field next to the item limit, with the weapon, its ammo or dart included, at the raid page's prices. Weapons that cost more than the budget are left out. The exhaustive search finds the exact best setup by combining slots on attack, strength and cost. Against brute force with real prices (whip, blowpipe, rapier at 5m-3b), it matched every result brute force could finish, beat the cases where brute force had to give up, and took 16-81 ms per weapon, where brute force took up to 70 s. Runners-up within a budget may miss some setups, and the descent phase that picks the top weapons is approximate under a budget. It needs a browser check.
 
 ## Features
 
@@ -69,7 +70,7 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - [x] **Raid to bulk (S):** an "add to bulk preset" action on raid results, as the Best page has.
 - [x] **Cost column and max item price on the Best page (M):** a cost column, reusing raid's prices, and a "most an item may cost" input.
 - [x] **Cheapest of equal-DPS setups (M):** ties in `TopResults` go to the first setup found. Choosing the cheapest needs prices in the search workers.
-- [ ] **A total budget on the Best page (L):** the search only filters item by item, so a total for the whole setup needs the search itself to change.
+- [x] **A total budget on the Best page (L):** the search only filters item by item, so a total for the whole setup needs the search itself to change.
 - [x] **Bulk: "% behind best" column (S)**
 - [x] **Bulk: cost column (S)**
 - [x] **Bulk: slot filter from `IDEAS.md` (S):** filters already have per-slot `overrides`.

@@ -168,6 +168,76 @@ describe('searchWeapon', () => {
     expect(same.gear).toEqual(plain.gear);
   });
 
+  describe('with a budget', () => {
+    const base = basePlayer(inputs, 'slash');
+    const salves = pool.filter((e) => e.name.startsWith('Salve amulet')).map((e) => e.id);
+    const opts = { mode: 'exhaustive' as const, topN: 3, cap: 20000 };
+    const setupCost = (gear: Gear, costs: Map<number, number>) => gearCost(gear, costs) + (costs.get(scytheJob.weaponId) ?? 0);
+
+    test('a budget the best setup fits changes nothing', () => {
+      const costs = new Map(salves.map((id): [number, number] => [id, 1000]));
+      const plain = searchWeapon(base, vorkath, scytheJob, pool, { ...opts, costs });
+      expect(searchWeapon(base, vorkath, scytheJob, pool, { ...opts, costs, budget: 1000 })[0]).toEqual(plain[0]);
+    });
+
+    test('a budget below the salves gives the best setup without them, exactly', () => {
+      const costs = new Map(salves.map((id): [number, number] => [id, 1000]));
+      const results = searchWeapon(base, vorkath, scytheJob, pool, { ...opts, costs, budget: 999 });
+      const [without] = searchWeapon(base, vorkath, scytheJob, pool.filter((e) => !salves.includes(e.id)), opts);
+      expect(results.length).toBeGreaterThan(0);
+      results.forEach((r) => expect(setupCost(r.gear, costs)).toBeLessThanOrEqual(999));
+      expect(results[0].approximate).toBe(false);
+      expect(results[0].dps).toBeCloseTo(without.dps, 10);
+    });
+
+    test('the weapon counts: a budget below it gives nothing', () => {
+      const costs = new Map([[scytheJob.weaponId, 500]]);
+      expect(searchWeapon(base, vorkath, scytheJob, pool, { ...opts, costs, budget: 499 })).toEqual([]);
+      expect(searchWeapon(base, vorkath, scytheJob, pool, { ...opts, costs, budget: 500 }).length).toBeGreaterThan(0);
+    });
+
+    test('a cheaper, weaker item comes back into play when the strong ones don\'t fit', () => {
+      // every head item costs 100, except one weaker one that costs 10
+      const heads = pool.filter((e) => e.slot === 'head' && styleScore(e, 'slash').some((v) => v > 0));
+      const [unlimited] = searchWeapon(base, vorkath, scytheJob, pool, opts);
+      const weak = heads.find((e) => e.id !== unlimited.gear.head && styleScore(e, 'slash')[1] > 0)!;
+      const costs = new Map(heads.map((e): [number, number] => [e.id, e.id === weak.id ? 10 : 100]));
+      const results = searchWeapon(base, vorkath, scytheJob, pool, { ...opts, costs, budget: 50 });
+      expect(results[0].gear.head).toBe(weak.id);
+      const [empty] = searchWeapon(base, vorkath, scytheJob, pool, { ...opts, costs, budget: 0 });
+      expect(results[0].dps).toBeGreaterThanOrEqual(empty.dps);
+      // only unpriced heads fit: empty, or an effect piece the test left free
+      expect(costs.has(empty.gear.head ?? -1)).toBe(false);
+    });
+
+    test('over the cap, the attack and strength sums still find the exact best', () => {
+      // every item costs 1, so a budget of 3 allows three items of the slots' many choices
+      const costs = new Map(pool.map((e): [number, number] => [e.id, 1]));
+      costs.delete(scytheJob.weaponId);
+      const [brute] = searchWeapon(base, vorkath, scytheJob, pool, {
+        ...opts, cap: 1e6, costs, budget: 3,
+      });
+      const [sums] = searchWeapon(base, vorkath, scytheJob, pool, {
+        ...opts, cap: 300, costs, budget: 3,
+      });
+      expect(sums.approximate).toBe(false);
+      expect(sums.dps).toBeCloseTo(brute.dps, 10);
+      expect(setupCost(sums.gear, costs)).toBeLessThanOrEqual(3);
+    });
+
+    test('over the cap, descent keeps to the budget', () => {
+      const costs = new Map(pool.map((e): [number, number] => [e.id, 10]));
+      const results = searchWeapon(base, vorkath, scytheJob, pool, {
+        ...opts, cap: 5, costs, budget: 60,
+      });
+      expect(results.length).toBeGreaterThan(0);
+      results.forEach((r) => {
+        expect(r.approximate).toBe(true);
+        expect(setupCost(r.gear, costs)).toBeLessThanOrEqual(60);
+      });
+    });
+  });
+
   test('on a slayer task an imbued slayer helmet goes on the head', () => {
     const base = basePlayer({ ...inputs, conditions: { ...DEFAULT_CONDITIONS, onSlayerTask: true } }, 'slash');
     const [best] = searchWeapon(base, abyssal, scytheJob, pool, { mode: 'exhaustive', topN: 1, cap: 20000 });

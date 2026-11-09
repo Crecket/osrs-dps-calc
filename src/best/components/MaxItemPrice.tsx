@@ -4,27 +4,28 @@ import { useBestStore } from '@/best/state/BestStore';
 import { FieldLabel, fieldClass } from '@/best/components/fields';
 import { formatGp, parseGp } from '@/raid/lib/format';
 
-/** The dearest item the search may use, in gp like the raid budget ("50m"); empty is no limit */
-const MaxItemPrice: React.FC = observer(() => {
-  const store = useBestStore();
-  const { maxItemPrice } = store.inputs;
-  const show = (gp: number | null | undefined) => (typeof gp === 'number' ? formatGp(gp) : '');
-  const [text, setText] = useState(show(maxItemPrice));
-  useEffect(() => setText(show(maxItemPrice)), [maxItemPrice]);
+const show = (gp: number | null | undefined) => (typeof gp === 'number' ? formatGp(gp) : '');
+
+/** An amount in gp like the raid budget ("50m"); empty is no limit. A typo puts the last amount back. */
+const GpField: React.FC<{ id: string; label: string; value: number | null | undefined; onCommit: (gp: number | null) => void }> = ({
+  id, label, value, onCommit,
+}) => {
+  const [text, setText] = useState(show(value));
+  useEffect(() => setText(show(value)), [value]);
   const commit = () => {
     if (text.trim() === '') {
-      store.setMaxItemPrice(null);
+      onCommit(null);
       return;
     }
     const gp = parseGp(text);
-    if (gp !== null) store.setMaxItemPrice(gp);
-    else setText(show(maxItemPrice));
+    if (gp !== null) onCommit(gp);
+    else setText(show(value));
   };
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm">
-      <FieldLabel htmlFor="best-max-item-price" label="Most an item may cost" />
+    <>
+      <FieldLabel htmlFor={id} label={label} />
       <input
-        id="best-max-item-price"
+        id={id}
         className={`${fieldClass} w-24`}
         type="text"
         inputMode="text"
@@ -36,7 +37,23 @@ const MaxItemPrice: React.FC = observer(() => {
           if (e.key === 'Enter') commit();
         }}
       />
-      <span className="text-xs text-gray-500 dark:text-gray-300">e.g. 50m, at the raid page&apos;s prices. It does nothing while prices are unavailable.</span>
+    </>
+  );
+};
+
+/** The dearest item the search may use, and the most a whole setup may cost */
+const MaxItemPrice: React.FC = observer(() => {
+  const store = useBestStore();
+  const { maxItemPrice, totalBudget } = store.inputs;
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <GpField id="best-max-item-price" label="Most an item may cost" value={maxItemPrice} onCommit={(gp) => store.setMaxItemPrice(gp)} />
+        <GpField id="best-total-budget" label="Most a setup may cost" value={totalBudget} onCommit={(gp) => store.setTotalBudget(gp)} />
+      </div>
+      <span className="text-xs text-gray-500 dark:text-gray-300">
+        e.g. 50m, at the raid page&apos;s prices, weapon included for the setup. They do nothing while prices are unavailable. A setup limit can make the search approximate.
+      </span>
     </div>
   );
 });

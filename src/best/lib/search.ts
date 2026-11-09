@@ -9,9 +9,9 @@ import { EquipmentPiece, Player, PlayerEquipment } from '@/types/Player';
 import { spells } from '@/types/Spell';
 import { preparePlayer, scaledMonster } from '@/bulk/lib/compute';
 import {
-  GearSlot, isCrystalArmour, isCrystalWeapon, paretoFront, ScoreKind, scoreKind, slotCandidates, styleScore, WeaponJob,
+  GearSlot, isCrystalArmour, isCrystalWeapon, paretoBy, paretoFront, ScoreKind, scoreKind, slotCandidates, styleScore, WeaponJob,
 } from '@/best/lib/candidates';
-import { SETS, WEAPON_LINKED } from '@/best/lib/effectItems';
+import { isEffectItem, SETS, WEAPON_LINKED } from '@/best/lib/effectItems';
 import { BestStyle } from '@/best/types';
 
 /** Item ids per slot; null = empty. The weapon (and ammo or dart, when the job fixes it) comes from the job. */
@@ -286,10 +286,129 @@ export const gearCost = (gear: Gear, costs: ReadonlyMap<number, number> | undefi
 };
 
 /**
+ * Calls `visit` with each combination of the slots' options whose cost by `costOf` is at most `left`, until it returns false. Returns false when stopped.
+ */
+const forEachCombination = (
+  slots: GearSlot[],
+  options: Partial<Record<GearSlot, (number | null)[]>>,
+  costOf: (id: number | null) => number,
+  left: number,
+  visit: (gear: Gear) => boolean,
+): boolean => {
+  // cheapest first, so a slot's loop ends at its first option that doesn't fit
+  const sorted = slots.map((slot) => [...options[slot]!].sort((a, b) => costOf(a) - costOf(b)));
+  // the least the slots from i on can cost
+  const least = slots.map(() => 0);
+  for (let i = slots.length - 1; i >= 0; i--) least[i] = costOf(sorted[i][0] ?? null) + (least[i + 1] ?? 0);
+  const gear: Gear = {};
+  const walk = (i: number, spent: number): boolean => {
+    if (i === slots.length) return visit({ ...gear });
+    for (const id of sorted[i]) {
+      const cost = spent + costOf(id);
+      if (cost + (least[i + 1] ?? 0) > left) break;
+      gear[slots[i]] = id;
+      if (!walk(i + 1, cost)) return false;
+    }
+    return true;
+  };
+  return walk(0, 0);
+};
+
+interface Partial3 {
+  attack: number;
+  strength: number;
+  cost: number;
+  gear: Gear;
+}
+
+/** The partial setups no other beats on attack, strength and cost at once; of equal ones the first stays. */
+const paretoPartials = (list: Partial3[], withCost: boolean): Partial3[] => {
+  const sorted = [...list].sort((a, b) => (withCost ? a.cost - b.cost : 0) || b.attack - a.attack || b.strength - a.strength || a.cost - b.cost);
+  const kept: Partial3[] = [];
+  sorted.forEach((p) => {
+    if (!kept.some((k) => k.attack >= p.attack && k.strength >= p.strength)) kept.push(p);
+  });
+  return kept;
+};
+
+/**
+ * Exhaustive search under a budget for setups whose plain items only count by their attack and strength sums. For each
+ * affordable choice of `special` items (active effects and set pieces, or a plain item) per slot, it adds the slots' `plain` items one slot at a time, keeping
+ * the partial setups no other beats on attack, strength and cost, then calls `visit` with each affordable setup that no
+ * other beats on attack and strength. That holds the best setup, as more attack or strength never lowers DPS. Gives up
+ * (false) once `visit` would be called more than `limit` times.
+ */
+const bestBySums = (
+  slots: GearSlot[],
+  special: Record<GearSlot, Set<number>>,
+  plain: Record<GearSlot, (number | null)[]>,
+  costOf: (id: number | null) => number,
+  scoreOf: (id: number) => number[],
+  left: number,
+  limit: number,
+  visit: (gear: Gear) => void,
+): boolean => {
+  const PLAIN = 'plain';
+  const choices = slots.map((slot) => [PLAIN, ...[...special[slot]].filter((id) => costOf(id) <= left)] as (number | typeof PLAIN)[]);
+  const assignments: (number | typeof PLAIN)[][] = [];
+  const pick: (number | typeof PLAIN)[] = [];
+  const walk = (i: number, spent: number) => {
+    if (assignments.length > limit) return;
+    if (i === slots.length) {
+      assignments.push([...pick]);
+      return;
+    }
+    choices[i].forEach((c) => {
+      const cost = spent + (c === PLAIN ? 0 : costOf(c));
+      if (cost > left) return;
+      pick[i] = c;
+      walk(i + 1, cost);
+    });
+  };
+  walk(0, 0);
+  if (assignments.length > limit) return false;
+  let visits = 0;
+  const found: Gear[] = [];
+  for (const assignment of assignments) {
+    const fixedGear: Gear = {};
+    let spent = 0;
+    slots.forEach((slot, i) => {
+      const c = assignment[i];
+      if (c !== PLAIN) {
+        fixedGear[slot] = c;
+        spent += costOf(c);
+      }
+    });
+    let front: Partial3[] = [{
+      attack: 0, strength: 0, cost: spent, gear: fixedGear,
+    }];
+    slots.forEach((slot, i) => {
+      if (assignment[i] !== PLAIN) return;
+      const next: Partial3[] = [];
+      front.forEach((p) => plain[slot].forEach((id) => {
+        const cost = p.cost + costOf(id);
+        if (cost > left) return;
+        const [attack, strength] = id === null ? [0, 0] : scoreOf(id);
+        next.push({
+          attack: p.attack + attack, strength: p.strength + strength, cost, gear: { ...p.gear, [slot]: id },
+        });
+      }));
+      front = paretoPartials(next, true);
+    });
+    const finals = paretoPartials(front, false);
+    visits += finals.length;
+    if (visits > limit) return false;
+    finals.forEach((p) => found.push(p.gear));
+  }
+  found.forEach(visit);
+  return true;
+};
+
+/**
  * The best setups for one weapon job. Effect items that do nothing here (activity test, or `opts.effects` plus a
  * per-job test of the WEAPON_LINKED items when given) become plain items and are dominance-pruned; active sets are always tested for the job and enter as units.
  * Exhaustive mode enumerates every combination of candidates when there are at most `opts.cap`, else it falls back to
- * coordinate descent and marks the results approximate. Results are the top `opts.topN` with distinct DPS, best first; with `opts.costs`, the cheapest gear of each DPS.
+ * coordinate descent and marks the results approximate. Results are the top `opts.topN` with distinct DPS, best first; with `opts.costs`, the cheapest gear of each DPS. With `opts.budget`, only setups that cost at most that: exhaustive mode enumerates the affordable combinations of each slot's cheapest-for-what-they-give items when there are at most `opts.cap`, else finds the best by attack and strength sums (bestBySums), which is exact for the best setup while its runners-up may miss some, else takes the unbudgeted best when it fits, else falls back to descent.
  */
 // per pool, the pool without crystal armour, kept so the per-pool caches still hit
 const withoutCrystalArmour = new WeakMap<EquipmentPiece[], EquipmentPiece[]>();
@@ -309,7 +428,11 @@ export const searchWeapon = (
   monster: Monster,
   job: WeaponJob,
   allItems: EquipmentPiece[],
-  opts: { mode: 'descent' | 'exhaustive'; topN: number; cap: number; effects?: SlotLists; costs?: ReadonlyMap<number, number> },
+  opts: {
+    mode: 'descent' | 'exhaustive'; topN: number; cap: number; effects?: SlotLists; costs?: ReadonlyMap<number, number>;
+    /** The most the whole setup may cost by `costs`, weapon included */
+    budget?: number;
+  },
 ): SearchResult[] => {
   const pool = jobPool(allItems, job);
   const { style } = job;
@@ -332,48 +455,107 @@ export const searchWeapon = (
   }
   const sets = activeSets(base, monster, job, baseline, pool);
 
+  // with a budget, what is left for the searched slots once the weapon, its dart and the slots the job fixes are paid for
+  const { costs, budget } = opts;
+  const costOf = (id: number | null) => (id === null ? 0 : costs?.get(id) ?? 0);
+  const fixed: Gear = Object.fromEntries(GEAR_SLOTS.filter((slot) => !slots.includes(slot))
+    .map((slot) => [slot, slot === 'ammo' ? job.ammoId : null]));
+  const left = budget === undefined ? Infinity : budget - costOf(job.weaponId) - costOf(job.dartId) - gearCost(fixed, costs);
+  if (left < 0) return [];
+  const affordable = (gear: Gear) => left === Infinity || slots.reduce((n, slot) => n + costOf(gear[slot] ?? null), 0) <= left;
+
   const plain: SlotLists = {};
   const options: Partial<Record<GearSlot, (number | null)[]>> = {};
+  // with a budget: every item that is the cheapest for what it gives, and empty, as the stronger items may not fit
+  const budgetOptions: Partial<Record<GearSlot, (number | null)[]>> = {};
   slots.forEach((slot) => {
     const activeIds = new Set((active[slot] ?? []).map((e) => e.id));
+    const inactive = candidates[slot].effect.filter((e) => !activeIds.has(e.id));
     // empty is a (0, 0) plain item that wins ties: it beats items with nothing positive, and loses to items with nothing negative
-    plain[slot] = paretoFront(usablePlain(job, slot, [...candidates[slot].plain, ...candidates[slot].effect.filter((e) => !activeIds.has(e.id))]), kind)
+    plain[slot] = paretoFront(usablePlain(job, slot, [...candidates[slot].plain, ...inactive]), kind)
       .filter((e) => styleScore(e, kind).some((v) => v > 0));
     const emptyDominated = plain[slot]!.some((e) => styleScore(e, kind).every((v) => v >= 0));
-    const ids = [
-      ...plain[slot]!.map((e) => e.id),
+    const special = [
       ...(active[slot] ?? []).map((e) => e.id),
       ...sets.flatMap((s) => (s.pieces[slot] ? [s.pieces[slot]!.id] : [])),
     ];
-    options[slot] = [...new Set<number | null>([...ids, ...(emptyDominated ? [] : [null])])];
+    options[slot] = [...new Set<number | null>([...plain[slot]!.map((e) => e.id), ...special, ...(emptyDominated ? [] : [null])])];
+    if (left !== Infinity) {
+      const all = pool.filter((e) => e.slot === slot && !isEffectItem(e) && costOf(e.id) <= left);
+      const cheapest = paretoBy(usablePlain(job, slot, [...all, ...inactive.filter((e) => costOf(e.id) <= left)]), (e) => [...styleScore(e, kind), -costOf(e.id)])
+        .filter((e) => styleScore(e, kind).some((v) => v > 0));
+      budgetOptions[slot] = [...new Set<number | null>([...cheapest.map((e) => e.id), ...special.filter((id) => costOf(id) <= left), null])];
+    }
   });
 
-  // slots the search doesn't fill still show in the results
-  const fixed: Gear = Object.fromEntries(GEAR_SLOTS.filter((slot) => !slots.includes(slot))
-    .map((slot) => [slot, slot === 'ammo' ? job.ammoId : null]));
   const top = new TopResults(opts.topN);
   const record = (gear: Gear, dps: number, approximate: boolean) => {
     const full = { ...fixed, ...gear };
     top.add({
       job, gear: full, dps, approximate,
-    }, gearCost(full, opts.costs));
+    }, gearCost(full, costs));
   };
 
-  const combinations = slots.reduce((n, slot) => n * options[slot]!.length, 1);
-  if (opts.mode === 'exhaustive' && combinations <= opts.cap) {
-    const counters = slots.map(() => 0);
-    // each slot's options are distinct, so no combination comes up twice
-    for (let n = 0; n < combinations; n++) {
-      const gear: Gear = Object.fromEntries(slots.map((slot, i) => [slot, options[slot]![counters[i]]]));
-      record(gear, evalDps(base, monster, job, gear), false);
-      // odometer step
-      for (let i = 0; i < counters.length; i++) {
-        counters[i] += 1;
-        if (counters[i] < options[slots[i]]!.length) break;
-        counters[i] = 0;
+  if (opts.mode === 'exhaustive') {
+    if (left === Infinity) {
+      const combinations = slots.reduce((n, slot) => n * options[slot]!.length, 1);
+      if (combinations <= opts.cap) {
+        const counters = slots.map(() => 0);
+        // each slot's options are distinct, so no combination comes up twice
+        for (let n = 0; n < combinations; n++) {
+          const gear: Gear = Object.fromEntries(slots.map((slot, i) => [slot, options[slot]![counters[i]]]));
+          record(gear, evalDps(base, monster, job, gear), false);
+          // odometer step
+          for (let i = 0; i < counters.length; i++) {
+            counters[i] += 1;
+            if (counters[i] < options[slots[i]]!.length) break;
+            counters[i] = 0;
+          }
+        }
+        return top.results;
+      }
+    } else {
+      // every affordable combination of the cheapest-for-what-they-give items, when there are few enough
+      let count = 0;
+      forEachCombination(slots, budgetOptions, costOf, left, () => {
+        count += 1;
+        return count <= opts.cap;
+      });
+      if (count <= opts.cap) {
+        forEachCombination(slots, budgetOptions, costOf, left, (gear) => {
+          record(gear, evalDps(base, monster, job, gear), false);
+          return true;
+        });
+        return top.results;
+      }
+      // too many: the best by attack and strength sums, which is exact for the best setup
+      const scoreOf = new Map(pool.map((e) => [e.id, styleScore(e, kind)]));
+      const special = Object.fromEntries(slots.map((slot) => [slot, new Set([
+        ...(active[slot] ?? []).map((e) => e.id),
+        ...sets.flatMap((set) => (set.pieces[slot] ? [set.pieces[slot]!.id] : [])),
+      ])])) as Record<GearSlot, Set<number>>;
+      const plainOf = Object.fromEntries(slots.map((slot) => [slot, budgetOptions[slot]!
+        .filter((id) => id === null || !special[slot].has(id))])) as Record<GearSlot, (number | null)[]>;
+      const best = bestBySums(slots, special, plainOf, costOf, (id) => scoreOf.get(id) ?? [0, 0], left, opts.cap, (gear) => {
+        record(gear, evalDps(base, monster, job, gear), false);
+      });
+      if (best) return top.results;
+      // the best setup without a budget is still the best when it fits
+      const combinations = slots.reduce((n, slot) => n * options[slot]!.length, 1);
+      if (combinations <= opts.cap) {
+        const unlimited = { gear: null as Gear | null, dps: -Infinity };
+        forEachCombination(slots, options, () => 0, Infinity, (gear) => {
+          const dps = evalDps(base, monster, job, gear);
+          if (dps > unlimited.dps + EPSILON) {
+            unlimited.gear = gear;
+            unlimited.dps = dps;
+          }
+          if (affordable(gear)) record(gear, dps, false);
+          return true;
+        });
+        if (unlimited.gear && affordable(unlimited.gear)) return top.results;
       }
     }
-    return top.results;
   }
 
   // descent tries the same combinations again and again
@@ -389,11 +571,13 @@ export const searchWeapon = (
     return dps;
   };
 
-  // coordinate descent from the strongest plain setup: per slot (and per active set) take the best move, until a full pass improves nothing
-  let current = baselineFrom(job, plain);
+  // coordinate descent from the strongest plain setup: per slot (and per active set) take the best move, until a full pass improves nothing. With a budget, it starts from the strongest setup that fits when that is the strongest plain one, else from nothing, and only takes moves that fit.
+  const moveOptions = left === Infinity ? options : budgetOptions;
+  const strongest = baselineFrom(job, plain);
+  let current = affordable(strongest) ? strongest : Object.fromEntries(slots.map((slot) => [slot, null]));
   let currentDps = evaluate(current);
   const moves: Gear[][] = [
-    ...slots.map((slot) => options[slot]!.map((id) => ({ [slot]: id }))),
+    ...slots.map((slot) => moveOptions[slot]!.map((id) => ({ [slot]: id }))),
     ...sets.map((set) => [Object.fromEntries(Object.entries(set.pieces).map(([slot, p]) => [slot, p.id]))]),
   ];
   let improved = true;
@@ -403,11 +587,13 @@ export const searchWeapon = (
       const from = current;
       for (const move of group) {
         const gear = { ...from, ...move };
-        const dps = evaluate(gear);
-        if (dps > currentDps + EPSILON) {
-          current = gear;
-          currentDps = dps;
-          improved = true;
+        if (affordable(gear)) {
+          const dps = evaluate(gear);
+          if (dps > currentDps + EPSILON) {
+            current = gear;
+            currentDps = dps;
+            improved = true;
+          }
         }
       }
     }

@@ -44,6 +44,8 @@ export interface BestInputs {
   excludedItemIds?: number[];
   /** The search leaves out items that cost more than this; null or missing is no limit */
   maxItemPrice?: number | null;
+  /** The most a whole setup may cost, weapon included; null or missing is no limit */
+  totalBudget?: number | null;
   /** Spellbooks the magic setups may cast from; null or missing allows every spell, [] only powered staves */
   spellbooks?: Spellbook[] | null;
 }

@@ -62,6 +62,7 @@ describe('BestStore', () => {
     store.setStyles(['magic']);
     store.setPotions('melee', [Potion.SUPER_COMBAT]);
     store.setTarget(abyssal());
+    store.setTotalBudget(50e6);
     await flush();
 
     expect(savedInputs(storage).skills.atk).toBe(80);
@@ -75,7 +76,11 @@ describe('BestStore', () => {
     expect(again.inputs.conditions.onSlayerTask).toBe(true);
     expect(again.inputs.styles).toEqual(['magic']);
     expect(again.inputs.potions).toEqual({ melee: [Potion.SUPER_COMBAT] });
+    expect(again.inputs.totalBudget).toBe(50e6);
     expect(again.monster?.monster.id).toBe(415);
+    const key = again.runKey;
+    again.setTotalBudget(null);
+    expect(again.runKey).not.toBe(key);
   });
 
   test('setPotions null removes the override for that group', async () => {
@@ -293,6 +298,7 @@ describe('BestStore', () => {
           },
           // a known item, a duplicate, an unknown id, a non-number
           excludedItemIds: [4151, 4151, -5, 'x'],
+          totalBudget: -3,
         },
         monster: { id: 'x' },
       });
@@ -314,6 +320,7 @@ describe('BestStore', () => {
       expect(store.inputs.potions).toEqual({ melee: [Potion.SUPER_COMBAT] });
       expect(store.inputs.prayerOverrides).toEqual({ ranged: [Prayer.HAWK_EYE] });
       expect(store.inputs.excludedItemIds).toEqual([4151]);
+      expect(store.inputs.totalBudget).toBeNull();
       expect(store.monster).toBeNull();
     });
 

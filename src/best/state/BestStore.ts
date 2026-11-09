@@ -73,6 +73,7 @@ const readSaved = (raw: unknown): SavedBest => {
       topN: typeof i.topN === 'number' && Number.isInteger(i.topN) && i.topN > 0 ? i.topN : base.topN,
       excludedItemIds,
       maxItemPrice: isNum(i.maxItemPrice) && (i.maxItemPrice as number) >= 0 ? i.maxItemPrice as number : null,
+      totalBudget: isNum(i.totalBudget) && (i.totalBudget as number) >= 0 ? i.totalBudget as number : null,
     },
     monster,
   };
@@ -214,6 +215,11 @@ export class BestStore implements TargetHolder {
 
   setMaxItemPrice(gp: number | null) {
     this.inputs.maxItemPrice = gp;
+    this.save();
+  }
+
+  setTotalBudget(gp: number | null) {
+    this.inputs.totalBudget = gp;
     this.save();
   }
 
