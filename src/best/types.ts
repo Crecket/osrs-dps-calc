@@ -42,6 +42,8 @@ export interface BestInputs {
   prayerOverrides?: Partial<Record<'melee' | 'ranged' | 'magic', Prayer[]>>;
   /** Canonical ids of items the search must not use */
   excludedItemIds?: number[];
+  /** The search leaves out items that cost more than this; null or missing is no limit */
+  maxItemPrice?: number | null;
   /** Spellbooks the magic setups may cast from; null or missing allows every spell, [] only powered staves */
   spellbooks?: Spellbook[] | null;
 }

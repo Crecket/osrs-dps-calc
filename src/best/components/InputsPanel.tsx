@@ -29,6 +29,7 @@ import {
 } from '@/best/components/fields';
 import PrayerPicker from '@/best/components/PrayerPicker';
 import ExcludedItems from '@/best/components/ExcludedItems';
+import MaxItemPrice from '@/best/components/MaxItemPrice';
 
 // prayer is set together with the prayer level under Prayers
 const SKILLS: [keyof PlayerSkills, string, number, StaticImageData][] = [
@@ -170,6 +171,9 @@ const InputsPanel: React.FC = () => (
       <AccountFields />
       <div className={`sm:col-span-2 ${divider}`}>
         <ExcludedItems />
+        <div className="mt-3">
+          <MaxItemPrice />
+        </div>
       </div>
     </div>
   </Panel>

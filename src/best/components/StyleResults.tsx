@@ -6,6 +6,8 @@ import {
 import { StyleOutcome } from '@/best/lib/run';
 import { Alternative, groupByWeapon } from '@/best/lib/groups';
 import addToBulkPreset from '@/bulk/lib/addToBulkPreset';
+import { setupCost, SetupCost } from '@/bulk/lib/cost';
+import type { Prices } from '@/raid/lib/prices';
 import { SortState } from '@/bulk/lib/table';
 import { BulkRow } from '@/bulk/types';
 import { EquipmentPiece } from '@/types/Player';
@@ -33,13 +35,20 @@ const StyleResults: React.FC<{
   sort: SortState;
   onSort: (s: SortState) => void;
   onExclude: (item: EquipmentPiece, variants: number[]) => void;
+  prices?: Prices | null;
 }> = ({
-  outcome, sort, onSort, onExclude,
+  outcome, sort, onSort, onExclude, prices,
 }) => {
   // weapons whose alternatives are shown
   const [open, setOpen] = useState<Set<number | null>>(new Set());
   const setupsById = new Map(outcome.setups.map((s) => [s.id, s]));
-  const groups = groupByWeapon(outcome.rows, outcome.setups, sort);
+  const costs = prices && prices.byId.size > 0
+    ? new Map(outcome.setups.flatMap((s): [string, SetupCost][] => {
+      const cost = setupCost(s.player, prices);
+      return cost ? [[s.id, cost]] : [];
+    }))
+    : null;
+  const groups = groupByWeapon(outcome.rows, outcome.setups, sort, costs);
   const best = outcome.rows.reduce<BulkRow | null>((b, r) => (!r.error && (!b || r.dps > b.dps) ? r : b), null);
 
   const rows = groups.flatMap((g) => [g.lead, ...(open.has(g.weaponId) ? g.alternatives.map((a) => a.row) : [])]);
@@ -90,6 +99,10 @@ const StyleResults: React.FC<{
             highlightId={best?.setupId}
             alternatives={alternatives}
             leadColumns={['dps', 'maxHit']}
+            costs={costs}
+            costTooltip={prices?.at
+              ? `What the gear costs to buy, at the raid page's prices from ${new Date(prices.at).toLocaleDateString()}`
+              : 'No prices yet, so no costs'}
             hideNames
             itemHint=". Click to exclude"
             onItemContextMenu={(slot, item) => onExclude(item, slot === 'weapon' ? cosmeticVariants(item, outcome.variants[item.id] ?? []) : [])}

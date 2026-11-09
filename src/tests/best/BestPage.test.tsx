@@ -8,6 +8,7 @@ import type { StyleOutcome } from '@/best/lib/run';
 import type { BestInputs } from '@/best/types';
 import type { BulkPreset } from '@/bulk/types';
 import { Prayer } from '@/enums/Prayer';
+import type { Prices } from '@/raid/lib/prices';
 
 // in-memory storage for both the best and the bulk store; a key in mockFailing makes reads of it throw
 const mockData = new Map<string, unknown>();
@@ -27,6 +28,9 @@ jest.mock('localforage', () => ({
     },
   },
 }));
+
+let mockPrices: Prices | null = null;
+jest.mock('@/bulk/lib/useIdlePrices', () => ({ __esModule: true, default: () => mockPrices }));
 
 type Progress = (done: number, total: number, phase: string) => void;
 type RunOpts = { onDescent?: (outcomes: StyleOutcome[]) => void };
@@ -131,6 +135,9 @@ describe('BestPage', () => {
   const find = (container: HTMLElement) => button(container, 'Find best setup')!;
 
   test('nothing runs on load or on an input change; the button runs once', async () => {
+    // jsdom has no fetch, which fetchPrices takes as its default; the snapshot above means it never gets called
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = () => Promise.reject(new Error('no network'));
     mockRun.mockResolvedValue([outcome('Whip')]);
     const { container, unmount } = await mount();
     await wait(400);
@@ -229,6 +236,31 @@ describe('BestPage', () => {
     expect(container.textContent).toContain('can still improve');
     await act(async () => button(container, 'Stop')!.click());
     expect(container.textContent).toContain('Search stopped early');
+    await unmount();
+  });
+
+  test('the most an item may cost leaves dearer items out of the search, and marks results out of date', async () => {
+    const dear = availableEquipment.find((e) => e.name === 'Scythe of Vitur' && e.version !== 'Uncharged')!;
+    mockPrices = { at: 1, byId: new Map([[dear.id, 1e9]]), byName: new Map() };
+    mockRun.mockResolvedValue([outcome('Whip')]);
+    const { container, unmount } = await mount();
+    await act(async () => find(container).click());
+    await wait(10);
+    expect(mockRun.mock.calls[0][0].excludedItemIds ?? []).not.toContain(dear.id);
+    const field = container.querySelector<HTMLInputElement>('input[placeholder="No limit"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, '50m');
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => { field.focus(); field.blur(); });
+    await wait(10);
+    expect(container.textContent).toContain('Inputs changed since this search');
+    await act(async () => find(container).click());
+    await wait(10);
+    expect(mockRun.mock.calls[1][0].excludedItemIds).toContain(dear.id);
+    // the column is there, with the price
+    expect(container.textContent).toContain('Cost');
+    mockPrices = null;
     await unmount();
   });
 

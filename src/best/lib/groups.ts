@@ -38,10 +38,10 @@ const swapLabel = (setup: BulkSetup, slots: (keyof PlayerEquipment)[]) => {
  * The rows in `sort` order, grouped by weapon: groups in the order of their lead (first) row, each lead followed by
  * the weapon's other rows as alternatives.
  */
-export const groupByWeapon = (rows: BulkRow[], setups: BulkSetup[], sort: SortState): WeaponGroup[] => {
+export const groupByWeapon = (rows: BulkRow[], setups: BulkSetup[], sort: SortState, costs?: Map<string, { total: number }> | null): WeaponGroup[] => {
   const setupsById = new Map(setups.map((s) => [s.id, s]));
   const groups = new Map<number | null, WeaponGroup>();
-  selectRows(rows, { mode: 'normal', sort }).forEach((row) => {
+  selectRows(rows, { mode: 'normal', sort, costs }).forEach((row) => {
     const setup = setupsById.get(row.setupId);
     if (!setup) return;
     const weaponId = setup.player.equipment.weapon?.id ?? null;

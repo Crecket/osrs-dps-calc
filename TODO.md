@@ -72,7 +72,10 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - [x] **RuneLite Inventory Setups export (S-M):** `src/raid/lib/inventorySetups.ts` only imports. Check the output against the plugin itself.
 - [x] **Copy buttons (S):** bulk, best and raid don't use the clipboard anywhere.
 - [x] **Raid to bulk (S):** an "add to bulk preset" action on raid results, as the Best page has.
-- [ ] **Budget and cost on the Best page (M):** budget and owned inputs and a cost column, reusing raid's prices and `tierExclusions`. Equal-DPS ties in `TopResults` then go to the cheapest setup, not the first one found.
+- [x] **Cost column and max item price on the Best page (M):** a cost column, reusing raid's prices, and a "most an item may cost" input.
+- [ ] **Owned items on the Best page (S-M):** owned items should count as free against that limit and in the cost column. Should they share raid's owned list?
+- [ ] **Cheapest of equal-DPS setups (M):** ties in `TopResults` go to the first setup found. Choosing the cheapest needs prices in the search workers.
+- [ ] **A total budget on the Best page (L):** the search only filters item by item, so a total for the whole setup needs the search itself to change.
 - [ ] **Budget curve (M):** a chart of raid time against budget, using the fact that searches are already cached per price tier.
 - [x] **Bulk: "% behind best" column (S)**
 - [x] **Bulk: cost column (S)**

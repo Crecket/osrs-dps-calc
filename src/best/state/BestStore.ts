@@ -72,6 +72,7 @@ const readSaved = (raw: unknown): SavedBest => {
       styles: styles.length > 0 ? styles : base.styles,
       topN: typeof i.topN === 'number' && Number.isInteger(i.topN) && i.topN > 0 ? i.topN : base.topN,
       excludedItemIds,
+      maxItemPrice: isNum(i.maxItemPrice) && (i.maxItemPrice as number) >= 0 ? i.maxItemPrice as number : null,
     },
     monster,
   };
@@ -208,6 +209,11 @@ export class BestStore implements TargetHolder {
   includeItem(id: number) {
     const canonical = getCanonicalItemId(id);
     this.inputs.excludedItemIds = (this.inputs.excludedItemIds ?? []).filter((x) => x !== canonical);
+    this.save();
+  }
+
+  setMaxItemPrice(gp: number | null) {
+    this.inputs.maxItemPrice = gp;
     this.save();
   }
 

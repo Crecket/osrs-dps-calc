@@ -12,6 +12,8 @@ import { BestPhase, runBestSetup, StyleOutcome } from '@/best/lib/run';
 import { BestPayload, BestResult } from '@/best/worker/protocol';
 import { ResultCache } from '@/best/lib/resultCache';
 import { Elapsed, Remaining } from '@/bulk/components/RunTimer';
+import useIdlePrices from '@/bulk/lib/useIdlePrices';
+import { withMaxItemPrice } from '@/best/lib/maxItemPrice';
 import { TaskPool } from '@/bulk/worker/TaskPool';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import { defaultSort, SortState } from '@/bulk/lib/table';
@@ -101,6 +103,7 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortState>(defaultSort('normal'));
   const runToken = useRef(0);
+  const prices = useIdlePrices();
   // finished searches of this visit, so going back to inputs searched before shows their results without a new search
   const [cache] = useState(() => {
     const finished = new ResultCache<StyleOutcome[]>();
@@ -133,7 +136,7 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
     setProgress({ done: 0, total: 0, phase: null });
     try {
       // a newer call cancels this one itself
-      const result = await runBestSetup(toJS(store.inputs), toJS(monster), pools, (done, total, phase) => {
+      const result = await runBestSetup(withMaxItemPrice(toJS(store.inputs), prices), toJS(monster), pools, (done, total, phase) => {
         if (token === runToken.current) setProgress({ done, total, phase });
       }, {
         onDescent: (early) => {
@@ -155,7 +158,7 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
     } finally {
       if (token === runToken.current) setRunning(false);
     }
-  }, [store, pools, cache, showCached]);
+  }, [store, pools, cache, showCached, prices]);
 
   // inputs changed back to ones searched before: show those results again (no search runs)
   const { runKey } = store;
@@ -280,7 +283,7 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
             Click an item to leave it out of the next search.
           </p>
           <div className="flex flex-col divide-y divide-body-300 dark:divide-dark-200">
-            {outcomes.map((o) => <StyleResults key={o.style} outcome={o} sort={sort} onSort={setSort} onExclude={exclude} />)}
+            {outcomes.map((o) => <StyleResults key={o.style} outcome={o} sort={sort} onSort={setSort} onExclude={exclude} prices={prices} />)}
           </div>
         </div>
       )}
