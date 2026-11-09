@@ -218,11 +218,25 @@ export class BulkStore implements TargetHolder {
     this.touch(this.active);
   }
 
-  /** Removes every setup from the active preset. */
-  clearSetups() {
-    if (!this.active || this.active.setups.length === 0) return;
+  /** Removes every setup from the active preset, and returns where they went and what they were, for restoreSetups. */
+  clearSetups(): { presetId: string; setups: BulkSetup[] } | null {
+    if (!this.active || this.active.setups.length === 0) return null;
+    const removed = { presetId: this.active.id, setups: toJS(this.active.setups) };
     this.active.setups = [];
     this.touch(this.active);
+    return removed;
+  }
+
+  /**
+   * Puts cleared setups back in their preset, in front of what has been added since. False if that preset is gone.
+   */
+  restoreSetups({ presetId, setups }: { presetId: string; setups: BulkSetup[] }): boolean {
+    const preset = this.presets.find((p) => p.id === presetId);
+    if (!preset) return false;
+    const present = new Set(preset.setups.map((s) => s.id));
+    preset.setups = [...setups.filter((s) => !present.has(s.id)), ...preset.setups];
+    this.touch(preset);
+    return true;
   }
 
   /**

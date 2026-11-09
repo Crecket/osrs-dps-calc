@@ -52,6 +52,9 @@ const Panel: React.FC<PropsWithChildren<PanelProps>> = ({
 
 export const buttonClass = 'transition-colors border border-body-500 bg-btns-400 text-white dark:bg-dark-500 dark:border-dark-200 px-2.5 py-1 rounded text-sm hover:bg-btns-300 dark:hover:bg-dark-400 disabled:opacity-50 disabled:cursor-not-allowed';
 
+// a focus ring that shows on both themes
+export const focusRing = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 dark:focus-visible:ring-orange-200';
+
 export const inputClass = 'form-control rounded px-2 py-1 text-sm border border-body-400 dark:border-dark-200 bg-white dark:bg-dark-500 text-black dark:text-white';
 
 export default Panel;

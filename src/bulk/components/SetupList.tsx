@@ -1,4 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, {
+  useCallback, useEffect, useRef, useState,
+} from 'react';
 import { observer } from 'mobx-react-lite';
 import { toast } from 'react-toastify';
 import {
@@ -14,7 +16,8 @@ import { setupKey } from '@/bulk/lib/dedupe';
 import GearCells from '@/bulk/components/GearCells';
 import SetupQuickEdit, { QuickEditKind } from '@/bulk/components/SetupQuickEdit';
 import SetupEditor from '@/bulk/components/SetupEditor';
-import Panel, { buttonClass, inputClass } from '@/bulk/components/Panel';
+import Panel, { buttonClass, focusRing, inputClass } from '@/bulk/components/Panel';
+import { ConfirmDialog } from '@/bulk/components/Dialog';
 
 export const notifyAdded = (result: { added: number; skipped: number }) => {
   const message = addResultMessage(result);
@@ -22,8 +25,27 @@ export const notifyAdded = (result: { added: number; skipped: number }) => {
   else toast.info(message);
 };
 
+// long enough to notice what happened and reach the button
+const UNDO_MS = 10_000;
+
+/**
+ * The note after deleting all setups. Takes the focus: the button that deleted them is disabled now, so the keyboard
+ * would otherwise be back at the top of the page.
+ */
+export const UndoNote: React.FC<{ message: string; onUndo: () => void }> = ({ message, onUndo }) => {
+  const undo = useRef<HTMLButtonElement>(null);
+  useEffect(() => undo.current?.focus(), []);
+  return (
+    <span className="flex items-center justify-between gap-2">
+      {message}
+      <button ref={undo} type="button" className={`font-bold underline rounded ${focusRing}`} onClick={onUndo}>Undo</button>
+    </span>
+  );
+};
+
 const SetupList: React.FC = observer(() => {
   const store = useBulkStore();
+  const [confirmingClear, setConfirmingClear] = useState(false);
   const [link, setLink] = useState('');
   const [loadingLink, setLoadingLink] = useState(false);
   // the setup open in the full editor, if any
@@ -83,6 +105,23 @@ const SetupList: React.FC = observer(() => {
     notifyAdded(store.addSetups(imported));
   };
 
+  const clearAll = () => {
+    setConfirmingClear(false);
+    closeEditor();
+    const removed = store.clearSetups();
+    if (!removed) return;
+    const count = removed.setups.length;
+    toast.info(({ closeToast }) => (
+      <UndoNote
+        message={`Deleted ${count} setup${count === 1 ? '' : 's'}`}
+        onUndo={() => {
+          if (!store.restoreSetups(removed)) toast.error('That preset no longer exists');
+          closeToast?.();
+        }}
+      />
+    ), { autoClose: UNDO_MS, closeOnClick: false });
+  };
+
   const importLink = async () => {
     if (!link.trim()) return;
     setLoadingLink(true);
@@ -120,12 +159,7 @@ const SetupList: React.FC = observer(() => {
             type="button"
             className={`${buttonClass} !bg-red-400 dark:!bg-red-700`}
             disabled={setups.length === 0}
-            onClick={() => {
-              // eslint-disable-next-line no-alert -- a plain confirm before deleting everything
-              if (!window.confirm(`Delete all ${setups.length} setups in this preset? This can't be undone.`)) return;
-              closeEditor();
-              store.clearSetups();
-            }}
+            onClick={() => setConfirmingClear(true)}
           >
             <span className="flex items-center gap-1">
               <IconTrash size={16} />
@@ -133,6 +167,15 @@ const SetupList: React.FC = observer(() => {
               Clear
             </span>
           </button>
+          {confirmingClear && (
+            <ConfirmDialog
+              title="Delete all setups"
+              message={`Delete all ${setups.length} setups in this preset?`}
+              submitLabel="Delete all"
+              onSubmit={clearAll}
+              onCancel={() => setConfirmingClear(false)}
+            />
+          )}
         </>
       )}
     >

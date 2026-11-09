@@ -5,7 +5,7 @@ import daggerIcon from '@/public/img/bonuses/dagger.png';
 import warhammerIcon from '@/public/img/bonuses/warhammer.png';
 import rangedIcon from '@/public/img/bonuses/ranged.png';
 import magicIcon from '@/public/img/bonuses/magic.png';
-import { inputClass } from '@/bulk/components/Panel';
+import { focusRing, inputClass } from '@/bulk/components/Panel';
 import { BestStyle } from '@/best/types';
 import { Switch } from '@headlessui/react';
 
@@ -20,8 +20,9 @@ export const STYLE_ICONS: Record<BestStyle, StaticImageData> = {
   magic: magicIcon,
 };
 
+export { focusRing };
+
 // every control on the page is the same height, with a focus ring that shows on both themes
-export const focusRing = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 dark:focus-visible:ring-orange-200';
 export const fieldClass = `${inputClass} h-8 ${focusRing}`;
 
 /** A section of the inputs: a heading and its rows. */
