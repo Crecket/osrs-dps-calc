@@ -27,7 +27,7 @@ import { focusRing, STYLE_ICONS, styleName } from '@/best/components/fields';
 import StyleResults from '@/best/components/StyleResults';
 import StyleSummary from '@/best/components/StyleSummary';
 
-// the Best page has no owned items yet
+// the Best page prices everything as bought
 const NOT_OWNED = new Set<number>();
 
 export interface Pools {
