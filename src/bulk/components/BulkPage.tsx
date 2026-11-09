@@ -187,6 +187,7 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
             sort={sort}
             onSort={setSort}
             hasRun={!!progress && !running}
+            showBehind
           />
         </div>
       ) : (

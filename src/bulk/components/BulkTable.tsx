@@ -6,7 +6,7 @@ import {
 import GearCells from '@/bulk/components/GearCells';
 import BuffIcons from '@/bulk/components/BuffIcons';
 import {
-  firstClickDir, Mode, NORMAL_COLUMNS, SortKey, SortState, SPEC_COLUMNS,
+  behindBest, bestValue, firstClickDir, Mode, NORMAL_COLUMNS, SortKey, SortState, SPEC_COLUMNS,
 } from '@/bulk/lib/table';
 import { BulkFilters, BulkRow, BulkSetup } from '@/bulk/types';
 import { EquipmentPiece, PlayerEquipment } from '@/types/Player';
@@ -60,7 +60,16 @@ interface BulkTableProps {
   leadColumns?: SortKey[];
   /** Leave out setup names: the column only shows the attack style or spell, and an alternative's label */
   hideNames?: boolean;
+  /** Add a column with how far each ranked row is behind the best one */
+  showBehind?: boolean;
 }
+
+// shown after the value it compares
+const BEHIND_AFTER: Record<Mode, SortKey> = { normal: 'dps', spec: 'specExpected' };
+const BEHIND_TOOLTIP: Record<Mode, string> = {
+  normal: "How far this setup's DPS is behind the best shown setup",
+  spec: "How far this setup's spec damage is behind the best shown setup",
+};
 
 const rowClass = (highlighted: boolean, alternative: boolean) => {
   if (highlighted) return 'bg-orange-100 dark:bg-orange-500/30';
@@ -71,13 +80,15 @@ const rowClass = (highlighted: boolean, alternative: boolean) => {
 // observer, so renaming a setup re-renders rows without the parent having to
 const BulkTable: React.FC<BulkTableProps> = observer(({
   rows, setups, mode, sort, onSort, hasRun, overrides = {}, filtered = new Map(), stale = new Set(), rowAction, onItemContextMenu,
-  itemHint, highlightId, alternatives, leadColumns = [], hideNames,
+  itemHint, highlightId, alternatives, leadColumns = [], hideNames, showBehind,
 }) => {
   // not memoized: preset arrays are mutated in place, so their identity can't be used as a dependency
   const setupsById = new Map(setups.map((s) => [s.id, s]));
   const allColumns = mode === 'spec' ? SPEC_COLUMNS : NORMAL_COLUMNS;
   const lead = leadColumns.flatMap((k) => allColumns.filter((c) => c.key === k));
-  const columns = allColumns.filter((c) => !leadColumns.includes(c.key));
+  const valueColumns = allColumns.filter((c) => !leadColumns.includes(c.key));
+  // only what is ranked counts: a hidden or greyed out setup isn't the best one to be behind
+  const best = showBehind ? bestValue(rows.filter((r) => !filtered.has(r.setupId) && !alternatives?.has(r.setupId)), mode) : null;
   let rank = 0;
 
   const clickHeader = (key: SortKey) => {
@@ -122,7 +133,14 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
           <th className="px-2 py-1.5">{hideNames ? 'Style' : 'Setup'}</th>
           <th className="px-2 py-1.5">Gear</th>
           <th className="px-2 py-1.5">Buffs</th>
-          {columns.map(header)}
+          {valueColumns.map((c) => (
+            <React.Fragment key={c.key}>
+              {header(c)}
+              {showBehind && c.key === BEHIND_AFTER[mode] && (
+                <th className="px-2 py-1.5 text-right whitespace-nowrap" data-tooltip-id="tooltip" data-tooltip-content={BEHIND_TOOLTIP[mode]}>Behind</th>
+              )}
+            </React.Fragment>
+          ))}
           <th className="px-2 py-1.5 w-8" aria-label="Warnings" />
           {rowAction && <th className="px-2 py-1.5" aria-label="Actions" />}
         </tr>
@@ -137,12 +155,14 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
           const highlighted = r.setupId === highlightId;
           if (!reason && !alternative) rank += 1;
 
+          const behind = reason || alternative ? null : behindBest(r, best, mode);
+
           // a failed row shows its error once, in the first group of value cells
-          const values = (cols: typeof columns, showError: boolean) => {
+          const values = (cols: typeof valueColumns, showError: boolean, extraCells = 0) => {
             if (cols.length === 0) return null;
             if (r.error) {
               return (
-                <td colSpan={cols.length} className="px-2 py-1 text-right text-red-400">
+                <td colSpan={cols.length + extraCells} className="px-2 py-1 text-right text-red-400">
                   {showError && (
                     <span className="inline-flex items-center gap-1">
                       <IconX size={16} />
@@ -152,14 +172,19 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
                 </td>
               );
             }
+            const staleClass = isStale ? 'text-gray-400 italic' : '';
+            const staleTitle = isStale ? 'Recalculating' : undefined;
             return cols.map((c) => (
-              <td
-                key={c.key}
-                className={`px-2 py-1 text-right tabular-nums ${sort.key === c.key ? 'font-bold' : ''} ${isStale ? 'text-gray-400 italic' : ''}`}
-                title={isStale ? 'Recalculating' : undefined}
-              >
-                {formatValue(r, c.key)}
-              </td>
+              <React.Fragment key={c.key}>
+                <td className={`px-2 py-1 text-right tabular-nums ${sort.key === c.key ? 'font-bold' : ''} ${staleClass}`} title={staleTitle}>
+                  {formatValue(r, c.key)}
+                </td>
+                {showBehind && c.key === BEHIND_AFTER[mode] && (
+                  <td className={`px-2 py-1 text-right tabular-nums ${staleClass}`} title={staleTitle}>
+                    {behind === null ? '—' : `${(behind * 100).toFixed(2)}%`}
+                  </td>
+                )}
+              </React.Fragment>
             ));
           };
 
@@ -205,7 +230,7 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
                 />
               </td>
               <td className="px-2 py-1 whitespace-nowrap" aria-label="Prayers and potions"><BuffIcons player={setup.player} /></td>
-              {values(columns, lead.length === 0)}
+              {values(valueColumns, lead.length === 0, showBehind ? 1 : 0)}
               <td className="px-2 py-1 text-center" aria-label={warnings.length > 0 ? 'Warnings' : 'No warnings'}>
                 {warnings.length > 0 && (
                   <span data-tooltip-id="tooltip-warning" data-tooltip-content={warnings.join(' • ')}>

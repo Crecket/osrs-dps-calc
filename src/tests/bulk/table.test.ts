@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 import {
-  defaultSort, firstClickDir, mergeRows, runKey, selectRows, SortState,
+  behindBest, bestValue, defaultSort, firstClickDir, mergeRows, runKey, selectRows, SortState,
 } from '@/bulk/lib/table';
 import { BulkPreset, BulkRow } from '@/bulk/types';
 import { createEmptyPlayer } from '@/state/PlayerStore';
@@ -27,6 +27,32 @@ const ids = (rows: BulkRow[]) => rows.map((r) => `${r.setupId}${r.monsterId}`);
 const opts = (sort: SortState, mode: 'normal' | 'spec' = 'normal') => ({ mode, sort });
 
 describe('table', () => {
+  test('behind best compares DPS against the top row', () => {
+    const rows = [row('a', '1', { dps: 4 }), row('b', '1', { dps: 5 }), row('c', '1', { dps: 99, error: 'boom' })];
+    const best = bestValue(rows, 'normal');
+
+    expect(best).toBe(5);
+    expect(behindBest(rows[0], best, 'normal')).toBeCloseTo(0.2);
+    expect(behindBest(rows[1], best, 'normal')).toBe(0);
+    expect(behindBest(rows[2], best, 'normal')).toBeNull();
+  });
+
+  test('behind best compares spec damage in spec mode, and has no answer without a spec', () => {
+    const rows = [row('a', '1', { spec: spec(30), dps: 9 }), row('b', '1', { spec: spec(40), dps: 1 }), row('c', '1')];
+    const best = bestValue(rows, 'spec');
+
+    expect(best).toBe(40);
+    expect(behindBest(rows[0], best, 'spec')).toBeCloseTo(0.25);
+    expect(behindBest(rows[2], best, 'spec')).toBeNull();
+  });
+
+  test('behind best has no answer when nothing deals damage', () => {
+    const rows = [row('a', '1', { dps: 0 })];
+
+    expect(behindBest(rows[0], bestValue(rows, 'normal'), 'normal')).toBeNull();
+    expect(bestValue([], 'normal')).toBeNull();
+  });
+
   test('default sort is dps desc', () => {
     const rows = [row('a', '1', { dps: 2 }), row('b', '1', { dps: 5 }), row('c', '1', { dps: 3 })];
 

@@ -25,6 +25,26 @@ export const SPEC_COLUMNS: { key: SortKey; label: string }[] = [
   { key: 'specRegenDps', label: 'Spec-only DPS' },
 ];
 
+/**
+ * What a row is compared on against the best row: its DPS, or in spec mode the damage of one special attack (what spec
+ * mode ranks by, as not every spec is about DPS). Null for a row without one.
+ */
+const compareValue = (r: BulkRow, mode: Mode): number | null => {
+  if (r.error) return null;
+  return mode === 'spec' ? r.spec?.expected ?? null : r.dps;
+};
+
+export const bestValue = (rows: BulkRow[], mode: Mode): number | null => rows.reduce<number | null>((best, r) => {
+  const v = compareValue(r, mode);
+  return v !== null && (best === null || v > best) ? v : best;
+}, null);
+
+/** How far a row is behind the best value, as a fraction of it; null when there is nothing to compare with. */
+export const behindBest = (r: BulkRow, best: number | null, mode: Mode): number | null => {
+  const v = compareValue(r, mode);
+  return v === null || !best ? null : (best - v) / best;
+};
+
 export const defaultSort = (mode: Mode): SortState => (mode === 'spec'
   ? { key: 'specExpected', dir: 'desc' }
   : { key: 'dps', dir: 'desc' });

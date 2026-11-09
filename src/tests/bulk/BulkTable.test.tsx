@@ -38,6 +38,43 @@ describe('BulkTable', () => {
     act(() => root.unmount());
   });
 
+  test('the behind column compares ranked rows against the best, not filtered ones', () => {
+    const setup = (id: string): BulkSetup => ({ id, name: id, player: createEmptyPlayer(id) });
+    const row = (setupId: string, dps: number, error?: string): BulkRow => ({
+      setupId, monsterId: 'm1', maxHit: 10, accuracy: 0.5, dps, ttk: 30, spec: null, issues: [], error,
+    });
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        <BulkTable
+          rows={[row('huge', 100), row('top', 10), row('next', 7.5), row('bad', 0, 'boom')]}
+          setups={['huge', 'top', 'next', 'bad'].map(setup)}
+          filtered={new Map([['huge', 'Melee hidden']])}
+          mode="normal"
+          sort={defaultSort('normal')}
+          onSort={() => {}}
+          hasRun
+          showBehind
+        />,
+      );
+    });
+
+    const headers = [...container.querySelectorAll('th')];
+    const behindAt = headers.findIndex((h) => h.textContent === 'Behind');
+    expect(headers[behindAt - 1].textContent).toBe('DPS');
+    const behindOf = (i: number) => container.querySelectorAll('tbody tr')[i].children[behindAt].textContent;
+    expect(behindOf(0)).toBe('—');
+    expect(behindOf(1)).toBe('0.00%');
+    expect(behindOf(2)).toBe('25.00%');
+    // an error spans the value cells, the behind column included, so the row still lines up
+    const failed = container.querySelectorAll('tbody tr')[3];
+    const span = failed.querySelector('td[colspan]') as HTMLTableCellElement;
+    expect(span.colSpan).toBe(5);
+    expect(failed.textContent).toContain('boom');
+    act(() => root.unmount());
+  });
+
   test('spec mode only claims there are no specs after a run', () => {
     const container = document.createElement('div');
     const root = createRoot(container);
