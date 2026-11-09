@@ -38,7 +38,6 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - **Deleting a preset:** it has a confirm dialog but no undo. Should it get one too?
 - **CSV export:** it doesn't include the Behind or Cost columns. Should it?
 - **.claude/ in git:** it shows up as untracked. Should it go in `.gitignore`?
-- **Budget curve:** each point on the curve is a full raid plan, and possibly new searches. Should it run only from its own button, and how many budgets should it try?
 - **Collapse raid inputs after a run:** the panels collapse by hand and remember that. Should a run also collapse them? Left as manual for now.
 - **Best: owned items:** should they share raid's owned list, or have their own?
 - **Bork model:** how long are the walking and stun windows in seconds? Should the planner assume you aren't tanking, or should that be a setting (suggested: a setting, defaulting to non-tank)? What does the tank use while walking? The Bork item below waits on these.
@@ -83,7 +82,6 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - [ ] **Owned items on the Best page (S-M):** owned items should count as free against that limit and in the cost column. Should they share raid's owned list?
 - [x] **Cheapest of equal-DPS setups (M):** ties in `TopResults` go to the first setup found. Choosing the cheapest needs prices in the search workers.
 - [ ] **A total budget on the Best page (L):** the search only filters item by item, so a total for the whole setup needs the search itself to change.
-- [ ] **Budget curve (M):** a chart of raid time against budget, using the fact that searches are already cached per price tier.
 - [x] **Bulk: "% behind best" column (S)**
 - [x] **Bulk: cost column (S)**
 - [x] **Bulk: slot filter from `IDEAS.md` (S):** filters already have per-slot `overrides`.
@@ -124,3 +122,4 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 
 - **Smarter reduction of gear combinations (Pareto or Minkowski sums):** combinations are at most about 2,200 at 0.03-0.08 ms each, always under the exhaustive cap.
 - **Optimising `getHtk`:** kill times are now only computed for setups that are shown. It's upstream code and golden tests pin its exact output.
+- **Budget curve (a chart of raid time against budget):** dropped, you didn't want it.
