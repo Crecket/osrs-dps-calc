@@ -12,6 +12,8 @@ import { BulkFilters, BulkRow, BulkSetup } from '@/bulk/types';
 import { EquipmentPiece, PlayerEquipment } from '@/types/Player';
 import { overriddenSlots } from '@/bulk/lib/filters';
 import StyleLabel from '@/bulk/components/StyleLabel';
+import { SetupCost } from '@/bulk/lib/cost';
+import { formatGp } from '@/raid/lib/format';
 
 const formatValue = (r: BulkRow, key: SortKey): string => {
   const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
@@ -62,7 +64,16 @@ interface BulkTableProps {
   hideNames?: boolean;
   /** Add a column with how far each ranked row is behind the best one */
   showBehind?: boolean;
+  /** Add a cost column with these costs by setup; null is no prices, which shows a dash rather than 0 */
+  costs?: Map<string, SetupCost> | null;
+  /** Explains the cost column */
+  costTooltip?: string;
 }
+
+const costDetail = (cost: SetupCost) => [
+  `${cost.total.toLocaleString()} gp`,
+  ...(cost.unpriced.length > 0 ? [`Counted as free: ${cost.unpriced.join(', ')}`] : []),
+].join(' • ');
 
 // shown after the value it compares
 const BEHIND_AFTER: Record<Mode, SortKey> = { normal: 'dps', spec: 'specExpected' };
@@ -80,7 +91,7 @@ const rowClass = (highlighted: boolean, alternative: boolean) => {
 // observer, so renaming a setup re-renders rows without the parent having to
 const BulkTable: React.FC<BulkTableProps> = observer(({
   rows, setups, mode, sort, onSort, hasRun, overrides = {}, filtered = new Map(), stale = new Set(), rowAction, onItemContextMenu,
-  itemHint, highlightId, alternatives, leadColumns = [], hideNames, showBehind,
+  itemHint, highlightId, alternatives, leadColumns = [], hideNames, showBehind, costs, costTooltip,
 }) => {
   // not memoized: preset arrays are mutated in place, so their identity can't be used as a dependency
   const setupsById = new Map(setups.map((s) => [s.id, s]));
@@ -104,8 +115,8 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
     return sort.dir === 'asc' ? 'ascending' : 'descending';
   };
 
-  const header = (c: { key: SortKey; label: string }) => (
-    <th key={c.key} className="px-2 py-1.5 text-right whitespace-nowrap" aria-sort={ariaSort(c.key)}>
+  const header = (c: { key: SortKey; label: string }, tooltip?: string) => (
+    <th key={c.key} className="px-2 py-1.5 text-right whitespace-nowrap" aria-sort={ariaSort(c.key)} data-tooltip-id={tooltip && 'tooltip'} data-tooltip-content={tooltip}>
       <button type="button" className="inline-flex items-center gap-0.5 hover:text-orange-200" onClick={() => clickHeader(c.key)}>
         {c.label}
         {sort.key === c.key && (sort.dir === 'asc' ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />)}
@@ -129,7 +140,7 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
       <thead>
         <tr className="bg-btns-400 dark:bg-dark-500 text-white font-serif text-left">
           <th className="px-2 py-1.5 w-10 text-center">#</th>
-          {lead.map(header)}
+          {lead.map((c) => header(c))}
           <th className="px-2 py-1.5">{hideNames ? 'Style' : 'Setup'}</th>
           <th className="px-2 py-1.5">Gear</th>
           <th className="px-2 py-1.5">Buffs</th>
@@ -141,6 +152,8 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
               )}
             </React.Fragment>
           ))}
+          {costs && header({ key: 'cost', label: 'Cost' }, costTooltip)}
+          {costs === null && <th className="px-2 py-1.5 text-right whitespace-nowrap" data-tooltip-id="tooltip" data-tooltip-content={costTooltip}>Cost</th>}
           <th className="px-2 py-1.5 w-8" aria-label="Warnings" />
           {rowAction && <th className="px-2 py-1.5" aria-label="Actions" />}
         </tr>
@@ -156,6 +169,7 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
           if (!reason && !alternative) rank += 1;
 
           const behind = reason || alternative ? null : behindBest(r, best, mode);
+          const cost = costs?.get(r.setupId);
 
           // a failed row shows its error once, in the first group of value cells
           const values = (cols: typeof valueColumns, showError: boolean, extraCells = 0) => {
@@ -231,6 +245,15 @@ const BulkTable: React.FC<BulkTableProps> = observer(({
               </td>
               <td className="px-2 py-1 whitespace-nowrap" aria-label="Prayers and potions"><BuffIcons player={setup.player} /></td>
               {values(valueColumns, lead.length === 0, showBehind ? 1 : 0)}
+              {costs !== undefined && (
+                <td
+                  className={`px-2 py-1 text-right tabular-nums whitespace-nowrap ${sort.key === 'cost' ? 'font-bold' : ''}`}
+                  data-tooltip-id={cost ? 'tooltip' : undefined}
+                  data-tooltip-content={cost ? costDetail(cost) : undefined}
+                >
+                  {cost ? formatGp(cost.total) : '—'}
+                </td>
+              )}
               <td className="px-2 py-1 text-center" aria-label={warnings.length > 0 ? 'Warnings' : 'No warnings'}>
                 {warnings.length > 0 && (
                   <span data-tooltip-id="tooltip-warning" data-tooltip-content={warnings.join(' • ')}>

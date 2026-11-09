@@ -3,7 +3,7 @@ import { setupKey } from '@/bulk/lib/dedupe';
 
 export type Mode = 'normal' | 'spec';
 
-export type SortKey = 'maxHit' | 'accuracy' | 'dps' | 'ttk' | 'specMaxHit' | 'specAccuracy' | 'specExpected' | 'specDps' | 'specRegenDps';
+export type SortKey = 'maxHit' | 'accuracy' | 'dps' | 'ttk' | 'specMaxHit' | 'specAccuracy' | 'specExpected' | 'specDps' | 'specRegenDps' | 'cost';
 
 export interface SortState {
   key: SortKey;
@@ -49,10 +49,10 @@ export const defaultSort = (mode: Mode): SortState => (mode === 'spec'
   ? { key: 'specExpected', dir: 'desc' }
   : { key: 'dps', dir: 'desc' });
 
-// lower is better for time-to-kill, so it starts ascending
-export const firstClickDir = (key: SortKey): SortState['dir'] => (key === 'ttk' ? 'asc' : 'desc');
+// lower is better for time-to-kill and cost, so they start ascending
+export const firstClickDir = (key: SortKey): SortState['dir'] => (key === 'ttk' || key === 'cost' ? 'asc' : 'desc');
 
-export const sortValue = (r: BulkRow, key: SortKey): number | null => {
+export const sortValue = (r: BulkRow, key: SortKey, costs?: Map<string, { total: number }> | null): number | null => {
   switch (key) {
     case 'maxHit': return r.maxHit;
     case 'accuracy': return r.accuracy;
@@ -63,15 +63,16 @@ export const sortValue = (r: BulkRow, key: SortKey): number | null => {
     case 'specExpected': return r.spec?.expected ?? null;
     case 'specDps': return r.spec?.dps ?? null;
     case 'specRegenDps': return r.spec?.regenDps ?? null;
+    case 'cost': return costs?.get(r.setupId)?.total ?? null;
     default: return null;
   }
 };
 
 export const selectRows = (
   rows: BulkRow[],
-  opts: { mode: Mode; sort: SortState },
+  opts: { mode: Mode; sort: SortState; costs?: Map<string, { total: number }> | null },
 ): BulkRow[] => {
-  const { mode, sort } = opts;
+  const { mode, sort, costs } = opts;
   const sign = sort.dir === 'asc' ? 1 : -1;
 
   return rows
@@ -84,8 +85,8 @@ export const selectRows = (
       const eb = b.r.error ? 1 : 0;
       if (ea !== eb) return ea - eb;
 
-      const va = sortValue(a.r, sort.key);
-      const vb = sortValue(b.r, sort.key);
+      const va = sortValue(a.r, sort.key, costs);
+      const vb = sortValue(b.r, sort.key, costs);
       if (va === null || vb === null) {
         if (va === vb) return a.i - b.i;
         return va === null ? 1 : -1;
