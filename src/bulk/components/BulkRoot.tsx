@@ -2,13 +2,14 @@
 
 import React from 'react';
 import { Tooltip } from 'react-tooltip';
+import PageTooltip from '@/bulk/components/PageTooltip';
 import { ToastContainer } from 'react-toastify';
 import BulkPage from '@/bulk/components/BulkPage';
 
 const BulkRoot = () => (
   <>
     <BulkPage />
-    <Tooltip id="tooltip" />
+    <PageTooltip />
     <Tooltip id="tooltip-warning" />
     <ToastContainer
       position="bottom-right"

@@ -38,10 +38,15 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - **Deleting a preset:** it has a confirm dialog but no undo. Should it get one too?
 - **CSV export:** it doesn't include the Behind or Cost columns. Should it?
 - **.claude/ in git:** it shows up as untracked. Should it go in `.gitignore`?
+- **Budget curve:** each point on the curve is a full raid plan, and possibly new searches. Should it run only from its own button, and how many budgets should it try?
+- **Collapse raid inputs after a run:** the panels collapse by hand and remember that. Should a run also collapse them? Left as manual for now.
+- **Best: owned items:** should they share raid's owned list, or have their own?
 - **Bork model:** how long are the walking and stun windows in seconds? Should the planner assume you aren't tanking, or should that be a setting (suggested: a setting, defaulting to non-tank)? What does the tank use while walking? The Bork item below waits on these.
 
 ## Findings
 
+- **Tooltips open on tap and focus:** on the bulk, best and raid pages, set in one place (`PageTooltip`). The upstream calculator page is unchanged. Keyboard focus only reaches elements that are focusable, so tooltips on plain cells remain tap and hover only. This needs checking in a browser, especially tapping a button that has a tooltip.
+- **Speed items paused for the measurement:** batching, one worker pool, reusing searches, the planner worker, lazy greedy and trimming jobs are risky worker and search changes. They wait for the browser profile, which decides whether they're worth it.
 - **Prices now use 1-hour averages:** this only applies after pressing refresh, since saved snapshots keep their prices so cached searches stay valid. The first refresh may move some items between price tiers and redo those searches.
 - **Best: clicking an item now excludes it:** this gives touch and keyboard a route, but a misclick excludes too. It shows a toast and a removable chip, and nothing runs. Raid's item panel gained Exclude and Mark owned instead. Raid's spec cells remain right-click only.
 - **Time estimates are partial on purpose:** Best estimates only the exhaustive phase, and Raid only its searches ("about 1:20 of searches left"). Earlier Best phases don't predict later ones and Raid planning has no measure of progress, so those show elapsed time only.
@@ -111,7 +116,7 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - [ ] **Collapse raid inputs after a run (S):** the panels can now be collapsed by hand. Decide whether a run should also collapse them.
 - [x] **Right-click actions (M):** excluding or marking items has no touch or keyboard route (14 matching lines across components). Add a visible menu button.
 - [x] **Dialogs (M):** replace `window.prompt` and `confirm` in `PresetBar.tsx` and `SetupList.tsx:125` with inline dialogs, and give "Delete all setups" an undo.
-- [ ] **Tooltip-only information (S-M):** make it reachable without hovering.
+- [x] **Tooltip-only information (S-M):** make it reachable without hovering.
 
 ## Checked, not worth doing
 
