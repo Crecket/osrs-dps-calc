@@ -32,10 +32,20 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 
 ## Questions for you
 
+- **Bulk costs:** they read raid's saved price snapshot however old it is, because refreshing would make raid redo its cached searches. Is that fine, or should bulk have its own fresher prices?
+- **Bulk prices missing:** the cost column stays with dashes so the table doesn't jump. Should it hide completely after a failure?
+- **Bulk "Leave out slots":** leaving out ammo strips it from ranged setups, so their DPS reflects having none. Should ammo be disabled like the weapon slot?
+- **Deleting a preset:** it has a confirm dialog but no undo. Should it get one too?
+- **CSV export:** it doesn't include the Behind or Cost columns. Should it?
+- **.claude/ in git:** it shows up as untracked. Should it go in `.gitignore`?
 - **Bork model:** how long are the walking and stun windows in seconds? Should the planner assume you aren't tanking, or should that be a setting (suggested: a setting, defaulting to non-tank)? What does the tank use while walking? The Bork item below waits on these.
 
 ## Findings
 
+- **Purchase order covers the upgrade steps only:** it lists what the climb and boot steps bought and kept. Weapons added by the weapon step, kits, and anything from the starting setup are in the cost breakdown but not in the order. Each saving is from when the item was bought, so they don't add up exactly.
+- **Possible flaky test:** `runRaid › re-plans with fewer items when switches overflow the inventory` failed once in a heavily loaded run and passed in two clean ones.
+- **Git limits:** `git fetch`, `git rebase` and `git reset` are on the deny list, so `git merge` is how branches get combined.
+- **Bulk table width and dialogs need a browser:** the two new columns, the slot popover, the dialogs in both themes, the undo toast and Enter to submit haven't been seen in a real browser.
 - **Cached searches were reset once:** the new cache storage format drops existing cached searches, so the next raid run redoes them.
 - **Save debounce trade-off:** a tab crash can lose up to 300 ms of edits, or 3 s of continuous typing. Editing in a bulk tab and adding a setup from a best tab within 300 ms can overwrite one of the two. Also flushing on `visibilitychange` would close both, and hasn't been done.
 - **Scaled monster cache is DPS-only:** using it on all rows changes the Tonalztics spec, because it scales twice (Great Olm at party size 8: 16.3336 vs 16.3219 expected damage). The saving is small anyway, about 0.2-1.9 µs of a 13 µs row.
@@ -52,15 +62,15 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 
 ## Features
 
-- [ ] **Purchase order (M):** log the moves `climb` accepts in `src/raid/lib/upgrade.ts` and show them as "buy this next: X seconds saved for Y gp". Probably the most useful feature for players, and most of the logic exists.
+- [x] **Purchase order (M):** log the moves `climb` accepts in `src/raid/lib/upgrade.ts` and show them as "buy this next: X seconds saved for Y gp". Probably the most useful feature for players, and most of the logic exists.
 - [ ] **RuneLite Inventory Setups export (S-M):** `src/raid/lib/inventorySetups.ts` only imports. Check the output against the plugin itself.
 - [ ] **Copy buttons (S):** bulk, best and raid don't use the clipboard anywhere.
 - [ ] **Raid to bulk (S):** an "add to bulk preset" action on raid results, as the Best page has.
 - [ ] **Budget and cost on the Best page (M):** budget and owned inputs and a cost column, reusing raid's prices and `tierExclusions`. Equal-DPS ties in `TopResults` then go to the cheapest setup, not the first one found.
 - [ ] **Budget curve (M):** a chart of raid time against budget, using the fact that searches are already cached per price tier.
-- [ ] **Bulk: "% behind best" column (S)**
-- [ ] **Bulk: cost column (S)**
-- [ ] **Bulk: slot filter from `IDEAS.md` (S):** filters already have per-slot `overrides`.
+- [x] **Bulk: "% behind best" column (S)**
+- [x] **Bulk: cost column (S)**
+- [x] **Bulk: slot filter from `IDEAS.md` (S):** filters already have per-slot `overrides`.
 
 ## Accuracy
 
@@ -91,7 +101,7 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - [ ] **Time remaining (S):** Raid now shows elapsed time. An estimate needs search timings, and Best has neither.
 - [ ] **Collapse raid inputs after a run (S):** the panels can now be collapsed by hand. Decide whether a run should also collapse them.
 - [ ] **Right-click actions (M):** excluding or marking items has no touch or keyboard route (14 matching lines across components). Add a visible menu button.
-- [ ] **Dialogs (M):** replace `window.prompt` and `confirm` in `PresetBar.tsx` and `SetupList.tsx:125` with inline dialogs, and give "Delete all setups" an undo.
+- [x] **Dialogs (M):** replace `window.prompt` and `confirm` in `PresetBar.tsx` and `SetupList.tsx:125` with inline dialogs, and give "Delete all setups" an undo.
 - [ ] **Tooltip-only information (S-M):** make it reachable without hovering.
 
 ## Checked, not worth doing
