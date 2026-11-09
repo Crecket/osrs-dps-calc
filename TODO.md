@@ -42,6 +42,8 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 
 ## Findings
 
+- **Inventory Setups export needs one real import:** its shape matches a real export in the fixtures, but it hasn't been imported into the plugin itself. It leaves out the rune pouch's contents, and reserved cells stay empty because they stand for any boost potion.
+- **Copy buttons:** added on raid (Inventory Setups and item list) and bulk (results as CSV). Best has none, since its setups already go to bulk.
 - **Purchase order covers the upgrade steps only:** it lists what the climb and boot steps bought and kept. Weapons added by the weapon step, kits, and anything from the starting setup are in the cost breakdown but not in the order. Each saving is from when the item was bought, so they don't add up exactly.
 - **Possible flaky test:** `runRaid › re-plans with fewer items when switches overflow the inventory` failed once in a heavily loaded run and passed in two clean ones.
 - **Git limits:** `git fetch`, `git rebase` and `git reset` are on the deny list, so `git merge` is how branches get combined.
@@ -63,9 +65,9 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 ## Features
 
 - [x] **Purchase order (M):** log the moves `climb` accepts in `src/raid/lib/upgrade.ts` and show them as "buy this next: X seconds saved for Y gp". Probably the most useful feature for players, and most of the logic exists.
-- [ ] **RuneLite Inventory Setups export (S-M):** `src/raid/lib/inventorySetups.ts` only imports. Check the output against the plugin itself.
-- [ ] **Copy buttons (S):** bulk, best and raid don't use the clipboard anywhere.
-- [ ] **Raid to bulk (S):** an "add to bulk preset" action on raid results, as the Best page has.
+- [x] **RuneLite Inventory Setups export (S-M):** `src/raid/lib/inventorySetups.ts` only imports. Check the output against the plugin itself.
+- [x] **Copy buttons (S):** bulk, best and raid don't use the clipboard anywhere.
+- [x] **Raid to bulk (S):** an "add to bulk preset" action on raid results, as the Best page has.
 - [ ] **Budget and cost on the Best page (M):** budget and owned inputs and a cost column, reusing raid's prices and `tierExclusions`. Equal-DPS ties in `TopResults` then go to the cheapest setup, not the first one found.
 - [ ] **Budget curve (M):** a chart of raid time against budget, using the fact that searches are already cached per price tier.
 - [x] **Bulk: "% behind best" column (S)**

@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { reaction, toJS } from 'mobx';
 import { toast } from 'react-toastify';
-import { IconFileExport, IconPlayerStop } from '@tabler/icons-react';
+import { IconCopy, IconFileExport, IconPlayerStop } from '@tabler/icons-react';
 import { BulkStore, BulkStoreContext } from '@/bulk/state/BulkStore';
 import { onPresetsChanged } from '@/bulk/state/presetChannel';
 import { BulkPool } from '@/bulk/worker/BulkPool';
@@ -17,6 +17,7 @@ import { monsterLabel, rowsToCsv } from '@/bulk/lib/format';
 import { setupCost, SetupCost } from '@/bulk/lib/cost';
 import useIdlePrices from '@/bulk/lib/useIdlePrices';
 import { BulkRow } from '@/bulk/types';
+import copyText from '@/bulk/lib/copyText';
 import PresetBar, { downloadText } from '@/bulk/components/PresetBar';
 import SetupList from '@/bulk/components/SetupList';
 import TargetMonster from '@/bulk/components/TargetMonster';
@@ -167,6 +168,13 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
               <IconFileExport size={16} />
               {' '}
               CSV
+            </span>
+          </button>
+          <button type="button" className={buttonClass} disabled={kept.length === 0} onClick={() => copyText(rowsToCsv(kept, shownSetups), 'the results')}>
+            <span className="flex items-center gap-1">
+              <IconCopy size={16} aria-hidden />
+              {' '}
+              Copy
             </span>
           </button>
         </>

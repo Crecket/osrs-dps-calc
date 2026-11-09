@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import { IconAlertTriangle } from '@tabler/icons-react';
+import { toast } from 'react-toastify';
+import { IconAlertTriangle, IconCopy, IconPlaylistAdd } from '@tabler/icons-react';
 import { PlayerEquipment } from '@/types/Player';
 import { useRaidStore } from '@/raid/state/RaidStore';
 import { RaidResult } from '@/raid/lib/runRaid';
@@ -15,6 +16,10 @@ import {
 } from '@/raid/components/items';
 import { Replacement } from '@/raid/lib/itemValue';
 import ItemDetails from '@/raid/components/ItemDetails';
+import { buttonClass } from '@/bulk/components/Panel';
+import addToBulkPreset from '@/bulk/lib/addToBulkPreset';
+import copyText from '@/bulk/lib/copyText';
+import { exportInventorySetup } from '@/raid/lib/inventorySetups';
 
 // the in-game equipment tab: 3 columns, 5 rows; null is a gap
 const EQUIPMENT_GRID: (WornSlot | null)[] = [
@@ -90,6 +95,10 @@ const LoadoutView: React.FC<{
     .map((id) => ({ id, price: ownedIds.has(getCanonicalItemId(id)) ? 0 : itemPrice(id, prices, new Set()) }))
     .sort((a, b) => b.price - a.price);
 
+  const heldSetups = plan.picks.flatMap((p) => (p.candidate ? [p.candidate.setup] : []))
+    .filter((s, i, list) => list.findIndex((o) => o.id === s.id) === i);
+  const itemList = plan.itemIds.map((id) => itemById(id)?.name ?? String(id)).join('\n');
+
   return (
     <div className="flex flex-col gap-3 min-h-0">
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
@@ -142,6 +151,33 @@ const LoadoutView: React.FC<{
         <div className="p-2 rounded bg-[#5a4d3c] grid grid-cols-4 gap-1.5" data-testid="inventory-grid" aria-label="Inventory">
           {layout.inventory.map(invCell)}
         </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={buttonClass} onClick={() => copyText(exportInventorySetup(layout, 'Raid loadout'), 'the setup for RuneLite Inventory Setups')}>
+          <span className="flex items-center gap-1">
+            <IconCopy size={16} aria-hidden />
+            Inventory Setups
+          </span>
+        </button>
+        <button type="button" className={buttonClass} onClick={() => copyText(itemList, 'the item list')}>
+          <span className="flex items-center gap-1">
+            <IconCopy size={16} aria-hidden />
+            Item list
+          </span>
+        </button>
+        <button
+          type="button"
+          className={buttonClass}
+          disabled={heldSetups.length === 0}
+          data-tooltip-id="tooltip"
+          data-tooltip-content="Add this loadout's setups to the bulk tool's preset"
+          onClick={() => addToBulkPreset(heldSetups).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
+        >
+          <span className="flex items-center gap-1">
+            <IconPlaylistAdd size={16} aria-hidden />
+            Add to bulk
+          </span>
+        </button>
       </div>
       {selected !== null && replacements && (
         <ItemDetails result={result} id={selected} prices={prices} owned={owned} load={replacements} onClose={() => setSelected(null)} />

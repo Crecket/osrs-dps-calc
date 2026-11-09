@@ -1,46 +1,17 @@
 import React, { useState } from 'react';
-import { toJS } from 'mobx';
 import { toast } from 'react-toastify';
 import {
   IconChevronDown, IconChevronUp, IconInfoCircle, IconPlaylistAdd,
 } from '@tabler/icons-react';
 import { StyleOutcome } from '@/best/lib/run';
 import { Alternative, groupByWeapon } from '@/best/lib/groups';
-import { BulkStore } from '@/bulk/state/BulkStore';
-import { notifyPresetsChanged } from '@/bulk/state/presetChannel';
-import { newId } from '@/bulk/lib/presetIO';
+import addToBulkPreset from '@/bulk/lib/addToBulkPreset';
 import { SortState } from '@/bulk/lib/table';
-import { BulkRow, BulkSetup } from '@/bulk/types';
+import { BulkRow } from '@/bulk/types';
 import { EquipmentPiece } from '@/types/Player';
 import { availableEquipment } from '@/lib/Equipment';
 import BulkTable from '@/bulk/components/BulkTable';
 import { focusRing, STYLE_ICONS, styleName } from '@/best/components/fields';
-
-/**
- * Saves a result as a setup in the bulk tool's active preset, read fresh from storage so the bulk page's own state isn't
- * needed here.
- */
-const addToBulkPreset = async (setup: BulkSetup) => {
-  const bulk = new BulkStore();
-  // load always leaves an active preset
-  await bulk.load();
-  const preset = bulk.active;
-  if (!bulk.persists() || !preset) {
-    toast.error('The bulk tool\'s presets could not be read, so the setup was not added');
-    return;
-  }
-  const result = bulk.addSetups([{ id: newId(), name: setup.name, player: toJS(setup.player) }]);
-  if (result.added === 0) {
-    toast.info(`That setup is already in ${preset.name}`);
-    return;
-  }
-  if (!await bulk.whenSaved()) {
-    toast.error('Could not save the bulk tool\'s presets');
-    return;
-  }
-  notifyPresetsChanged();
-  toast.success(`Added to ${preset.name}`);
-};
 
 /**
  * The variants a weapon's row stands for that are copies of it (Holy Scythe of Vitur, Armadyl godsword (or)): their
@@ -152,7 +123,7 @@ const StyleResults: React.FC<{
                       // an alternative keeps its weapon's name, so say what sets it apart
                       const alt = alternatives.get(id);
                       const named = alt ? { ...setup, name: `${setup.name} ${alt.label.replace(/^With /, 'with ')}` } : setup;
-                      addToBulkPreset(named).catch((e) => toast.error(e instanceof Error ? e.message : String(e)));
+                      addToBulkPreset([named]).catch((e) => toast.error(e instanceof Error ? e.message : String(e)));
                     }}
                   >
                     <IconPlaylistAdd size={18} aria-hidden />
