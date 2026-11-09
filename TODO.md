@@ -2,13 +2,51 @@
 
 What's left from the November 2026 audit, roughly in priority order within each section. Effort: S is under a day, M is a few days, L is a larger refactor. Items are checked off as they're pushed.
 
+## How to work on this
+
+To pick this up later, tell Claude: "Work through TODO.md, following its instructions." Work continues until told to stop.
+
+**Process**
+
+- Take unchecked items in order within a section, skipping anything marked as waiting on a question.
+- Give agents running at the same time items that don't touch the same files.
+- Commit and push each item to `bulk-mode` once it's finished and tested, then check it off here. Pushing deploys.
+- Write findings and questions in the sections below and keep going. If a decision is really the user's, take the conservative option and note it.
+- If an item turns out wrong or not worth doing, say so with evidence and move it to "Checked, not worth doing".
+
+**Rules**
+
+- Raid and best runs start only from the button, even cheap cached re-plans. Changes mark results stale.
+- No full raid runs in jest, only small checks. Real runs are tested in the browser, so note what still needs one.
+- Scratch and debug files go in the git-ignored `temp/`, never `src/`.
+- Untradeable items aren't free: price them from their GE parts (`src/raid/lib/prices.ts`).
+- Avoid changing upstream engine files in `src/lib`. Only rewrite `src/tests/perf/golden.json` when an output is meant to change, and check that nothing else moved.
+- Commit messages are one brief line, with no body and no attribution. Never hard-wrap prose.
+
+**Before each push** (Node 18: `nvm use 18`)
+
+- `npx tsc --noEmit -p .`
+- `npx eslint` on the changed files
+- `npx jest --coverage=false --testPathIgnorePatterns '/node_modules/' '/.claude/' '/temp/'` (without this, jest also runs the copies in leftover agent worktrees)
+- `node .yarn/releases/yarn-4.9.2.cjs build-cf`, with lint on, because the deploy lints
+
+**Agents in worktrees**
+
+- Symlink `node_modules` from the main checkout, and work from the latest `origin/bulk-mode`.
+- `git fetch`, `git rebase` and `source nvm` have been refused for agents. If they still are, the agent should report it rather than work around it, and the main session has to bring its branch up to date.
+- ESLint fails inside a worktree on a plugin conflict, so run the lint and the final build from the main checkout.
+
 ## Questions for you
 
 - **Bork model:** how long are the walking and stun windows in seconds? Should the planner assume you aren't tanking, or should that be a setting (suggested: a setting, defaulting to non-tank)? What does the tank use while walking? The Bork item below waits on these.
 
 ## Findings
 
-Notes from the work go here as it happens.
+- **Cached searches were reset once:** the new cache storage format drops existing cached searches, so the next raid run redoes them.
+- **Save debounce trade-off:** a tab crash can lose up to 300 ms of edits, or 3 s of continuous typing. Editing in a bulk tab and adding a setup from a best tab within 300 ms can overwrite one of the two. Also flushing on `visibilitychange` would close both, and hasn't been done.
+- **Scaled monster cache is DPS-only:** using it on all rows changes the Tonalztics spec, because it scales twice (Great Olm at party size 8: 16.3336 vs 16.3219 expected damage). The saving is small anyway, about 0.2-1.9 µs of a 13 µs row.
+- **Golden gap:** the golden tests didn't catch that double scaling. One new test pins this case, but the fixture doesn't cover the Tonalztics spec with party scaling.
+- **Still needs a browser:** moving an existing localStorage price snapshot to IndexedDB, whether a `pagehide` save finishes when a tab really closes, how the failed refresh message looks, and a real out-of-memory worker crash and retry.
 
 ## Measure
 
@@ -33,7 +71,7 @@ Notes from the work go here as it happens.
 ## Accuracy
 
 - [ ] **Steadier prices (M):** `parsePrices` in `src/raid/lib/prices.ts` uses the latest instant-buy price, so one odd trade on a thin item can move it between price tiers and redo searches. Use the wiki's 5-minute or 1-hour averages.
-- [ ] **A failed price refresh says nothing (S):** `fetchPrices` falls back to the old snapshot, so the button just shows the old date again. Tell the user the refresh failed.
+- [x] **A failed price refresh says nothing (S):** `fetchPrices` falls back to the old snapshot, so the button just shows the old date again. Tell the user the refresh failed.
 
 ## Speed
 
@@ -44,13 +82,13 @@ Notes from the work go here as it happens.
 - [ ] **Move the planner into a worker (L):** `withWeapons` only yields between kit combinations, and `upgradeLoadout` does heavy work on the main thread. `basePlayer` must first be separated from `@/state`. This would also let Stop interrupt planning at any point, not only at its next rating or yield.
 - [ ] **Lazy greedy in `climb` (M):** re-rate only the top candidates. This can miss max-hit breakpoints, so only do it if profiling says the time is here.
 - [ ] **Trim descent jobs (M):** there are 132-427 jobs per style. Skip those far behind on baseline DPS, though this could miss a setup.
-- [ ] **Remove `memo` in exhaustive mode (S):** it does nothing there (`src/best/lib/search.ts:342`), since every combination is unique.
-- [ ] **Cache the scaled monster in `computeRow` (S):** it scales every time, while `evalDps` caches it.
-- [ ] **`TaskPool.dispatch` copies (S):** it copies the runs for each idle worker.
-- [ ] **Debounce store saves (S):** `BulkStore.save` and `RaidStore.save` write the full state on every change. Debounce them and flush on `pagehide`.
-- [ ] **Smaller `SearchCache` writes (S):** every flush rewrites the whole cache, up to 300 searches and 30000 ratings.
-- [ ] **Price cache in IndexedDB (S):** about 1.2 MB in localStorage, parsed synchronously on load.
-- [ ] **Retry a crashed chunk once (S):** `TaskPool.onWorkerError` fails the whole run, so one out-of-memory worker ends a raid search.
+- [x] **Remove `memo` in exhaustive mode (S):** it does nothing there (`src/best/lib/search.ts:342`), since every combination is unique.
+- [x] **Cache the scaled monster in `computeRow` (S):** it scales every time, while `evalDps` caches it. Done for DPS-only rows only: see Findings.
+- [x] **`TaskPool.dispatch` copies (S):** it copies the runs for each idle worker.
+- [x] **Debounce store saves (S):** `BulkStore.save` and `RaidStore.save` write the full state on every change. Debounce them and flush on `pagehide`.
+- [x] **Smaller `SearchCache` writes (S):** every flush rewrites the whole cache, up to 300 searches and 30000 ratings.
+- [x] **Price cache in IndexedDB (S):** about 1.2 MB in localStorage, parsed synchronously on load.
+- [x] **Retry a crashed chunk once (S):** `TaskPool.onWorkerError` fails the whole run, so one out-of-memory worker ends a raid search.
 
 ## UX
 
