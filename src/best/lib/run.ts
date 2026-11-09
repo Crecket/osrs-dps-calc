@@ -180,6 +180,8 @@ export const runBestSetup = async (
   onProgress: (done: number, total: number, phase: BestPhase) => void,
   opts: {
     topK?: number; cap?: number; concurrent?: boolean; runnersUp?: number;
+    /** What an item costs, so that of setups with equal DPS the cheaper one is shown */
+    itemCost?: (id: number) => number;
     /** Called once the descent has found each top weapon's setups, before the exhaustive search improves them */
     onDescent?: (outcomes: StyleOutcome[]) => void;
   } = {},
@@ -213,6 +215,13 @@ export const runBestSetup = async (
       base: basePlayer(inputs, style),
       jobs: weaponJobs(getPool(excluded), style, target).filter((job) => allowedSpell(job, inputs.spellbooks)),
     }));
+    const { itemCost } = opts;
+    const costs = itemCost
+      ? getPool(excluded).flatMap((e): [number, number][] => {
+        const cost = itemCost(e.id);
+        return cost > 0 ? [[e.id, cost]] : [];
+      })
+      : undefined;
 
     // progress counts jobs: one per effect test, one per searched job and phase
     const units = (p: BestPayload) => (p.kind === 'effects' ? 1 : p.jobs.length);
@@ -247,7 +256,7 @@ export const runBestSetup = async (
     // phase 1: descent over every job
     const descentChunks = plans.map((plan) => chunk(plan.jobs, DESCENT_JOBS_PER_PAYLOAD));
     const descentResults = await searchRun(plans.flatMap((plan, i) => descentChunks[i].map((jobs): BestPayload => ({
-      kind: 'search', base: plan.base, monster: target, jobs, mode: 'descent', topN, cap, effects: styleEffectIds[i], excluded,
+      kind: 'search', base: plan.base, monster: target, jobs, mode: 'descent', topN, cap, effects: styleEffectIds[i], excluded, costs,
     }))), 'descent');
     at = 0;
     // per style, each weapon with the cosmetic variants that calculate like it; only the weapon itself goes on
@@ -341,7 +350,7 @@ export const runBestSetup = async (
 
     // phase 2: exhaustive over the top weapons' top jobs, each with its own full activity test: the shared effects come from another weapon and can miss what matters for this one (an effect that needs the weapon to hurt the monster)
     const exhaustiveResults = await searchRun(plans.flatMap((plan, i) => topJobs[i].map((job): BestPayload => ({
-      kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap, excluded,
+      kind: 'search', base: plan.base, monster: target, jobs: [job], mode: 'exhaustive', topN, cap, excluded, costs,
     }))), 'exhaustive');
     // phase 2 may have been empty
     onProgress(done, total, 'exhaustive');

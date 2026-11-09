@@ -364,6 +364,21 @@ describe('runBestSetup', () => {
     calls.flat().forEach((p) => expect(p.excluded).toEqual(salves));
   }, 60000);
 
+  test('with itemCost, every search payload carries the priced items, and free ones are left out', async () => {
+    const { deps, calls } = fakeDeps();
+    const priced = new Set(pool.filter((e) => e.name.startsWith('Salve amulet')).map((e) => e.id));
+    await runBestSetup(inputs(['slash']), vorkath, deps, () => {}, { ...opts, itemCost: (id) => (priced.has(id) ? 1000 : 0) });
+    const searches = calls.flat().filter((p) => p.kind === 'search');
+    expect(searches.length).toBeGreaterThan(0);
+    searches.forEach((p) => {
+      expect(p.kind === 'search' && p.costs?.length).toBeGreaterThan(0);
+      (p.kind === 'search' ? p.costs ?? [] : []).forEach(([id, cost]) => {
+        expect(priced.has(id)).toBe(true);
+        expect(cost).toBe(1000);
+      });
+    });
+  }, 60000);
+
   test('a new run cancels the previous one', async () => {
     const { deps, searchCancels } = fakeDeps(synthetic);
     const first = runBestSetup(inputs(['slash'], 1), vorkath, deps, () => {}, opts);

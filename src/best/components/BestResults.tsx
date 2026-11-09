@@ -14,6 +14,7 @@ import { ResultCache } from '@/best/lib/resultCache';
 import { Elapsed, Remaining } from '@/bulk/components/RunTimer';
 import useIdlePrices from '@/bulk/lib/useIdlePrices';
 import { withMaxItemPrice } from '@/best/lib/maxItemPrice';
+import { itemPrice } from '@/raid/lib/prices';
 import { TaskPool } from '@/bulk/worker/TaskPool';
 import { BulkPool } from '@/bulk/worker/BulkPool';
 import { defaultSort, SortState } from '@/bulk/lib/table';
@@ -25,6 +26,9 @@ import { BEST_STYLES } from '@/best/types';
 import { focusRing, STYLE_ICONS, styleName } from '@/best/components/fields';
 import StyleResults from '@/best/components/StyleResults';
 import StyleSummary from '@/best/components/StyleSummary';
+
+// the Best page has no owned items yet
+const NOT_OWNED = new Set<number>();
 
 export interface Pools {
   search: TaskPool<BestPayload, BestResult>;
@@ -139,6 +143,7 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
       const result = await runBestSetup(withMaxItemPrice(toJS(store.inputs), prices), toJS(monster), pools, (done, total, phase) => {
         if (token === runToken.current) setProgress({ done, total, phase });
       }, {
+        itemCost: prices ? (id) => itemPrice(id, prices, NOT_OWNED) : undefined,
         onDescent: (early) => {
           if (token !== runToken.current) return;
           setOutcomes(early);

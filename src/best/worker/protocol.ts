@@ -14,10 +14,11 @@ import {
 /** Effect item ids per slot, as styleEffects finds them. */
 export type EffectIds = Partial<Record<GearSlot, number[]>>;
 
+// `costs`: item id and price pairs, so ties in DPS go to the cheaper gear; missing items are free
 // `excluded`: canonical item ids left out of the worker's pool, as the main thread leaves them out of its own
 export type BestPayload =
   // searchWeapon for each job, with the style's shared effects when given
-  | { kind: 'search'; base: Player; monster: Monster; jobs: WeaponJob[]; mode: 'descent' | 'exhaustive'; topN: number; cap: number; effects?: EffectIds; excluded?: number[] }
+  | { kind: 'search'; base: Player; monster: Monster; jobs: WeaponJob[]; mode: 'descent' | 'exhaustive'; topN: number; cap: number; effects?: EffectIds; excluded?: number[]; costs?: [number, number][] }
   // styleEffects for the job of `jobs` with the best baseline DPS; no effects when none deals damage
   | { kind: 'effects'; base: Player; monster: Monster; jobs: WeaponJob[]; excluded?: number[] };
 
@@ -62,10 +63,11 @@ export const handleBestChunk = (p: BestPayload): BestResult => {
     return { kind: 'effects', effects: job ? toIds(styleEffects(p.base, p.monster, job, items)) : {}, job };
   }
   const effects = p.effects ? fromIds(p.effects) : undefined;
+  const costs = p.costs ? new Map(p.costs) : undefined;
   return {
     kind: 'search',
     results: p.jobs.flatMap((job) => searchWeapon(p.base, p.monster, job, items, {
-      mode: p.mode, topN: p.topN, cap: p.cap, effects,
+      mode: p.mode, topN: p.topN, cap: p.cap, effects, costs,
     })),
   };
 };

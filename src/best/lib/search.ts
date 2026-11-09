@@ -241,28 +241,55 @@ export const activeSets = (base: Player, monster: Monster, job: WeaponJob, basel
   });
 };
 
-/** The best `size` results with distinct DPS, best first; of equal DPS the first one found stays. */
-class TopResults {
+/** The best `size` results with distinct DPS, best first; of equal DPS the cheaper stays, and of equal cost the first one found. */
+export class TopResults {
   readonly results: SearchResult[] = [];
+
+  // each result's cost, by position
+  private readonly costs: number[] = [];
 
   constructor(private readonly size: number) {}
 
-  add(result: SearchResult) {
+  add(result: SearchResult, cost = 0) {
     if (this.size <= 0) return;
-    if (this.results.some((r) => Math.abs(r.dps - result.dps) <= EPSILON)) return;
+    const tie = this.results.findIndex((r) => Math.abs(r.dps - result.dps) <= EPSILON);
+    if (tie !== -1) {
+      if (cost < this.costs[tie]) {
+        this.results[tie] = result;
+        this.costs[tie] = cost;
+      }
+      return;
+    }
     const worst = this.results[this.results.length - 1];
     if (this.results.length >= this.size && result.dps <= worst.dps) return;
-    const at = this.results.findIndex((r) => r.dps < result.dps);
-    this.results.splice(at === -1 ? this.results.length : at, 0, result);
-    if (this.results.length > this.size) this.results.pop();
+    const found = this.results.findIndex((r) => r.dps < result.dps);
+    const at = found === -1 ? this.results.length : found;
+    this.results.splice(at, 0, result);
+    this.costs.splice(at, 0, cost);
+    if (this.results.length > this.size) {
+      this.results.pop();
+      this.costs.pop();
+    }
   }
 }
+
+/** What `gear` costs by `costs` (item id to price, missing is free); a plain twin costs what its item does. */
+export const gearCost = (gear: Gear, costs: ReadonlyMap<number, number> | undefined): number => {
+  if (!costs || costs.size === 0) return 0;
+  let total = 0;
+  GEAR_SLOTS.forEach((slot) => {
+    const id = gear[slot];
+    if (id === undefined || id === null) return;
+    total += costs.get(id <= TWIN_OFFSET ? TWIN_OFFSET - id : id) ?? 0;
+  });
+  return total;
+};
 
 /**
  * The best setups for one weapon job. Effect items that do nothing here (activity test, or `opts.effects` plus a
  * per-job test of the WEAPON_LINKED items when given) become plain items and are dominance-pruned; active sets are always tested for the job and enter as units.
  * Exhaustive mode enumerates every combination of candidates when there are at most `opts.cap`, else it falls back to
- * coordinate descent and marks the results approximate. Results are the top `opts.topN` with distinct DPS, best first.
+ * coordinate descent and marks the results approximate. Results are the top `opts.topN` with distinct DPS, best first; with `opts.costs`, the cheapest gear of each DPS.
  */
 // per pool, the pool without crystal armour, kept so the per-pool caches still hit
 const withoutCrystalArmour = new WeakMap<EquipmentPiece[], EquipmentPiece[]>();
@@ -282,7 +309,7 @@ export const searchWeapon = (
   monster: Monster,
   job: WeaponJob,
   allItems: EquipmentPiece[],
-  opts: { mode: 'descent' | 'exhaustive'; topN: number; cap: number; effects?: SlotLists },
+  opts: { mode: 'descent' | 'exhaustive'; topN: number; cap: number; effects?: SlotLists; costs?: ReadonlyMap<number, number> },
 ): SearchResult[] => {
   const pool = jobPool(allItems, job);
   const { style } = job;
@@ -325,9 +352,12 @@ export const searchWeapon = (
   const fixed: Gear = Object.fromEntries(GEAR_SLOTS.filter((slot) => !slots.includes(slot))
     .map((slot) => [slot, slot === 'ammo' ? job.ammoId : null]));
   const top = new TopResults(opts.topN);
-  const record = (gear: Gear, dps: number, approximate: boolean) => top.add({
-    job, gear: { ...fixed, ...gear }, dps, approximate,
-  });
+  const record = (gear: Gear, dps: number, approximate: boolean) => {
+    const full = { ...fixed, ...gear };
+    top.add({
+      job, gear: full, dps, approximate,
+    }, gearCost(full, opts.costs));
+  };
 
   const combinations = slots.reduce((n, slot) => n * options[slot]!.length, 1);
   if (opts.mode === 'exhaustive' && combinations <= opts.cap) {

@@ -63,6 +63,8 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - **Golden gap:** the golden tests didn't catch that double scaling. One new test pins this case, but the fixture doesn't cover the Tonalztics spec with party scaling.
 - **Still needs a browser:** moving an existing localStorage price snapshot to IndexedDB, whether a `pagehide` save finishes when a tab really closes, how the failed refresh message looks, and a real out-of-memory worker crash and retry.
 
+- **Equal-DPS ties go to the cheaper gear on the Best page only:** search payloads carry the priced items and `TopResults` keeps the cheaper of two setups with the same DPS (the Salve (e) and (ei) tie for melee is the test). Raid searches don't pass prices, so their cached searches and the golden tests are unchanged. A saved Best result isn't redone after a price refresh, the same as the max item price.
+
 ## Measure
 
 - [ ] Compare a real raid run in the browser, on a cold cache, against the previous deploy, and profile the planner while doing it. Raid rating now skips kill times and sends compact setups, but the planner's share of a full run was never profiled, so the overall gain is unknown. This needs a person with a browser, and it decides how much of the speed section is worth doing.
@@ -79,7 +81,7 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - [x] **Raid to bulk (S):** an "add to bulk preset" action on raid results, as the Best page has.
 - [x] **Cost column and max item price on the Best page (M):** a cost column, reusing raid's prices, and a "most an item may cost" input.
 - [ ] **Owned items on the Best page (S-M):** owned items should count as free against that limit and in the cost column. Should they share raid's owned list?
-- [ ] **Cheapest of equal-DPS setups (M):** ties in `TopResults` go to the first setup found. Choosing the cheapest needs prices in the search workers.
+- [x] **Cheapest of equal-DPS setups (M):** ties in `TopResults` go to the first setup found. Choosing the cheapest needs prices in the search workers.
 - [ ] **A total budget on the Best page (L):** the search only filters item by item, so a total for the whole setup needs the search itself to change.
 - [ ] **Budget curve (M):** a chart of raid time against budget, using the fact that searches are already cached per price tier.
 - [x] **Bulk: "% behind best" column (S)**

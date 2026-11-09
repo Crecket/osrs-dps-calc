@@ -8,8 +8,8 @@ import {
 } from '@/best/lib/candidates';
 import { basePlayer } from '@/best/lib/basePlayer';
 import {
-  activeEffects, activeSets, baselineGear, buildPlayer, effectCandidates, effectMatters, evalDps, Gear, linkedEffects, plainTwin,
-  searchWeapon, styleEffects,
+  activeEffects, activeSets, baselineGear, buildPlayer, effectCandidates, effectMatters, evalDps, Gear, gearCost, linkedEffects, plainTwin,
+  searchWeapon, styleEffects, TopResults,
 } from '@/best/lib/search';
 import {
   BEST_STYLES, BestInputs, BestStyle, DEFAULT_CONDITIONS, DEFAULT_UNLOCKS,
@@ -154,6 +154,18 @@ describe('searchWeapon', () => {
     expect(meleeSalves).toContain(results[0].gear.neck);
     expect(results[0].approximate).toBe(false);
     expect(results[0].dps).toBeCloseTo(evalDps(base, vorkath, scytheJob, results[0].gear), 10);
+  });
+
+  test('of equal DPS the cheaper gear stays: the (e) and (ei) salves tie for melee', () => {
+    const base = basePlayer(inputs, 'slash');
+    const opts = { mode: 'exhaustive' as const, topN: 3, cap: 20000 };
+    const [plain] = searchWeapon(base, vorkath, scytheJob, pool, opts);
+    const other = meleeSalves.find((id) => id !== plain.gear.neck)!;
+    const [cheaper] = searchWeapon(base, vorkath, scytheJob, pool, { ...opts, costs: new Map([[plain.gear.neck!, 1000]]) });
+    expect(cheaper.gear.neck).toBe(other);
+    expect(cheaper.dps).toBeCloseTo(plain.dps, 10);
+    const [same] = searchWeapon(base, vorkath, scytheJob, pool, { ...opts, costs: new Map([[other, 1000]]) });
+    expect(same.gear).toEqual(plain.gear);
   });
 
   test('on a slayer task an imbued slayer helmet goes on the head', () => {
@@ -303,5 +315,32 @@ describe('searchWeapon', () => {
     const ammo = pool.find((e) => e.id === best.job.ammoId)!;
     // the Seeking dragon arrow (+20 ranged attack) is a real arrow too
     expect(ammo.name).toMatch(/dragon arrow/i);
+  });
+});
+
+describe('TopResults and gearCost', () => {
+  const result = (dps: number, head: number) => ({
+    job: scytheJob, gear: { head }, dps, approximate: false,
+  });
+
+  test('a tie replaces the kept result only when cheaper, in place', () => {
+    const top = new TopResults(3);
+    top.add(result(10, 1), 50);
+    top.add(result(8, 2), 0);
+    top.add(result(10, 3), 60);
+    top.add(result(10, 4), 20);
+    top.add(result(9, 5), 0);
+    expect(top.results.map((r) => r.gear.head)).toEqual([4, 5, 2]);
+    top.add(result(11, 6), 0);
+    top.add(result(9, 7), 0);
+    expect(top.results.map((r) => r.gear.head)).toEqual([6, 4, 5]);
+  });
+
+  test('gearCost sums the gear, plain twins at their item\'s price, missing as free', () => {
+    const costs = new Map([[salveEi.id, 100], [10, 5]]);
+    expect(gearCost({
+      neck: plainTwin(salveEi).id, head: 10, ring: null, cape: 99,
+    }, costs)).toBe(105);
+    expect(gearCost({ neck: salveEi.id }, undefined)).toBe(0);
   });
 });
