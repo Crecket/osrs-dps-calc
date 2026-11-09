@@ -1,8 +1,6 @@
 'use client';
 
-import React, {
-  useEffect, useMemo, useRef, useState,
-} from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { reaction, toJS } from 'mobx';
 import { toast } from 'react-toastify';
@@ -16,6 +14,8 @@ import {
 } from '@/bulk/lib/table';
 import { applyOverrides, filterReason, overrideDuplicates } from '@/bulk/lib/filters';
 import { monsterLabel, rowsToCsv } from '@/bulk/lib/format';
+import { setupCost, SetupCost } from '@/bulk/lib/cost';
+import useIdlePrices from '@/bulk/lib/useIdlePrices';
 import { BulkRow } from '@/bulk/types';
 import PresetBar, { downloadText } from '@/bulk/components/PresetBar';
 import SetupList from '@/bulk/components/SetupList';
@@ -97,11 +97,20 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
     { fireImmediately: true, delay: 300 },
   ), [store, pool]);
 
-  const visible = useMemo(() => selectRows(rows, { mode, sort }), [rows, mode, sort]);
+  const prices = useIdlePrices();
 
   // the setups as they are calculated, with the slot overrides swapped in
   const { filters } = store;
   const shownSetups = setups.map((s) => applyOverrides(s, filters.overrides, filters.potions));
+  // what the setups cost as compared: a left out slot costs nothing. Null without prices
+  const costs = prices && prices.byId.size > 0
+    ? new Map(shownSetups.flatMap((s): [string, SetupCost][] => {
+      const cost = setupCost(s.player, prices);
+      return cost ? [[s.id, cost]] : [];
+    }))
+    : null;
+  // not memoized: costs change with the setups, whose arrays are mutated in place
+  const visible = selectRows(rows, { mode, sort, costs });
   const shownById = new Map(shownSetups.map((s) => [s.id, s]));
   const duplicates = overrideDuplicates(setups, filters.overrides, filters.potions);
   const reasons = new Map<string, string>();
@@ -187,6 +196,11 @@ const BulkResults: React.FC<{ store: BulkStore; pool: BulkPool }> = observer(({ 
             sort={sort}
             onSort={setSort}
             hasRun={!!progress && !running}
+            showBehind
+            costs={costs}
+            costTooltip={prices?.at
+              ? `What the gear costs to buy, at the raid page's prices from ${new Date(prices.at).toLocaleDateString()}`
+              : 'No prices yet, so no costs'}
           />
         </div>
       ) : (

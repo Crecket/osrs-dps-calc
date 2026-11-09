@@ -211,6 +211,41 @@ describe('BulkStore', () => {
     expect(store.active?.monster).toBeNull();
   });
 
+  test('restoreSetups puts cleared setups back in their own preset, ahead of newer ones', async () => {
+    const storage = new MemoryStorage();
+    const store = new BulkStore(storage);
+    await store.load();
+    const presetId = store.activeId;
+    const names = store.active!.setups.map((s) => s.name);
+
+    const removed = store.clearSetups()!;
+    expect(removed.presetId).toBe(presetId);
+    expect(store.active!.setups).toHaveLength(0);
+
+    store.addSetups([{ id: 'new', name: 'Newer', player: createEmptyPlayer('Newer') }]);
+    store.createPreset('Another');
+    expect(store.restoreSetups(removed)).toBe(true);
+    expect(store.active!.name).toBe('Another');
+    const preset = store.presets.find((p) => p.id === presetId)!;
+    expect(preset.setups.map((s) => s.name)).toEqual([...names, 'Newer']);
+
+    // undoing twice doesn't add them twice, and what is restored gets saved
+    expect(store.restoreSetups(removed)).toBe(true);
+    expect(preset.setups).toHaveLength(names.length + 1);
+    await store.whenSaved();
+    expect(saved(storage).presets.find((p) => p.id === presetId)!.setups).toHaveLength(names.length + 1);
+
+    store.deletePreset(presetId!);
+    expect(store.restoreSetups(removed)).toBe(false);
+  });
+
+  test('clearSetups has nothing to restore from an empty preset', async () => {
+    const store = new BulkStore(new MemoryStorage());
+    await store.load();
+    clearSetups(store);
+    expect(store.clearSetups()).toBeNull();
+  });
+
   test('clearSetups removes every setup from the active preset and saves', async () => {
     const storage = new MemoryStorage();
     const store = new BulkStore(storage);
