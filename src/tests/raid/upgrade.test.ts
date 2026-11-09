@@ -431,6 +431,22 @@ describe('upgradeLoadout', () => {
   });
 });
 
+describe('purchases', () => {
+  test('list the upgrades still in the loadout with what they saved and cost', async () => {
+    const result = await upgradeLoadout(input({}), rate);
+    // 1200 HP per unit in candidate's plan isn't assumed: the saving is the raid's time before minus after
+    expect(result.purchases?.map((p) => p.itemId)).toEqual([ANGUISH]);
+    expect(result.purchases?.[0].price).toBe(20e6);
+    const before = plan([candidate('a', 10), candidate('b', 10)]).totalSeconds;
+    expect(result.purchases?.[0].seconds).toBeCloseTo(before - result.totalSeconds);
+  });
+
+  test('leave out items that cost nothing', async () => {
+    const result = await upgradeLoadout(input({ priceOf: () => 0 }), rate);
+    expect(result.purchases).toEqual([]);
+  });
+});
+
 describe('dpsRater', () => {
   test('computes DPS on the rows pool once per setup and monster', async () => {
     const runs: number[] = [];

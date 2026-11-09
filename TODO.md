@@ -8,8 +8,8 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 
 **Process**
 
+- Work directly in the main checkout on `bulk-mode`, with no worktrees.
 - Take unchecked items in order within a section, skipping anything marked as waiting on a question.
-- Give agents running at the same time items that don't touch the same files.
 - Commit and push each item to `bulk-mode` once it's finished and tested, then check it off here. Pushing deploys.
 - Write findings and questions in the sections below and keep going. If a decision is really the user's, take the conservative option and note it.
 - If an item turns out wrong or not worth doing, say so with evidence and move it to "Checked, not worth doing".
@@ -27,14 +27,8 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 
 - `npx tsc --noEmit -p .`
 - `npx eslint` on the changed files
-- `npx jest --coverage=false --testPathIgnorePatterns '/node_modules/' '/.claude/' '/temp/'` (without this, jest also runs the copies in leftover agent worktrees)
+- `npx jest --coverage=false`
 - `node .yarn/releases/yarn-4.9.2.cjs build-cf`, with lint on, because the deploy lints
-
-**Agents in worktrees**
-
-- Symlink `node_modules` from the main checkout, and work from the latest `origin/bulk-mode`.
-- `git fetch`, `git rebase` and `source nvm` have been refused for agents. If they still are, the agent should report it rather than work around it, and the main session has to bring its branch up to date.
-- ESLint fails inside a worktree on a plugin conflict, so run the lint and the final build from the main checkout.
 
 ## Questions for you
 
