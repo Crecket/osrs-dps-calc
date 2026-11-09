@@ -99,6 +99,27 @@ const front = <T extends { cost: number }>(options: T[], strength: (o: T) => num
   return Array.from({ length: n }, (_, i) => kept[Math.round((i * (kept.length - 1)) / (n - 1))]);
 };
 
+/**
+ * Whether no plan out of these options can win: even with all of them taken, whatever they cost, it leaves more units
+ * without a setup than the plan to beat, or the same number and is slower by more than a tie. `dps` per option and unit.
+ */
+export const cannotBeat = (
+  dps: number[][],
+  units: number,
+  secondsOf: (j: number, dps: number) => number,
+  toBeat: { uncovered: number; seconds: number },
+  minGain: number,
+): boolean => {
+  let uncovered = 0;
+  let seconds = 0;
+  for (let j = 0; j < units; j++) {
+    const best = dps.reduce((n, d) => Math.max(n, d[j]), 0);
+    if (!(best > 0)) uncovered += 1;
+    seconds += secondsOf(j, best);
+  }
+  return uncovered > toBeat.uncovered || (uncovered === toBeat.uncovered && seconds > toBeat.seconds + minGain);
+};
+
 export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan> => {
   const {
     units, monsters, priceOf, budget, maxItems, extraDps,
@@ -353,10 +374,18 @@ export const planKits = async (input: KitInput, rate: RateFn): Promise<RaidPlan>
   for (const chosen of tuples) {
     const items = new Set([...required, ...chosen.flatMap((k) => k.items)]);
     if (costOf(items) > cap || items.size > Math.max(maxItems, required.length)) continue;
+    // a setup for every unit first, then fastest, then cheapest (no plan goes over the budget)
+    const uncovered = (p: Plan) => p.picks.filter((c, j) => !c || !(c.dps[j] > 0)).length;
+    // the slow part: skipped when it can't change the outcome, as `better` below would turn down whatever it finds
+    if (bestPlan && cannotBeat(
+      chosen.flatMap((kit) => [...combos.get(kit)!.values()].map((combo) => combo.dps)),
+      units.length,
+      (j, dps) => secondsAt(units[j].hp, dps),
+      { uncovered: uncovered(bestPlan), seconds: bestPlan.seconds },
+      MIN_GAIN,
+    )) continue;
     for (const costAware of [true, false]) {
       const plan = withWeapons(chosen, costAware);
-      // a setup for every unit first, then fastest, then cheapest (no plan goes over the budget)
-      const uncovered = (p: Plan) => p.picks.filter((c, j) => !c || !(c.dps[j] > 0)).length;
       const better = (a: Plan, b: Plan) => uncovered(a) - uncovered(b)
         || (a.seconds < b.seconds - MIN_GAIN ? -1 : 0) || (b.seconds < a.seconds - MIN_GAIN ? 1 : 0) || a.cost - b.cost;
       if (!bestPlan || better(plan, bestPlan) < 0) bestPlan = plan;

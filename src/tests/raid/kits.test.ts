@@ -9,7 +9,7 @@ import { EquipmentPiece } from '@/types/Player';
 import { defaultSettings, raidBaseInputs } from '@/raid/lib/runRaid';
 import { Candidate } from '@/raid/lib/candidates';
 import { NO_SETUP_DPS } from '@/raid/lib/assemble';
-import { KitInput, planKits } from '@/raid/lib/kits';
+import { cannotBeat, KitInput, planKits } from '@/raid/lib/kits';
 
 const TBOW = 20997;
 const ARROW = 11212;
@@ -265,5 +265,23 @@ describe('planKits', () => {
     const controller = new AbortController();
     controller.abort();
     await expect(planKits(input({ signal: controller.signal }), rate)).rejects.toThrow('cancelled');
+  });
+});
+
+describe('cannotBeat', () => {
+  const secondsOf = (_: number, dps: number) => 100 / Math.max(dps, 0.01);
+
+  test('a plan that is slower even with everything taken cannot win', () => {
+    expect(cannotBeat([[5, 5], [1, 1]], 2, secondsOf, { uncovered: 0, seconds: 30 }, 0.01)).toBe(true);
+  });
+
+  test('a possible win, or a tie that a cheaper plan could take, is still tried', () => {
+    expect(cannotBeat([[10, 5], [1, 10]], 2, secondsOf, { uncovered: 0, seconds: 30 }, 0.01)).toBe(false);
+    expect(cannotBeat([[10, 10]], 2, secondsOf, { uncovered: 0, seconds: 20 }, 0.01)).toBe(false);
+  });
+
+  test('covering more units beats any time, and covering fewer loses to any', () => {
+    expect(cannotBeat([[10, 0]], 2, secondsOf, { uncovered: 2, seconds: 1 }, 0.01)).toBe(false);
+    expect(cannotBeat([[1000, 0]], 2, secondsOf, { uncovered: 0, seconds: 1e9 }, 0.01)).toBe(true);
   });
 });
