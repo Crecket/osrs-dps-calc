@@ -182,30 +182,6 @@ const LoadoutView: React.FC<{
       {selected !== null && replacements && (
         <ItemDetails result={result} id={selected} prices={prices} owned={owned} load={replacements} onClose={() => setSelected(null)} />
       )}
-      {!!plan.purchases?.length && (
-        <div className="flex flex-col gap-1">
-          <h3
-            className="text-sm font-bold"
-            data-tooltip-id="tooltip"
-            data-tooltip-content="The upgrades in this loadout, the most time per gp first. Each saving is what it saved when the planner bought it, so later upgrades can change it. The rest of the loadout is the setup it started from."
-          >
-            Buy in this order
-          </h3>
-          <ol className="rounded border border-body-200 dark:border-dark-300 divide-y divide-body-200 dark:divide-dark-300 text-sm" data-testid="purchase-list">
-            {plan.purchases.map((p, i) => (
-              <li key={p.itemId} data-testid="purchase-row" onContextMenu={menu.open(p.itemId)}>
-                <button type="button" className={`w-full text-left flex items-center gap-2 px-2 py-1 ${replacements ? 'cursor-pointer hover:bg-body-200 dark:hover:bg-dark-400' : 'cursor-default'}`} onClick={select(p.itemId)}>
-                  <span className="tabular-nums text-gray-500 dark:text-gray-300 w-4 shrink-0">{i + 1}</span>
-                  <ItemImage id={p.itemId} size={20} />
-                  <span className="grow truncate">{itemById(p.itemId)?.name ?? p.itemId}</span>
-                  <span className="tabular-nums shrink-0">{`-${p.seconds.toFixed(1)}s`}</span>
-                  <span className="tabular-nums text-gray-500 dark:text-gray-300 shrink-0 w-16 text-right">{`${formatGp(p.price)} gp`}</span>
-                </button>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
       <div className="min-h-0 flex flex-col gap-1">
         <h3 className="text-sm font-bold">Cost breakdown</h3>
         <ul className="min-h-0 overflow-y-auto max-h-80 xl:max-h-none rounded border border-body-200 dark:border-dark-300 divide-y divide-body-200 dark:divide-dark-300 text-sm" data-testid="cost-list">

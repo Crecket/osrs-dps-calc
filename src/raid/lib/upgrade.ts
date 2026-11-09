@@ -24,7 +24,7 @@ import {
 import { Candidate, fromStored, toStored } from '@/raid/lib/candidates';
 import { playerStatsKey, SearchCache, StoredCandidate } from '@/raid/lib/searchCache';
 import {
-  mainSetup, minGainFor, orderedItems, PhasePick, Purchase, RaidPlan, wearsLightbearer, yieldToBrowser,
+  mainSetup, minGainFor, orderedItems, PhasePick, RaidPlan, wearsLightbearer, yieldToBrowser,
 } from '@/raid/lib/assemble';
 
 /** DPS of each setup on the monster */
@@ -275,13 +275,6 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
   const swapped = (items: number[], move: Move) => [...items.filter((id) => id !== move.from), move.to];
   const costOf = (ids: Set<number>) => [...ids].reduce((n, id) => n + priceOf(id), 0);
 
-  // the upgrades bought, in order; an undone pass takes its own back
-  const bought: Purchase[] = [];
-  const buy = (itemId: number, gain: number) => {
-    const id = getCanonicalItemId(itemId);
-    if (Number.isFinite(gain) && gain > 0 && priceOf(id) > 0) bought.push({ itemId: id, seconds: gain, price: priceOf(id) });
-  };
-
   // the last climb fills the cells left over at a lower bar
   let filling = false;
   const fillGain = (from: number, to: number) => MIN_GAIN + FILL_SECONDS * Math.max(0, to - from);
@@ -339,8 +332,6 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     }
     if (!best) return false;
     const { rated, items } = best;
-    const feet = rated[0][0].setup.player.equipment.feet;
-    if (feet) buy(feet.id, best.gain);
     for (let k = 0; k < wearers.length; k++) {
       const g = wearers[k];
       g.units.forEach((u, n) => {
@@ -382,7 +373,6 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
       }
       if (!best) break;
       const { group, move, items } = best;
-      buy(move.to, gainOf(group, move.next));
       group.units.forEach((u, i) => {
         // eslint-disable-next-line no-param-reassign
         u.candidate = move.next[i];
@@ -435,8 +425,6 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
         const size = loadout({ group, items: swapped(swapped(group.items, a.move), b.move) }).size;
         const pairCost = costOf(loadout({ group, items: swapped(swapped(group.items, a.move), b.move) })) - costOf(current);
         if (!(gainOf(group, rated) > (filling || (isFree(a.move.to) && isFree(b.move.to)) ? fillGain(current.size, size) : minGainFor(current.size, size)) + moneyBar(pairCost))) continue;
-        // rated together: each gets half of what they saved
-        [a.move, b.move].forEach((m) => buy(m.to, gainOf(group, rated) / 2));
         group.units.forEach((u, i) => {
           // eslint-disable-next-line no-param-reassign
           u.candidate = rated[i];
@@ -446,7 +434,6 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
         group.moves = await movesFor(group);
       } else {
         for (const { group, move } of [a, b]) {
-          buy(move.to, gainOf(group, move.next));
           group.units.forEach((u, i) => {
             // eslint-disable-next-line no-param-reassign
             u.candidate = move.next[i];
@@ -876,9 +863,7 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     const kept = groups.map((g) => ({
       g, units: [...g.units], candidates: g.units.map((u) => u.candidate), items: g.items, moves: g.moves,
     }));
-    const boughtBefore = bought.length;
     return () => {
-      bought.length = boughtBefore;
       groups.splice(0, groups.length, ...kept.map((k) => k.g));
       kept.forEach((k) => {
         Object.assign(k.g, { units: k.units, items: k.items, moves: k.moves });
@@ -1017,12 +1002,8 @@ export const upgradeLoadout = async (input: UpgradeInput, rate: RateFn): Promise
     return candidate === p.candidate ? p : { ...p, candidate, seconds: seconds(p.hp, candidate!.dps) };
   });
   const itemIds = orderedItems(picks, input.requiredIds);
-  // an item bought twice (given back between) counts from when it last came in; one since replaced isn't bought at all
-  const kept = new Set(itemIds.map(getCanonicalItemId));
-  const purchases = bought.filter((p, i) => kept.has(p.itemId) && !bought.slice(i + 1).some((o) => o.itemId === p.itemId));
   return {
     ...plan,
-    purchases,
     picks,
     itemIds,
     cost: itemIds.reduce((n, id) => n + priceOf(id), 0),

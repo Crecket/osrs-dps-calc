@@ -36,13 +36,6 @@ export interface PhasePick {
   seconds: number;
 }
 
-/** An upgrade the planner bought: what it saved in the raid when it did, later upgrades aside */
-export interface Purchase {
-  itemId: number;
-  seconds: number;
-  price: number;
-}
-
 export interface RaidPlan {
   /** In order of first use along the route, then required items */
   itemIds: number[];
@@ -53,8 +46,6 @@ export interface RaidPlan {
   overBudget: boolean;
   /** The setup used for the most time, worn between fights */
   main: Candidate | null;
-  /** The upgrades still in the loadout, in the order the planner bought them, the most time per gp first */
-  purchases?: Purchase[];
 }
 
 /** The picks' items in order of first use, then the required ones */

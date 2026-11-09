@@ -1,7 +1,8 @@
 import {
   beforeEach, describe, expect, jest, test,
 } from '@jest/globals';
-import { availableEquipment } from '@/lib/Equipment';
+import { availableEquipment, getCanonicalItemId } from '@/lib/Equipment';
+import { bestPool } from '@/best/lib/candidates';
 import { getCombatStylesForCategory } from '@/utils';
 import type { StyleOutcome } from '@/best/lib/run';
 import { buildPlayer } from '@/best/lib/search';
@@ -108,6 +109,7 @@ describe('attackLabel', () => {
 });
 
 describe('excludedOf', () => {
+  const fangs = [...new Set(bestPool().filter((e) => e.name === 'Necklace of Fangs').map((e) => getCanonicalItemId(e.id)))];
   test('darts stronger than the best one the account can use are left out, with the excluded items', () => {
     const darts = dartOptions();
     expect(darts.map((d) => d.name).slice(0, 2)).toEqual(['Dragon dart', 'Amethyst dart']);
@@ -115,7 +117,12 @@ describe('excludedOf', () => {
     const excluded = excludedOf({ ...defaultSettings(), excludedIds: [4151], bestDart: amethyst });
     expect(excluded).toEqual(expect.arrayContaining([4151, darts[0].id]));
     expect(excluded).not.toContain(amethyst);
-    expect(excludedOf({ ...defaultSettings(), bestDart: null })).toEqual([]);
+    expect(excludedOf({ ...defaultSettings(), bestDart: null })).toEqual(fangs);
+  });
+
+  test('the Necklace of Fangs is always left out, even with nothing excluded', () => {
+    expect(fangs.length).toBeGreaterThan(0);
+    expect(excludedOf({ ...defaultSettings(), excludedIds: [], bestDart: null })).toEqual(expect.arrayContaining(fangs));
   });
 });
 

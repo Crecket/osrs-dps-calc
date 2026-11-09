@@ -99,13 +99,21 @@ export const dartOptions = (): EquipmentPiece[] => {
   return darts;
 };
 
-/** The excluded items, and the darts stronger than the best one the account can use */
+// items the guide never uses, whatever they would save: the Necklace of Fangs loses to anguish
+export const BANNED_ITEM_NAMES = ['Necklace of Fangs'];
+let banned: number[] | null = null;
+const bannedIds = (): number[] => {
+  if (!banned) banned = bestPool().filter((e) => BANNED_ITEM_NAMES.includes(e.name)).map((e) => e.id);
+  return banned;
+};
+
+/** The excluded items, the banned ones, and the darts stronger than the best one the account can use */
 export const excludedOf = (settings: RaidSettings): number[] => {
   const best = dartOptions().find((d) => d.id === settings.bestDart);
   const stronger = best
     ? bestPool().filter((e) => e.category === EquipmentCategory.THROWN && e.name.endsWith(' dart') && e.bonuses.ranged_str > best.bonuses.ranged_str)
     : [];
-  return [...new Set([...settings.excludedIds, ...stronger.map((d) => d.id)].map(getCanonicalItemId))];
+  return [...new Set([...settings.excludedIds, ...bannedIds(), ...stronger.map((d) => d.id)].map(getCanonicalItemId))];
 };
 
 /** One route phase as the results show it */
@@ -320,9 +328,14 @@ const prepare = (settings: RaidSettings, prices: Prices | null) => {
   // the configured specs: the team lowers the Defence whatever this player carries
   const phases = routePhases(raid, settings.route, settings.counts);
   const excluded = excludedOf(settings);
-  const tiers = tierExclusions(settings.budget, priceOf, excluded, pool, requiredItems(settings, priceOf));
+  const required = requiredItems(settings, priceOf);
+  const tiers = tierExclusions(settings.budget, priceOf, excluded, pool, required);
+  // an item that alone costs more than the budget never goes in, at any step; required items are bought anyway
+  const requiredSet = new Set(required.map(getCanonicalItemId));
+  const overBudget = pool.filter((e) => !requiredSet.has(getCanonicalItemId(e.id)) && priceOf(e.id) > settings.budget)
+    .map((e) => getCanonicalItemId(e.id));
   return {
-    phases, priceOf, tiers, base: raidBaseInputs(settings), pool,
+    phases, priceOf, tiers, base: raidBaseInputs(settings), pool, overBudget,
   };
 };
 
@@ -380,20 +393,23 @@ export const runRaid = async (
   signal?: AbortSignal,
 ): Promise<RaidResult> => {
   const {
-    phases, priceOf, tiers, base, pool: items,
+    phases, priceOf, tiers, base, pool: items, overBudget,
   } = prepare(settings, prices);
   // the searches' last progress, kept for the planning steps after them
   let last: RaidProgress = {
     search: 0, searches: 0, phaseLabel: '', inner: null, cached: 0,
   };
-  const candidates = await raidCandidates(phases, base, tiers, deps, (p) => {
+  const searched = await raidCandidates(phases, base, tiers, deps, (p) => {
     last = p;
     onProgress(p);
   }, cache, search);
+  // the searches already leave these out; this keeps it so whatever a cached search holds
+  const leftOut = new Set([...excludedOf(settings), ...overBudget]);
+  const candidates = searched.filter((c) => !c.itemIds.some((id) => leftOut.has(id)));
   const planning = (label: string, done = 0, total = 0) => onProgress({ ...last, inner: null, planning: { label, done, total } });
   planning('Ranking spec weapons');
   const extraDps = settings.magic === 'thralls' ? THRALL_DPS : 0;
-  const excluded = new Set(excludedOf(settings));
+  const excluded = leftOut;
   const specs = await specRanking(phases, candidates, [...excluded], deps, cache);
   const players = new Map<BestStyle, Player>();
   const playerFor = (style: BestStyle) => {

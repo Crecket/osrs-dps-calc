@@ -49,7 +49,6 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - **Best results now persist per build:** like Raid, a new deploy drops the saved Best result.
 - **Inventory Setups export needs one real import:** its shape matches a real export in the fixtures, but it hasn't been imported into the plugin itself. It leaves out the rune pouch's contents, and reserved cells stay empty because they stand for any boost potion.
 - **Copy buttons:** added on raid (Inventory Setups and item list) and bulk (results as CSV). Best has none, since its setups already go to bulk.
-- **Purchase order covers the upgrade steps only:** it lists what the climb and boot steps bought and kept. Weapons added by the weapon step, kits, and anything from the starting setup are in the cost breakdown but not in the order. Each saving is from when the item was bought, so they don't add up exactly.
 - **Possible flaky test:** `runRaid › re-plans with fewer items when switches overflow the inventory` failed once in a heavily loaded run and passed in two clean ones.
 - **Git limits:** `git fetch`, `git rebase` and `git reset` are on the deny list, so `git merge` is how branches get combined.
 - **Bulk table width and dialogs need a browser:** the two new columns, the slot popover, the dialogs in both themes, the undo toast and Enter to submit haven't been seen in a real browser.
@@ -61,10 +60,11 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 
 - **Equal-DPS ties go to the cheaper gear on the Best page only:** search payloads carry the priced items and `TopResults` keeps the cheaper of two setups with the same DPS (the Salve (e) and (ei) tie for melee is the test). Raid searches don't pass prices, so their cached searches and the golden tests are unchanged. A saved Best result isn't redone after a price refresh, the same as the max item price.
 - **Best page total budget:** a "Most a setup may cost" field next to the item limit, with the weapon, its ammo or dart included, at the raid page's prices. Weapons that cost more than the budget are left out. The exhaustive search finds the exact best setup by combining slots on attack, strength and cost. Against brute force with real prices (whip, blowpipe, rapier at 5m-3b), it matched every result brute force could finish, beat the cases where brute force had to give up, and took 16-81 ms per weapon, where brute force took up to 70 s. Runners-up within a budget may miss some setups, and the descent phase that picks the top weapons is approximate under a budget. It needs a browser check.
+- **Items over the budget are left out of the whole raid run:** any item that alone costs more than the budget (required items aside) is excluded from every step, and searched setups holding an excluded item are dropped. A 20m-budget run had bought a 41m Amulet of rancour; I didn't find which step let it in, as every upgrade move checks the budget. If a plan still goes over budget, send the debug file.
+- **Banning Fangs redoes cached searches once:** the searches' exclusion lists changed.
 
 ## Features
 
-- [x] **Purchase order (M):** log the moves `climb` accepts in `src/raid/lib/upgrade.ts` and show them as "buy this next: X seconds saved for Y gp". Probably the most useful feature for players, and most of the logic exists.
 - [x] **RuneLite Inventory Setups export (S-M):** `src/raid/lib/inventorySetups.ts` only imports. Check the output against the plugin itself.
 - [x] **Copy buttons (S):** bulk, best and raid don't use the clipboard anywhere.
 - [x] **Raid to bulk (S):** an "add to bulk preset" action on raid results, as the Best page has.
@@ -115,3 +115,5 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - **Bork as time windows:** dropped for now. Bork keeps the fixed 25% walking and 75% stunned health shares, with the stunned-armour fix.
 - **Collapse raid inputs after a run:** dropped, the panels stay manual.
 - **Profiling a real raid run:** dropped, nobody will run it.
+- **Purchase order ("Buy in this order"):** removed, you found it a useless metric.
+- **Necklace of Fangs:** banned from raid setups outright (`BANNED_ITEM_NAMES` in `src/raid/lib/runRaid.ts`), not just discouraged.
