@@ -38,13 +38,11 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - **Deleting a preset:** it has a confirm dialog but no undo. Should it get one too?
 - **CSV export:** it doesn't include the Behind or Cost columns. Should it?
 - **.claude/ in git:** it shows up as untracked. Should it go in `.gitignore`?
-- **Collapse raid inputs after a run:** the panels collapse by hand and remember that. Should a run also collapse them? Left as manual for now.
-- **Bork model:** how long are the walking and stun windows in seconds? Should the planner assume you aren't tanking, or should that be a setting (suggested: a setting, defaulting to non-tank)? What does the tank use while walking? The Bork item below waits on these.
 
 ## Findings
 
 - **Tooltips open on tap and focus:** on the bulk, best and raid pages, set in one place (`PageTooltip`). The upstream calculator page is unchanged. Keyboard focus only reaches elements that are focusable, so tooltips on plain cells remain tap and hover only. This needs checking in a browser, especially tapping a button that has a tooltip.
-- **Speed items paused for the measurement:** batching, one worker pool, reusing searches, the planner worker, lazy greedy and trimming jobs are risky worker and search changes. They wait for the browser profile, which decides whether they're worth it.
+- **Speed items have no profile:** batching, one worker pool, reusing searches, the planner worker, lazy greedy and trimming jobs are risky worker and search changes, and there won't be a browser profile to say where raid time goes. Take them last, one at a time, only where results can't change or the test shows they don't.
 - **Prices now use 1-hour averages:** this only applies after pressing refresh, since saved snapshots keep their prices so cached searches stay valid. The first refresh may move some items between price tiers and redo those searches.
 - **Best: clicking an item now excludes it:** this gives touch and keyboard a route, but a misclick excludes too. It shows a toast and a removable chip, and nothing runs. Raid's item panel gained Exclude and Mark owned instead. Raid's spec cells remain right-click only.
 - **Time estimates are partial on purpose:** Best estimates only the exhaustive phase, and Raid only its searches ("about 1:20 of searches left"). Earlier Best phases don't predict later ones and Raid planning has no measure of progress, so those show elapsed time only.
@@ -62,14 +60,6 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - **Still needs a browser:** moving an existing localStorage price snapshot to IndexedDB, whether a `pagehide` save finishes when a tab really closes, how the failed refresh message looks, and a real out-of-memory worker crash and retry.
 
 - **Equal-DPS ties go to the cheaper gear on the Best page only:** search payloads carry the priced items and `TopResults` keeps the cheaper of two setups with the same DPS (the Salve (e) and (ei) tie for melee is the test). Raid searches don't pass prices, so their cached searches and the golden tests are unchanged. A saved Best result isn't redone after a price refresh, the same as the max item price.
-
-## Measure
-
-- [ ] Compare a real raid run in the browser, on a cold cache, against the previous deploy, and profile the planner while doing it. Raid rating now skips kill times and sends compact setups, but the planner's share of a full run was never profiled, so the overall gain is unknown. This needs a person with a browser, and it decides how much of the speed section is worth doing.
-
-## Model
-
-- [ ] **Bork as time windows (M):** model the fight as repeating walking and stun windows, with kill time from damage per cycle, instead of fixed 25/75 health shares. Each player's walking style depends on their role. Waits on the questions above.
 
 ## Features
 
@@ -111,7 +101,6 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - [x] **Earlier results (M):** show the descent results on the Best page while exhaustive search runs. Results only appear at the end today.
 - [x] **Keep Best results across reloads (S-M):** `ResultCache` is memory-only, while Raid keeps its results.
 - [x] **Time remaining (S):** Raid now shows elapsed time. An estimate needs search timings, and Best has neither.
-- [ ] **Collapse raid inputs after a run (S):** the panels can now be collapsed by hand. Decide whether a run should also collapse them.
 - [x] **Right-click actions (M):** excluding or marking items has no touch or keyboard route (14 matching lines across components). Add a visible menu button.
 - [x] **Dialogs (M):** replace `window.prompt` and `confirm` in `PresetBar.tsx` and `SetupList.tsx:125` with inline dialogs, and give "Delete all setups" an undo.
 - [x] **Tooltip-only information (S-M):** make it reachable without hovering.
@@ -122,3 +111,6 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - **Optimising `getHtk`:** kill times are now only computed for setups that are shown. It's upstream code and golden tests pin its exact output.
 - **Budget curve (a chart of raid time against budget):** dropped, you didn't want it.
 - **Owned items on the Best page:** dropped, you didn't want it.
+- **Bork as time windows:** dropped for now. Bork keeps the fixed 25% walking and 75% stunned health shares, with the stunned-armour fix.
+- **Collapse raid inputs after a run:** dropped, the panels stay manual.
+- **Profiling a real raid run:** dropped, nobody will run it.
