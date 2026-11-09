@@ -42,6 +42,8 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 
 ## Findings
 
+- **Prices now use 1-hour averages:** this only applies after pressing refresh, since saved snapshots keep their prices so cached searches stay valid. The first refresh may move some items between price tiers and redo those searches.
+- **Best: clicking an item now excludes it:** this gives touch and keyboard a route, but a misclick excludes too. It shows a toast and a removable chip, and nothing runs. Raid's item panel gained Exclude and Mark owned instead. Raid's spec cells remain right-click only.
 - **Time estimates are partial on purpose:** Best estimates only the exhaustive phase, and Raid only its searches ("about 1:20 of searches left"). Earlier Best phases don't predict later ones and Raid planning has no measure of progress, so those show elapsed time only.
 - **Best results now persist per build:** like Raid, a new deploy drops the saved Best result.
 - **Inventory Setups export needs one real import:** its shape matches a real export in the fixtures, but it hasn't been imported into the plugin itself. It leaves out the rune pouch's contents, and reserved cells stay empty because they stand for any boost potion.
@@ -78,7 +80,7 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 
 ## Accuracy
 
-- [ ] **Steadier prices (M):** `parsePrices` in `src/raid/lib/prices.ts` uses the latest instant-buy price, so one odd trade on a thin item can move it between price tiers and redo searches. Use the wiki's 5-minute or 1-hour averages.
+- [x] **Steadier prices (M):** `parsePrices` in `src/raid/lib/prices.ts` uses the latest instant-buy price, so one odd trade on a thin item can move it between price tiers and redo searches. Use the wiki's 5-minute or 1-hour averages.
 - [x] **A failed price refresh says nothing (S):** `fetchPrices` falls back to the old snapshot, so the button just shows the old date again. Tell the user the refresh failed.
 
 ## Speed
@@ -104,7 +106,7 @@ To pick this up later, tell Claude: "Work through TODO.md, following its instruc
 - [x] **Keep Best results across reloads (S-M):** `ResultCache` is memory-only, while Raid keeps its results.
 - [x] **Time remaining (S):** Raid now shows elapsed time. An estimate needs search timings, and Best has neither.
 - [ ] **Collapse raid inputs after a run (S):** the panels can now be collapsed by hand. Decide whether a run should also collapse them.
-- [ ] **Right-click actions (M):** excluding or marking items has no touch or keyboard route (14 matching lines across components). Add a visible menu button.
+- [x] **Right-click actions (M):** excluding or marking items has no touch or keyboard route (14 matching lines across components). Add a visible menu button.
 - [x] **Dialogs (M):** replace `window.prompt` and `confirm` in `PresetBar.tsx` and `SetupList.tsx:125` with inline dialogs, and give "Delete all setups" an undo.
 - [ ] **Tooltip-only information (S-M):** make it reachable without hovering.
 

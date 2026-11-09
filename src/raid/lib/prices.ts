@@ -23,12 +23,18 @@ export interface Prices {
 
 type Mapping = { id: number; name: string }[];
 type Latest = { data: Record<string, { high: number | null; low: number | null }> };
+type HourAverage = { data: Record<string, { avgHighPrice: number | null; avgLowPrice: number | null }> };
 
-/** Instant-buy price (high), else instant-sell (low); items with neither are left out */
-export const parsePrices = (mapping: Mapping, latest: Latest): Prices => {
+/**
+ * The last hour's average instant-buy price, else its instant-sell one: one odd trade on a thin item must not move it
+ * between price tiers. Items that didn't trade that hour have their latest instant-buy (high), else instant-sell (low);
+ * items with none of these are left out.
+ */
+export const parsePrices = (mapping: Mapping, latest: Latest, hour?: HourAverage): Prices => {
   const byId: PriceTable = new Map();
   Object.entries(latest.data).forEach(([id, p]) => {
-    const price = p.high ?? p.low;
+    const average = hour?.data[id];
+    const price = average?.avgHighPrice ?? average?.avgLowPrice ?? p.high ?? p.low;
     if (price !== null && price !== undefined) byId.set(Number(id), price);
   });
   const byName = new Map<string, number>();
@@ -43,6 +49,8 @@ interface CachedPrices {
   at: number;
   mapping: Mapping;
   latest: Latest;
+  /** Missing on snapshots from before averages were used */
+  hour?: HourAverage;
 }
 
 const removeOldCache = () => {
@@ -97,25 +105,28 @@ export const fetchPrices = async (
   storage: PresetStorage = localforage,
 ): Promise<Prices | null> => {
   const cached = await readCache(storage);
-  if (cached && now - cached.at < maxAge) return withAt(parsePrices(cached.mapping, cached.latest), cached.at);
+  if (cached && now - cached.at < maxAge) return withAt(parsePrices(cached.mapping, cached.latest, cached.hour), cached.at);
   try {
     const get = async (path: string) => {
       const res = await fetchFn(`${API}/${path}`);
       if (!res.ok) throw new Error(`${path}: ${res.status}`);
       return res.json();
     };
-    const [mapping, latest] = await Promise.all([get('mapping'), get('latest')]);
+    // without the averages the latest prices still do
+    const [mapping, latest, hour] = await Promise.all([get('mapping'), get('latest'), get('1h').catch(() => undefined)]);
     try {
-      await storage.setItem<CachedPrices>(PRICE_CACHE_KEY, { at: now, mapping, latest });
+      await storage.setItem<CachedPrices>(PRICE_CACHE_KEY, {
+        at: now, mapping, latest, ...(hour ? { hour } : {}),
+      });
       removeOldCache();
     } catch (e) {
       // storage full or blocked: the prices still work for this page load
       console.warn('[raid] Could not save prices', e);
     }
-    return withAt(parsePrices(mapping, latest), now);
+    return withAt(parsePrices(mapping, latest, hour), now);
   } catch (e) {
     console.warn('[raid] Could not fetch prices', e);
-    return cached ? { ...withAt(parsePrices(cached.mapping, cached.latest), cached.at), fetchFailed: true } : null;
+    return cached ? { ...withAt(parsePrices(cached.mapping, cached.latest, cached.hour), cached.at), fetchFailed: true } : null;
   }
 };
 

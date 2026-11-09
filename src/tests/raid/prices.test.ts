@@ -41,7 +41,51 @@ const brokenStorage = () => ({
 
 beforeEach(() => localStorage.clear());
 
+describe('fetchPrices averages', () => {
+  const storage = () => {
+    const data = new Map<string, unknown>();
+    return {
+      data,
+      getItem: async <V>(key: string) => (data.get(key) as V) ?? null,
+      setItem: async <V>(key: string, value: V) => {
+        data.set(key, value);
+        return value;
+      },
+    };
+  };
+  const respond = (hourOk: boolean) => (async (url: string) => {
+    const path = String(url);
+    if (path.endsWith('/1h')) return { ok: hourOk, status: hourOk ? 200 : 500, json: async () => ({ data: { 1: { avgHighPrice: 7, avgLowPrice: 6 } } }) };
+    return { ok: true, status: 200, json: async () => (path.endsWith('/mapping') ? [{ id: 1, name: 'A' }] : { data: { 1: { high: 900, low: 5 } } }) };
+  }) as unknown as typeof fetch;
+
+  test('uses and keeps the averages', async () => {
+    const s = storage();
+    expect((await fetchPrices(respond(true), 1, 0, s))?.byId.get(1)).toBe(7);
+    // from the saved snapshot now, which must give the same prices
+    expect((await fetchPrices(respond(false), 2, Infinity, s))?.byId.get(1)).toBe(7);
+  });
+
+  test('without the averages the latest prices still do', async () => {
+    expect((await fetchPrices(respond(false), 1, 0, storage()))?.byId.get(1)).toBe(900);
+  });
+});
+
 describe('parsePrices', () => {
+  test('prefers the last hour\'s average, so one odd trade doesn\'t set the price', () => {
+    const raw = {
+      data: {
+        1: { high: 900, low: 8 }, 2: { high: 20, low: 18 }, 3: { high: 30, low: 28 }, 4: { high: null, low: 40 },
+      },
+    };
+    const hour = { data: { 1: { avgHighPrice: 10, avgLowPrice: 9 }, 2: { avgHighPrice: null, avgLowPrice: 19 }, 3: { avgHighPrice: null, avgLowPrice: null } } };
+    const { byId } = parsePrices([], raw, hour);
+    expect(byId.get(1)).toBe(10);
+    expect(byId.get(2)).toBe(19);
+    expect(byId.get(3)).toBe(30);
+    expect(byId.get(4)).toBe(40);
+  });
+
   test('parse picks high then low', () => {
     const { byId, byName } = parsePrices(mapping, latest);
     expect(byId.get(1)).toBe(10);

@@ -8,6 +8,7 @@ import { formatTime } from '@/raid/lib/format';
 import {
   BossImage, ItemImage, itemById, priceLabel,
 } from '@/raid/components/items';
+import { useRaidStore } from '@/raid/state/RaidStore';
 
 const REPLACEMENTS_SHOWN = 10;
 const WEAPONS_SHOWN = 10;
@@ -57,6 +58,7 @@ const ItemDetails: React.FC<{
   result, id, prices, owned, load, onClose,
 }) => {
   const [rows, setRows] = useState<Replacement[] | null | 'loading' | 'failed'>('loading');
+  const store = useRaidStore();
   const item = itemById(id);
   const canonical = getCanonicalItemId(id);
   const weaponPicks = result.plan.picks.filter((p) => p.candidate
@@ -123,6 +125,11 @@ const ItemDetails: React.FC<{
           <h3 className="text-sm font-bold truncate">{item?.name ?? id}</h3>
           <p className="text-xs text-gray-500 dark:text-gray-300">{priceLabel(id, prices, owned)}</p>
         </div>
+        {/* what the right-click menu does, for touch and keyboard; nothing runs until the button is clicked */}
+        <button type="button" className="text-xs underline rounded hover:text-orange-400 shrink-0" onClick={() => store.exclude(id)}>Exclude</button>
+        <button type="button" className="text-xs underline rounded hover:text-orange-400 shrink-0" onClick={() => store.toggleOwned(id)}>
+          {owned.includes(canonical) ? 'Unmark owned' : 'Mark owned'}
+        </button>
         <button type="button" aria-label="Close" className="p-1 rounded hover:bg-body-200 dark:hover:bg-dark-400" onClick={onClose}>
           <IconX size={16} aria-hidden />
         </button>

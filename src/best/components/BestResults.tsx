@@ -277,7 +277,7 @@ const BestResults: React.FC<{ store: BestStore; pools: Pools }> = observer(({ st
           {outcomes.length > 1 && <StyleSummary outcomes={outcomes} />}
           <p className="px-4 pt-2 pb-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-300">
             <IconClick size={14} aria-hidden />
-            Right-click an item to leave it out of the next search.
+            Click an item to leave it out of the next search.
           </p>
           <div className="flex flex-col divide-y divide-body-300 dark:divide-dark-200">
             {outcomes.map((o) => <StyleResults key={o.style} outcome={o} sort={sort} onSort={setSort} onExclude={exclude} />)}

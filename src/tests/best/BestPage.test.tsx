@@ -385,7 +385,7 @@ describe('BestPage', () => {
     await act(async () => find(container).click());
     await wait(10);
 
-    const cell = container.querySelector(`img[alt="${torture.name}"]`)!.closest('div')!;
+    const cell = container.querySelector(`img[alt="${torture.name}"]`)!.closest('button')!;
     const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
     await act(async () => { cell.dispatchEvent(event); });
     await wait(10);
@@ -404,6 +404,21 @@ describe('BestPage', () => {
     await unmount();
   });
 
+  test('a plain click excludes an item too, for touch and keyboard', async () => {
+    const torture = availableEquipment.find((e) => e.name === 'Amulet of torture')!;
+    const withNeck = outcome('Whip');
+    withNeck.setups[0].player.equipment.neck = torture;
+    mockRun.mockResolvedValue([withNeck]);
+    const { container, unmount } = await mount();
+    await act(async () => find(container).click());
+    await wait(10);
+    await act(async () => container.querySelector(`img[alt="${torture.name}"]`)!.closest('button')!.click());
+    await wait(10);
+    expect((mockData.get(BEST_STORAGE_KEY) as { inputs: BestInputs }).inputs.excludedItemIds).toEqual([torture.id]);
+    expect(mockRun).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
   test('right-clicking a weapon that stands for cosmetic variants excludes those copies too', async () => {
     const [axe, or, trailblazer] = ['Infernal axe', 'Infernal axe (or)', 'Infernal axe (or) (Trailblazer Reloaded)']
       .map((name) => availableEquipment.find((e) => e.name === name && e.version === 'Charged')!);
@@ -417,7 +432,7 @@ describe('BestPage', () => {
     await act(async () => find(container).click());
     await wait(10);
 
-    const cell = container.querySelector(`img[alt="${axe.name}"]`)!.closest('div')!;
+    const cell = container.querySelector(`img[alt="${axe.name}"]`)!.closest('button')!;
     await act(async () => { cell.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); });
     await wait(10);
     expect((mockData.get(BEST_STORAGE_KEY) as { inputs: BestInputs }).inputs.excludedItemIds).toEqual([axe.id, or.id, trailblazer.id]);

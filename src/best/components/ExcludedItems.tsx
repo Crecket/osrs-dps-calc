@@ -25,7 +25,7 @@ const ExcludedItems: React.FC = observer(() => {
   return (
     <Section title="Excluded items">
       <p className="text-xs text-gray-500 dark:text-gray-300">
-        The search never uses these. Right-click an item in a result to add it here, or search for one.
+        The search never uses these. Click an item in a result to add it here, or search for one.
       </p>
       <div className="max-w-sm">
         <EquipmentSearch filter={inPool} onPick={(item) => store.excludeItem(item.id)} />
